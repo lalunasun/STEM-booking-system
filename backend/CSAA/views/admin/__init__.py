@@ -1,0 +1,16 @@
+# 导入所有admin的方法
+from CSAA.views.admin.thing import *
+from CSAA.views.admin.classification import *
+from CSAA.views.admin.tag import *
+from CSAA.views.admin.times import *
+from CSAA.views.admin.term import *
+from CSAA.views.admin.user import *
+from CSAA.views.admin.comment import *
+from CSAA.views.admin.overview import *
+from CSAA.views.admin.loginLog import *
+from CSAA.views.admin.order import *
+from CSAA.views.admin.opLog import *
+from CSAA.views.admin.errorLog import *
+from CSAA.views.admin.ad import *
+from CSAA.views.admin.notice import *
+from CSAA.views.admin.lesson import *

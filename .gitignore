@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.python-deps/
+.pip-cache/
+.tmp/
+
+# Django local data
+*.sqlite3
+upload/
+logs/
+
+# Node / frontend
+node_modules/
+.npm-cache/
+dist/
+build/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
