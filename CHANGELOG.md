@@ -2,6 +2,19 @@
 
 ## 2026-05-08
 
+- Refined the admin Schedule grid.
+  - Course rows now use compact fixed-height formatting for busy time slots.
+  - Course colors are assigned consistently by course.
+  - Student summaries truncate in the grid, with a hover dropdown showing one student per line.
+  - Added a sticky weekday header while scrolling.
+  - Highlighted the 12:00-13:00 lunch slot as a compact separator row.
+  - Added a `FULL` badge when the scheduled student count reaches room capacity.
+- Improved Schedule and Lesson student consistency.
+  - Lesson detail now reads normal students from paid/scheduled orders, matching the Schedule grid.
+  - Lesson detail student count now reflects paid/scheduled orders.
+- Improved Time management.
+  - Time periods are returned in start-time order.
+  - Local test data was filled out from 9:00-10:00 through 19:00-20:00.
 - Updated admin Schedule behavior.
   - Changed Week view to a time-grid layout from 9:00 to 20:00.
   - Added explicit `lesson_id` and `thing_id` fields for stable Schedule links.

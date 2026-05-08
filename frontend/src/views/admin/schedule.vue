@@ -28,33 +28,34 @@
         </div>
 
         <template v-for="slot in timeSlots" :key="slot.hour">
-          <div class="time-cell">{{ slot.label }}</div>
+          <div class="time-cell" :class="{ 'lunch-time-cell': isLunchSlot(slot.hour) }">{{ slot.label }}</div>
 
-          <div v-for="day in weekDays" :key="`${slot.hour}-${day.key}`" class="week-time-cell">
+          <div
+            v-for="day in weekDays"
+            :key="`${slot.hour}-${day.key}`"
+            class="week-time-cell"
+            :class="{ 'lunch-time-cell': isLunchSlot(slot.hour) }"
+          >
             <button
               v-for="item in getLessonsByDayAndHour(day.dayCode, day.date, slot.hour)"
               :key="`${slot.hour}-${day.key}-${item.id}`"
               class="event-button"
+              :style="getLessonColorStyle(item)"
               type="button"
               @click="toDetailPage(item)"
             >
               <span class="event-name">{{ item.class_name || 'Untitled class' }}</span>
-              <span v-if="hasStudentNames(item, day.date)" class="student-list">
+              <span class="student-line">
+                {{ getStudentSummary(item, day.date) || 'No students' }}
+              </span>
+              <span v-if="isLessonFull(item, day.date)" class="full-badge">FULL</span>
+              <span v-if="hasStudentNames(item, day.date)" class="student-hover-panel" @click.stop>
                 <span
-                  v-for="student in getNormalStudents(item, day.date)"
-                  :key="`normal-${item.id}-${student.name}`"
-                  class="student-name"
-                  :title="student.term_title"
+                  v-for="student in getAllDisplayStudents(item, day.date)"
+                  :key="`hover-${item.id}-${student}`"
+                  class="student-hover-name"
                 >
-                  {{ student.name }}
-                </span>
-                <span
-                  v-for="student in getRescheduledStudents(item, day.date)"
-                  :key="`rescheduled-${item.id}-${student.name}`"
-                  class="student-name rescheduled-student"
-                  :title="student.term_title"
-                >
-                  <span class="rescheduled-star">*</span>{{ student.name }}
+                  {{ student }}
                 </span>
               </span>
             </button>
@@ -122,6 +123,7 @@ interface LessonItem {
   students?: string[];
   reschedule_students?: string[];
   scheduled_students?: ScheduleStudent[];
+  room_capacity?: number | string;
 }
 
 interface ScheduleStudent {
@@ -143,6 +145,16 @@ const timeSlots = Array.from({ length: 11 }, (_, index) => {
     label: `${hour}:00-${hour + 1}:00`,
   };
 });
+const lessonColorPalette = [
+  { bg: '#f6ffed', border: '#95de64', text: '#135200' },
+  { bg: '#e6f4ff', border: '#69b1ff', text: '#003a8c' },
+  { bg: '#fff7e6', border: '#ffc069', text: '#873800' },
+  { bg: '#f9f0ff', border: '#b37feb', text: '#391085' },
+  { bg: '#e6fffb', border: '#5cdbd3', text: '#006d75' },
+  { bg: '#fff1f0', border: '#ff7875', text: '#a8071a' },
+  { bg: '#f0f5ff', border: '#85a5ff', text: '#10239e' },
+  { bg: '#fcffe6', border: '#d3f261', text: '#5b6600' },
+];
 
 const router = useRouter();
 const value = ref<Dayjs>(dayjs());
@@ -221,6 +233,32 @@ const getRescheduledStudents = (_item: LessonItem, _date: Dayjs) => {
   return [];
 };
 
+const getAllDisplayStudents = (item: LessonItem, date: Dayjs) => {
+  const normalStudents = getNormalStudents(item, date).map((student) => student.name);
+  const rescheduledStudents = getRescheduledStudents(item, date).map((student) => `*${student.name}`);
+  return [...normalStudents, ...rescheduledStudents];
+};
+
+const getStudentSummary = (item: LessonItem, date: Dayjs) => {
+  const students = getAllDisplayStudents(item, date);
+
+  if (students.length <= 2) {
+    return students.join(', ');
+  }
+
+  return `${students.slice(0, 2).join(', ')} +${students.length - 2}`;
+};
+
+const getLessonCapacity = (item: LessonItem) => {
+  const capacity = Number(item.room_capacity);
+  return Number.isFinite(capacity) ? capacity : 0;
+};
+
+const isLessonFull = (item: LessonItem, date: Dayjs) => {
+  const capacity = getLessonCapacity(item);
+  return capacity > 0 && getNormalStudents(item, date).length >= capacity;
+};
+
 const hasStudentNames = (item: LessonItem, date?: Dayjs) => {
   if (!date) {
     return (item.scheduled_students || []).length > 0;
@@ -244,8 +282,21 @@ const getLessonStartHour = (item: LessonItem) => {
   return match ? Number(match[1]) : undefined;
 };
 
+const isLunchSlot = (hour: number) => hour === 12;
+
 const getLessonsByDayAndHour = (dayCode: string, date: Dayjs, hour: number) => {
   return getLessonsByDay(dayCode, date).filter((item) => getLessonStartHour(item) === hour);
+};
+
+const getLessonColorStyle = (item: LessonItem) => {
+  const colorKey = Number(item.thing_id || item.thing || item.id || 0);
+  const color = lessonColorPalette[colorKey % lessonColorPalette.length];
+
+  return {
+    '--event-bg': color.bg,
+    '--event-border': color.border,
+    '--event-text': color.text,
+  };
 };
 
 const getListData = (current: Dayjs) => {
@@ -319,11 +370,14 @@ const goNext = () => {
   grid-template-columns: 88px repeat(7, minmax(130px, 1fr));
   border: 1px solid #eaecf0;
   border-radius: 8px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .time-header,
 .week-day-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   min-height: 74px;
   padding: 14px;
   border-right: 1px solid #eaecf0;
@@ -350,7 +404,7 @@ const goNext = () => {
 }
 
 .time-cell {
-  min-height: 86px;
+  min-height: 188px;
   padding: 12px 10px;
   border-right: 1px solid #eaecf0;
   border-bottom: 1px solid #eaecf0;
@@ -361,11 +415,23 @@ const goNext = () => {
 }
 
 .week-time-cell {
-  min-height: 86px;
-  padding: 8px;
+  position: relative;
+  min-height: 188px;
+  padding: 7px;
   border-right: 1px solid #eaecf0;
   border-bottom: 1px solid #eaecf0;
   background: #fff;
+}
+
+.lunch-time-cell {
+  background: #fff8e1;
+  border-top: 2px solid #f3c34d;
+  border-bottom: 2px solid #f3c34d;
+  min-height: 46px;
+}
+
+.time-cell.lunch-time-cell {
+  color: #8a5a00;
 }
 
 .week-day-header:nth-child(8n),
@@ -388,55 +454,95 @@ const goNext = () => {
 }
 
 .event-button {
+  position: relative;
   width: 100%;
-  border: 1px solid #b7eb8f;
-  border-radius: 6px;
-  background: #f6ffed;
-  color: #135200;
-  display: block;
-  padding: 8px 10px;
+  height: 32px;
+  border: 1px solid var(--event-border, #b7eb8f);
+  border-radius: 5px;
+  background: var(--event-bg, #f6ffed);
+  color: var(--event-text, #135200);
+  display: grid;
+  grid-template-columns: minmax(54px, 0.78fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
   text-align: left;
   cursor: pointer;
+  line-height: 1;
+  overflow: visible;
 }
 
 .event-button + .event-button {
-  margin-top: 6px;
+  margin-top: 5px;
 }
 
 .event-button:hover {
-  border-color: #73d13d;
-  background: #efffdf;
+  border-color: var(--event-border, #73d13d);
+  filter: saturate(1.08) brightness(0.98);
+  z-index: 6;
 }
 
 .event-name {
   display: block;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.event-name {
   font-weight: 600;
+  font-size: 13px;
 }
 
-.student-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 8px;
-}
-
-.student-name {
-  max-width: 100%;
+.student-line {
+  display: block;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  border-radius: 4px;
-  background: #ffffff;
   color: #344054;
   font-size: 12px;
+  line-height: 16px;
+  opacity: 0.92;
+}
+
+.full-badge {
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.76);
+  color: #b42318;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  padding: 0 5px;
+}
+
+.student-hover-panel {
+  position: absolute;
+  top: calc(100% - 1px);
+  left: -1px;
+  z-index: 10;
+  display: none;
+  min-width: calc(100% + 2px);
+  max-width: 240px;
+  border: 1px solid var(--event-border, #b7eb8f);
+  border-top: 0;
+  border-radius: 0 0 5px 5px;
+  background: var(--event-bg, #f6ffed);
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.12);
+  color: var(--event-text, #135200);
+  padding: 5px 8px 7px;
+}
+
+.event-button:hover .student-hover-panel,
+.event-button:focus-visible .student-hover-panel {
+  display: block;
+}
+
+.student-hover-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
   line-height: 18px;
-  padding: 1px 6px;
 }
 
 .rescheduled-student {

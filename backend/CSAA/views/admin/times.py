@@ -7,11 +7,18 @@ from CSAA.models import Time
 from CSAA.serializers import TimeSerializer
 
 
+def get_start_hour(time_item):
+    try:
+        return int(str(time_item.time).split(':', 1)[0])
+    except (TypeError, ValueError):
+        return 99
+
+
 # Time列表
 @api_view(['GET'])
 def list_api(request):
     if request.method == 'GET':
-        times = Time.objects.all()
+        times = sorted(Time.objects.all(), key=get_start_hour)
         serializer = TimeSerializer(times, many=True)
         return APIResponse(code=0, msg='查询成功', data=serializer.data)
 

@@ -161,6 +161,7 @@ class LessonSerializer(serializers.ModelSerializer):
     class_name = serializers.ReadOnlyField(source='thing.title')
     day = serializers.ReadOnlyField(source='thing.day')
     time = serializers.ReadOnlyField(source='thing.time.time')
+    room_capacity = serializers.ReadOnlyField(source='thing.tag.seat')
 
     # 添加学生姓名字段
     students = serializers.SerializerMethodField()
@@ -269,6 +270,7 @@ class LessonDetailSerializer(serializers.ModelSerializer):
     reschedule_students = serializers.SerializerMethodField()
     try_students = serializers.SerializerMethodField()
     leave_students = serializers.SerializerMethodField()
+    students_num = serializers.SerializerMethodField()
 
     class Meta:
         model = Lesson
@@ -286,8 +288,33 @@ class LessonDetailSerializer(serializers.ModelSerializer):
         )
         return serializer.data
 
+    def _scheduled_orders(self, obj):
+        return Order.objects.filter(
+            thing=obj.thing,
+            child__isnull=False,
+            status__in=[2, 6],
+        ).select_related('user', 'child', 'term').order_by('child__name', 'id')
+
+    def _serialize_order_student(self, order):
+        parent = order.user
+        child = order.child
+        term = order.term
+
+        return {
+            'id': child.id,
+            'name': child.name,
+            'parent_name': (parent.nickname or parent.username) if parent else None,
+            'phone': parent.mobile if parent else None,
+            'term_info': {
+                'term_id': term.id,
+                'term_name': term.title,
+            } if term else None,
+            'order_id': order.id,
+            'order_status': order.status,
+        }
+
     def get_students(self, obj):
-        return self._serialize_students(obj.students.all(), 'normal')
+        return [self._serialize_order_student(order) for order in self._scheduled_orders(obj)]
 
     def get_reschedule_students(self, obj):
         return self._serialize_students(obj.reschedule_students.all(), 'reschedule')
@@ -297,3 +324,6 @@ class LessonDetailSerializer(serializers.ModelSerializer):
 
     def get_leave_students(self, obj):
         return self._serialize_students(obj.leave_students.all(), 'leave')
+
+    def get_students_num(self, obj):
+        return self._scheduled_orders(obj).count()

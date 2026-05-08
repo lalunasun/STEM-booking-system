@@ -70,7 +70,7 @@
                  </div>
                  <span style="font-weight: bolder;">term:&nbsp;&nbsp;</span>
                  <div class="right-box">
-                  <span>{{ child.term_info.term_name }}</span>
+                  <span>{{ child.term_info?.term_name || '--' }}</span>
                  </div>
             </div>
             </div>
