@@ -22,11 +22,13 @@ def list_api(request):
 @api_view(['GET'])
 def detail(request):
     try:
-        pk = request.GET.get('id', -1)
-        thing = Thing.objects.get(pk=pk)
-        print(pk)
-        print(thing)
-        lesson = Lesson.objects.get(thing=thing)
+        lesson_id = request.GET.get('lesson_id')
+        if lesson_id:
+            lesson = Lesson.objects.get(pk=lesson_id)
+        else:
+            pk = request.GET.get('id', -1)
+            thing = Thing.objects.get(pk=pk)
+            lesson = Lesson.objects.get(thing=thing)
     except Lesson.DoesNotExist:
         utils.log_error(request, '课程不存在')
         return APIResponse(code=1, msg='课程不存在')

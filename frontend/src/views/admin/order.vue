@@ -35,8 +35,8 @@
 
   <template v-if="column.key === 'operation'">
     <span>
-      <a-popconfirm v-if="record.status == 6" title="Order done?" ok-text="Yes" cancel-text="No" @confirm="confirmCheckOut(record)">
-        <a>Done</a>
+      <a-popconfirm v-if="record.status == 6" title="Mark this order as done?" ok-text="Yes" cancel-text="No" @confirm="confirmCheckOut(record)">
+        <a>Mark done</a>
       </a-popconfirm>
       <a-divider type="vertical" v-if="record.status != 8" />
       <a-popconfirm v-if="record.status !== 8"  title="Sure to cancel?" ok-text="Yes" cancel-text="No" @confirm="confirmCancel(record)">

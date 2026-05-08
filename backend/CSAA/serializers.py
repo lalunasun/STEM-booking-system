@@ -156,6 +156,8 @@ class OrderSerializer(serializers.ModelSerializer):
 
 # lesson信息序列化
 class LessonSerializer(serializers.ModelSerializer):
+    lesson_id = serializers.ReadOnlyField(source='id')
+    thing_id = serializers.ReadOnlyField(source='thing.id')
     class_name = serializers.ReadOnlyField(source='thing.title')
     day = serializers.ReadOnlyField(source='thing.day')
     time = serializers.ReadOnlyField(source='thing.time.time')
@@ -165,6 +167,7 @@ class LessonSerializer(serializers.ModelSerializer):
     leave_students = serializers.SerializerMethodField()
     reschedule_students = serializers.SerializerMethodField()
     try_students = serializers.SerializerMethodField()
+    scheduled_students = serializers.SerializerMethodField()
 
     class Meta:
         model = Lesson
@@ -181,6 +184,29 @@ class LessonSerializer(serializers.ModelSerializer):
 
     def get_try_students(self, obj):
         return [student.name for student in obj.try_students.all()]
+
+    def get_scheduled_students(self, obj):
+        orders = Order.objects.filter(
+            thing=obj.thing,
+            child__isnull=False,
+            term__isnull=False,
+            expect_time__isnull=False,
+            return_time__isnull=False,
+            status__in=[2, 6],
+        ).select_related('child', 'term')
+
+        return [
+            {
+                'order_id': order.id,
+                'name': order.child.name,
+                'term_id': order.term.id,
+                'term_title': order.term.title,
+                'expect_time': order.expect_time.strftime('%Y-%m-%d'),
+                'return_time': order.return_time.strftime('%Y-%m-%d'),
+                'status': order.status,
+            }
+            for order in orders
+        ]
 
 
 # 修改课程信息序列化

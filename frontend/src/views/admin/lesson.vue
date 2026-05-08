@@ -165,6 +165,7 @@ const route = useRoute()
 const userStore = useUserStore();
 
 let thingId = ref('')
+let lessonId = ref('')
 let detailData = ref({})
 let tabUnderLeft = ref(6)
 let tabData = ref(['Normal Students', 'Rescheduled Students', 'Trial Students', 'Absent Students'])
@@ -179,10 +180,36 @@ let absData = ref([])
 let students_num = ref(0)
 
 onMounted(() => {
-  thingId.value = route.query.id.trim()
+  loadLessonPage()
+})
+
+watch(
+  () => route.query,
+  () => {
+    loadLessonPage()
+  }
+)
+
+const loadLessonPage = () => {
+  if (route.name !== 'lesson') {
+    return
+  }
+
+  thingId.value = String(route.query.id || '').trim()
+  lessonId.value = String(route.query.lessonId || '').trim()
+
+  if (!thingId.value) {
+    return
+  }
+
+  norData.value = []
+  reData.value = []
+  tryData.value = []
+  absData.value = []
+  students_num.value = 0
   getThingDetail()
   getStuDetail()
-})
+}
 
 
 
@@ -209,7 +236,13 @@ const getThingDetail = () => {
 
 // 学生信息
 const getStuDetail = () => {
-  detailStuApi({ id: thingId.value }).then(res => {
+  const params = lessonId.value ? { id: thingId.value, lesson_id: lessonId.value } : { id: thingId.value }
+
+  detailStuApi(params).then(res => {
+    if (res.code !== 0 || !res.data) {
+      message.error(res.msg || 'Failed to get student details')
+      return
+    }
     norData.value = res.data.students
     reData.value = res.data.reschedule_students
     tryData.value = res.data.try_students

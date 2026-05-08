@@ -135,7 +135,7 @@ const childData = reactive({
 })  
 
 const time_period = reactive({
-  time:[]
+  time: undefined
 })
 
 
@@ -203,6 +203,7 @@ let userId = userStore.user_id
 
 const dayOfWeekMap = {
   "Sun": 0,
+  "Mon": 1,
   "Tue": 2,
   "Wed": 3,
   "Thu": 4,
@@ -218,7 +219,7 @@ const calculateAmount = () => {
       if (time_period.time === item.id) {
         pageData.expect_time = item.expect_time
         pageData.return_time = item.return_time
-        termPrice = item.price
+        termPrice = item.price ? Number(item.price) : undefined
       }
     }
   )
@@ -247,7 +248,24 @@ const calculateAmount = () => {
       pageData.amount = pageData.price * weekDays;
     } 
     else { //按学期计
-      pageData.amount = termPrice
+      const endDate = new Date(pageData.return_time);
+      const targetDay = dayOfWeekMap[pageData.day]
+      let weekDays = 0;
+
+      if (targetDay === undefined) {
+        pageData.num = 0
+        pageData.amount = 0
+        return
+      }
+
+      for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+        if (date.getDay() === targetDay) {
+          weekDays++;
+        }
+      }
+
+      pageData.num = weekDays
+      pageData.amount = termPrice !== undefined ? termPrice : Number(pageData.price) * weekDays
     }
    
   }
@@ -297,18 +315,35 @@ const handleJiesuan = () => {
       return
     }
 
+    if (!time_period.time) {
+      message.warn('Please select a term')
+      return
+    }
+
+    if (!pageData.child) {
+      message.warn('Please select a child')
+      return
+    }
+
+    calculateAmount()
+
+    if (!pageData.num || !pageData.amount) {
+      message.warn('Unable to calculate this order. Please check the term dates and class day.')
+      return
+    }
+
     if (pageData.expect_time) {
       formData.append('expect_time', pageData.expect_time); 
     }
     if (pageData.return_time) {
       formData.append('return_time', pageData.return_time); 
     }
-    formData.append('term', time_period.time)
-    formData.append('child', pageData.child)
+    formData.append('term', String(time_period.time))
+    formData.append('child', String(pageData.child))
     formData.append('user', userId)
     formData.append('thing', pageData.id ? String(pageData.id) : '') 
     formData.append('count', '1') 
-    formData.append('num', pageData.num)
+    formData.append('num', String(pageData.num))
     formData.append('amount', String(pageData.amount)) 
     if (pageData.remark) {
       formData.append('remark', pageData.remark)
@@ -316,11 +351,11 @@ const handleJiesuan = () => {
 
 
     createApi(formData).then(res => {
-      if (true) {
+      if (res.code === 0) {
           message.success('Please pay for the order')
           router.push({'name': 'pay', query: {'amount': pageData.amount}})
       } else {
-          const errorMsg = res.data && res.data.msg ? res.data.msg : 'Failed';
+          const errorMsg = res.msg || 'Failed';
           console.error(errorMsg);
           message.error(errorMsg)
       }

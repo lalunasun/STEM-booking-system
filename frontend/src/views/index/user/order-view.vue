@@ -8,9 +8,11 @@
       </a-tab-pane>
       <a-tab-pane key="3" tab="Paid">
       </a-tab-pane>
-      <a-tab-pane key="4" tab="Canceled">
+      <a-tab-pane key="4" tab="Scheduled">
       </a-tab-pane>
-      <a-tab-pane key="5" tab="Done">
+      <a-tab-pane key="5" tab="Canceled">
+      </a-tab-pane>
+      <a-tab-pane key="6" tab="Done">
       </a-tab-pane>
     </a-tabs>
     <a-spin :spinning="loading" style="min-height: 200px;">
@@ -35,7 +37,7 @@
               
 
               <span class="text">Order Status</span>
-              <span class="state">{{ (item.status === 8 || item.status ===6)? 'Done' : item.status === 1 ? 'Pending payment' : item.status === 2 ? 'Paid' : 'Canceled' }}</span>
+              <span class="state">{{ getOrderStatusLabel(item.status) }}</span>
             </div>
           </div>
           <div class="content flex-view">
@@ -114,12 +116,34 @@ const onTabChange = (key) => {
     orderStatus.value = '2'
   }
   if (key === '4') {
-    orderStatus.value = '7'
+    orderStatus.value = '6'
   }
   if (key === '5') {
+    orderStatus.value = '7'
+  }
+  if (key === '6') {
     orderStatus.value = '8'
   }
   getOrderList()
+}
+
+const getOrderStatusLabel = (status) => {
+  if (status === 1) {
+    return 'Pending payment'
+  }
+  if (status === 2) {
+    return 'Paid'
+  }
+  if (status === 6) {
+    return 'Scheduled'
+  }
+  if (status === 7) {
+    return 'Canceled'
+  }
+  if (status === 8) {
+    return 'Done'
+  }
+  return 'Unknown'
 }
 const getOrderList = () => {
   loading.value = true
