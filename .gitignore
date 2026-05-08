@@ -16,7 +16,6 @@ logs/
 node_modules/
 .npm-cache/
 dist/
-build/
 
 # Environment
 .env

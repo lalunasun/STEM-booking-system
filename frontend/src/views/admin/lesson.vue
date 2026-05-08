@@ -13,7 +13,7 @@
               <div class="thing-info-box">
                 <div class="thing-state">
                   <span class="state hidden-sm">Class Status</span>
-                  <span v-if="detailData.status == 0">Avaliable</span>
+                  <span v-if="detailData.status == 0">Available</span>
                   <span v-else="detailData.status == 1" style="color: rebeccapurple;" >FULL</span>
                 </div>
                 <h1 class="thing-name">{{ detailData.title }}</h1>
@@ -167,7 +167,7 @@ const userStore = useUserStore();
 let thingId = ref('')
 let detailData = ref({})
 let tabUnderLeft = ref(6)
-let tabData = ref(['Normal Stu', 'Reschedudle Stu', 'Trial Stu', 'Absent Stu'])
+let tabData = ref(['Normal Students', 'Rescheduled Students', 'Trial Students', 'Absent Students'])
 let selectTabIndex = ref(0)
 
 const o_data = ref([])
@@ -538,26 +538,21 @@ const getStuDetail = () => {
 
   .tab {
     margin-right: 20px;
+    padding-bottom: 10px;
+    display: inline-block;
     cursor: pointer;
     color: #5f77a6;
     font-size: 16px;
-    cursor: pointer;
   }
 
   .tab-select {
     color: #152844;
     font-weight: 600;
+    border-bottom: 4px solid #4684e2;
   }
 
   .tab-underline {
-    position: absolute;
-    bottom: 0;
-    left: 84px;
-    width: 16px;
-    height: 4px;
-    background: #4684e2;
-    -webkit-transition: left .3s;
-    transition: left .3s;
+    display: none;
   }
 }
 

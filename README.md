@@ -34,6 +34,32 @@ npm run dev
 
 Frontend app: `http://127.0.0.1:8080`
 
+## Set Up on Another Computer
+
+```powershell
+git clone https://github.com/lalunasun/csaa-booking-system.git
+cd csaa-booking-system
+```
+
+Then start the backend:
+
+```powershell
+cd backend
+python -m pip install -r requirements-local.txt
+python manage.py migrate
+python manage.py runserver 127.0.0.1:8000
+```
+
+Open a second terminal and start the frontend:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+If you want to keep the same local test data on another computer, copy `backend/db.sqlite3` manually from this computer because it is ignored by Git.
+
 ### Local Admin Login
 
 ```text
