@@ -14,3 +14,4 @@ from CSAA.views.admin.errorLog import *
 from CSAA.views.admin.ad import *
 from CSAA.views.admin.notice import *
 from CSAA.views.admin.lesson import *
+from CSAA.views.admin.student import *

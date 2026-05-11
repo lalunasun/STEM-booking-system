@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="260" viewBox="0 0 360 260">
+  <rect width="360" height="260" rx="22" fill="#fff7ed"/>
+  <rect x="28" y="28" width="304" height="204" rx="18" fill="#fdba74"/>
+  <rect x="106" y="84" width="148" height="82" rx="18" fill="#f97316"/>
+  <circle cx="150" cy="122" r="10" fill="#ffffff"/>
+  <circle cx="210" cy="122" r="10" fill="#ffffff"/>
+  <path d="M154 146 Q180 158 206 146" stroke="#ffffff" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <text x="180" y="222" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#c2410c">Scratch</text>
+</svg>

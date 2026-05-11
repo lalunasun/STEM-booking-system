@@ -7,6 +7,20 @@ from CSAA.models import Term
 from CSAA.serializers import TermSerializer
 
 
+def normalize_term_dates(data):
+    normalized = data.copy()
+    expect_time = normalized.get('expect_time')
+    return_time = normalized.get('return_time')
+
+    if expect_time and 'T' not in expect_time:
+        normalized['expect_time'] = expect_time + 'T00:00:00'
+
+    if return_time and 'T' not in return_time:
+        normalized['return_time'] = return_time + 'T23:59:59'
+
+    return normalized
+
+
 # term列表
 @api_view(['GET'])
 def list_api(request):
@@ -24,11 +38,7 @@ def create(request):
     terms = Term.objects.filter(title=request.data['title'])
     if len(terms) > 0:
         return APIResponse(code=1, msg='该名称已存在')
-    data = request.data.copy()
-    expect_time = data.get('expect_time')  # 开课时间
-    return_time = data.get('return_time')  # 结课时间
-    data['expect_time'] = expect_time + 'T00:00:00'  # 设置开课时间
-    data['return_time'] = return_time + 'T23:59:59' # 设置结课时间
+    data = normalize_term_dates(request.data)
     serializer = TermSerializer(data=data)
     print(serializer)
     if serializer.is_valid():
@@ -50,7 +60,13 @@ def update(request):
     except Term.DoesNotExist:
         return APIResponse(code=1, msg='term不存在')
 
-    serializer = TermSerializer(terms, data=request.data)
+    data = normalize_term_dates(request.data)
+
+    duplicate_terms = Term.objects.filter(title=data.get('title')).exclude(pk=terms.pk)
+    if data.get('title') and len(duplicate_terms) > 0:
+        return APIResponse(code=1, msg='该名称已存在')
+
+    serializer = TermSerializer(terms, data=data)
     if serializer.is_valid():
         serializer.save()
         return APIResponse(code=0, msg='更新成功', data=serializer.data)

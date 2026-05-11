@@ -14,12 +14,32 @@ class ThingSerializer(serializers.ModelSerializer):
     classification_title = serializers.ReadOnlyField(source='classification.title')
     time_title = serializers.ReadOnlyField(source='time.time')
     room_name = serializers.ReadOnlyField(source='tag.title')
+    room_capacity = serializers.ReadOnlyField(source='tag.seat')
+    enrolled_count = serializers.SerializerMethodField()
+    display_status = serializers.SerializerMethodField()
 
     class Meta:
         # 序列化的模型
         model = Thing
         # 序列化所有的字段
         fields = '__all__'
+
+    def get_enrolled_count(self, obj):
+        return Order.objects.filter(
+            thing=obj,
+            child__isnull=False,
+            status__in=[2, 6],
+        ).count()
+
+    def get_display_status(self, obj):
+        capacity = obj.tag.seat if obj.tag else None
+        if capacity is not None and self.get_enrolled_count(obj) >= int(capacity):
+            return 'Full'
+
+        if str(obj.status) == '1':
+            return 'Unavailable'
+
+        return 'Available'
 
 
 # 课程详情序列化
@@ -263,6 +283,44 @@ class ChildSerializer(serializers.ModelSerializer):
                 'term_name': order.term.title if hasattr(order.term, 'title') else None,
             }
         return None
+
+
+class AdminStudentSerializer(serializers.ModelSerializer):
+    parent_username = serializers.ReadOnlyField(source='parent.username')
+    parent_name = serializers.SerializerMethodField()
+    phone = serializers.ReadOnlyField(source='parent.mobile')
+    active_classes = serializers.SerializerMethodField()
+    active_terms = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Child
+        fields = '__all__'
+
+    def get_parent_name(self, obj):
+        if not obj.parent:
+            return None
+
+        return obj.parent.nickname or obj.parent.username
+
+    def _active_orders(self, obj):
+        return Order.objects.filter(
+            child=obj,
+            status__in=[2, 6],
+        ).select_related('thing', 'term')
+
+    def get_active_classes(self, obj):
+        classes = []
+        for order in self._active_orders(obj):
+            if order.thing and order.thing.title not in classes:
+                classes.append(order.thing.title)
+        return classes
+
+    def get_active_terms(self, obj):
+        terms = []
+        for order in self._active_orders(obj):
+            if order.term and order.term.title not in terms:
+                terms.append(order.term.title)
+        return terms
 
 
 class LessonDetailSerializer(serializers.ModelSerializer):

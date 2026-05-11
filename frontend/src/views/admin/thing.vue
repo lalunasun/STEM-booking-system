@@ -211,9 +211,9 @@ const columns = reactive([
   },
   {
     title: 'Status',
-    dataIndex: 'status',
+    dataIndex: 'display_status',
     key: 'status',
-    customRender: ({ text, record, index, column }) => text === '0' ? 'Available' : 'Unavailable'
+    customRender: ({ text }) => text || 'Available',
   },
   {
     title: 'Operation',

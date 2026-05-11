@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="260" viewBox="0 0 360 260">
+  <rect width="360" height="260" rx="22" fill="#fefce8"/>
+  <rect x="28" y="28" width="304" height="204" rx="18" fill="#fde68a"/>
+  <circle cx="180" cy="112" r="48" fill="#facc15"/>
+  <circle cx="164" cy="102" r="7" fill="#422006"/>
+  <circle cx="196" cy="102" r="7" fill="#422006"/>
+  <path d="M158 128 Q180 146 202 128" stroke="#422006" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <text x="180" y="222" text-anchor="middle" font-family="Arial, sans-serif" font-size="26" font-weight="700" fill="#a16207">Scratch JR</text>
+</svg>

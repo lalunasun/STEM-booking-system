@@ -141,6 +141,7 @@ const constantRouterMap = [
       { path: 'thing', name: 'thing', component: () => import('/@/views/admin/thing.vue') },
 
       { path: 'user', name: 'user', component: () => import('/@/views/admin/user.vue') },
+      { path: 'student', name: 'student', component: () => import('/@/views/admin/student.vue') },
       { path: 'classification', name: 'classification', component: () => import('/@/views/admin/classification.vue') },
       { path: 'tag', name: 'tag', component: () => import('/@/views/admin/tag.vue') },
 

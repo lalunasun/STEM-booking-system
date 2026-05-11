@@ -66,6 +66,10 @@ urlpatterns = [
     path('admin/user/delete', views.admin.user.delete),  # 删除用户
     path('admin/user/info', views.admin.user.info),  # 用户信息
     path('admin/adminLogin', views.admin.user.admin_login),  # 管理员登录
+    path('admin/student/list', views.admin.student.list_api),  # 学生列表
+    path('admin/student/create', views.admin.student.create),  # 创建学生
+    path('admin/student/update', views.admin.student.update),  # 修改学生
+    path('admin/student/delete', views.admin.student.delete),  # 删除学生
 
     # ----------------------------前台用户api-------------------------------------------
     path('index/classification/list', views.index.classification.list_api),  # 分类列表

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="260" viewBox="0 0 360 260">
+  <rect width="360" height="260" rx="22" fill="#ecfeff"/>
+  <rect x="28" y="28" width="304" height="204" rx="18" fill="#a5f3fc"/>
+  <rect x="105" y="76" width="150" height="54" rx="18" fill="#2563eb"/>
+  <rect x="105" y="130" width="150" height="54" rx="18" fill="#facc15"/>
+  <circle cx="148" cy="102" r="7" fill="#ffffff"/>
+  <circle cx="212" cy="158" r="7" fill="#ffffff"/>
+  <text x="180" y="222" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#155e75">Python</text>
+</svg>

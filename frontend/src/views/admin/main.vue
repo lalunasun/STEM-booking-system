@@ -49,6 +49,10 @@
             <user-outlined/>
             <span>User</span>
           </a-menu-item>
+          <a-menu-item key="student">
+            <team-outlined/>
+            <span>Student</span>
+          </a-menu-item>
           <a-sub-menu>
             <template #icon>
               <folder-outlined/>
@@ -95,6 +99,7 @@ import {
   AppstoreOutlined,
   FolderOutlined,
   UserOutlined,
+  TeamOutlined,
   CommentOutlined,
   InfoCircleOutlined,
   TagOutlined,

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="260" viewBox="0 0 360 260">
+  <rect width="360" height="260" rx="22" fill="#f8fafc"/>
+  <rect x="28" y="28" width="304" height="204" rx="18" fill="#cbd5e1"/>
+  <rect x="122" y="70" width="116" height="116" rx="18" fill="#475569" transform="rotate(12 180 128)"/>
+  <rect x="162" y="110" width="36" height="36" rx="6" fill="#f8fafc" transform="rotate(12 180 128)"/>
+  <text x="180" y="222" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#334155">Roblox</text>
+</svg>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="260" viewBox="0 0 360 260">
+  <rect width="360" height="260" rx="22" fill="#f0fdf4"/>
+  <rect x="28" y="28" width="304" height="204" rx="18" fill="#bbf7d0"/>
+  <path d="M180 62 L245 162 H115 Z" fill="#22c55e"/>
+  <circle cx="180" cy="122" r="24" fill="#ffffff"/>
+  <rect x="124" y="176" width="112" height="16" rx="8" fill="#ffffff"/>
+  <text x="180" y="222" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#15803d">Spike</text>
+</svg>
