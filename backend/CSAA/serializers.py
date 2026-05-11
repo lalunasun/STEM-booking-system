@@ -70,11 +70,51 @@ class ListThingSerializer(serializers.ModelSerializer):
     classification_title = serializers.ReadOnlyField(source='classification.title')
     time_title = serializers.ReadOnlyField(source='time.time')
     room_name = serializers.ReadOnlyField(source='tag.title')
+    room_capacity = serializers.ReadOnlyField(source='tag.seat')
+    enrolled_count = serializers.SerializerMethodField()
+    available_seats = serializers.SerializerMethodField()
+    display_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Thing
         # 排除字段
         exclude = ('wish', 'collect', 'description',)
+
+    def _room_time_enrolled_count(self, obj):
+        if not obj.tag or not obj.time or not obj.day:
+            return Order.objects.filter(
+                thing=obj,
+                child__isnull=False,
+                status__in=[2, 6],
+            ).count()
+
+        same_room_things = Thing.objects.filter(tag=obj.tag, day=obj.day, time=obj.time)
+        return Order.objects.filter(
+            thing__in=same_room_things,
+            child__isnull=False,
+            status__in=[2, 6],
+        ).count()
+
+    def get_enrolled_count(self, obj):
+        return self._room_time_enrolled_count(obj)
+
+    def get_available_seats(self, obj):
+        capacity = obj.tag.seat if obj.tag else None
+        if capacity is None:
+            return None
+
+        seats = int(capacity) - self._room_time_enrolled_count(obj)
+        return max(seats, 0)
+
+    def get_display_status(self, obj):
+        if str(obj.status) == '1':
+            return 'Closed'
+
+        available_seats = self.get_available_seats(obj)
+        if available_seats is not None and available_seats <= 0:
+            return 'Full'
+
+        return 'Open'
 
 
 # 课程分类序列化

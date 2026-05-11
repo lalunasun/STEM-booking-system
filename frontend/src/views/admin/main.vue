@@ -5,7 +5,7 @@
         <img class="header-logo" :src="logo">
         <span class="header-title">CSAA Manage System</span>
         <div class="empty"></div>
-        <a-button style="margin-right: 24px;" @click="handlePreview">Link</a-button>
+        <a class="preview-link" href="/index/portal" target="_blank" rel="noopener noreferrer">Link</a>
         <span>Administrator[{{ userStore.admin_user_name }}]</span>
         <a class="header-quit" @click="handleLogout">Log out</a>
       </div>
@@ -41,7 +41,7 @@
             <dollar-outlined/>
             <span>Order</span>
           </a-menu-item>
-          <a-menu-item key="comment">
+          <a-menu-item v-if="false" key="comment">
             <comment-outlined/>
             <span>Comment(St2)</span>
           </a-menu-item>
@@ -53,7 +53,7 @@
             <team-outlined/>
             <span>Student</span>
           </a-menu-item>
-          <a-sub-menu>
+          <a-sub-menu v-if="false">
             <template #icon>
               <folder-outlined/>
             </template>
@@ -72,7 +72,7 @@
               <span>错误日志</span>
             </a-menu-item>
           </a-sub-menu>
-          <a-menu-item key="overview">
+          <a-menu-item v-if="false" key="overview">
             <home-outlined/>
             <span>Analysis(St2/3)</span>
           </a-menu-item>
@@ -127,11 +127,6 @@ const handleClick = ({item, key, keyPath}) => {
   })
 }
 
-const handlePreview = ()=>{
-  let text = router.resolve({name: 'index'})
-  window.open(text.href, '_blank')
-}
-
 onMounted(() => {
   console.log('当前路由===>', route.name)
   selectedKeys.value = [route.name]
@@ -170,6 +165,23 @@ const handleLogout = () => {
 
   .empty {
     flex: 1;
+  }
+
+  .preview-link {
+    display: inline-flex;
+    align-items: center;
+    height: 32px;
+    padding: 0 16px;
+    margin-right: 24px;
+    color: #111827;
+    border: 1px solid #d9d9d9;
+    background: #fff;
+    line-height: 30px;
+  }
+
+  .preview-link:hover {
+    color: #1890ff;
+    border-color: #1890ff;
   }
 
   .header-quit {
