@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-05-12
+
+- Changed local startup to a single `8000` workflow:
+  - Django now serves the built Vue frontend and API together.
+  - Local app entry is `http://127.0.0.1:8000/admin/schedule`.
+  - `8080` is no longer the default local workflow.
+- Improved parent and admin order/class logic:
+  - Parent order cards now show class day, time, and room.
+  - Paid orders reserve capacity.
+  - Only scheduled orders appear on the admin schedule and admin lesson student list.
+  - Admin lesson detail no longer shows the parent-side `Order Now` button.
+- Improved admin student list:
+  - Main table focuses on student name, age, and active class schedule.
+  - Detailed parent/phone/term information is available from `View Detail`.
+- Documented the parent booking flow:
+  - browse course
+  - choose child
+  - create pending order
+  - mark paid
+  - schedule student
+  - reflect capacity/full status
+
 ## 2026-05-08
 
 - Refined the admin Schedule grid.

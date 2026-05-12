@@ -15,7 +15,7 @@
         :loading="data.loading"
         :columns="columns"
         :data-source="data.studentList"
-        :scroll="{ x: 'max-content' }"
+        :scroll="{ x: 1200 }"
         :row-selection="rowSelection"
         :pagination="{
           size: 'default',
@@ -31,13 +31,18 @@
             <span>{{ record.parent_name || record.parent_username || '-' }}</span>
           </template>
           <template v-if="column.key === 'active_classes'">
-            <span>{{ formatList(record.active_classes) }}</span>
+            <div class="class-list">
+              <div v-for="item in record.active_classes" :key="item">{{ item }}</div>
+              <span v-if="!record.active_classes || record.active_classes.length === 0">-</span>
+            </div>
           </template>
           <template v-if="column.key === 'active_terms'">
             <span>{{ formatList(record.active_terms) }}</span>
           </template>
           <template v-if="column.key === 'operation'">
             <span>
+              <a @click="handleView(record)">View Detail</a>
+              <a-divider type="vertical" />
               <a @click="handleEdit(record)">Edit</a>
               <a-divider type="vertical" />
               <a-popconfirm title="Sure to delete?" ok-text="Yes" cancel-text="No" @confirm="confirmDelete(record)">
@@ -85,6 +90,43 @@
         </a-row>
       </a-form>
     </a-modal>
+
+    <a-modal
+      :visible="detail.visible"
+      title="Student Detail"
+      :footer="null"
+      @cancel="detail.visible = false"
+    >
+      <div class="detail-view">
+        <div class="detail-row">
+          <span class="detail-label">Student name</span>
+          <span>{{ detail.record.name || '-' }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Age</span>
+          <span>{{ detail.record.age || '-' }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Parent</span>
+          <span>{{ detail.record.parent_name || detail.record.parent_username || '-' }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Phone</span>
+          <span>{{ detail.record.phone || '-' }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Active terms</span>
+          <span>{{ formatList(detail.record.active_terms) }}</span>
+        </div>
+        <div class="detail-row detail-row-block">
+          <span class="detail-label">Courses</span>
+          <div class="class-list">
+            <div v-for="item in detail.record.active_classes" :key="item">{{ item }}</div>
+            <span v-if="!detail.record.active_classes || detail.record.active_classes.length === 0">-</span>
+          </div>
+        </div>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -106,6 +148,7 @@ const columns = reactive([
     dataIndex: 'name',
     key: 'name',
     align: 'center',
+    width: 260,
   },
   {
     title: 'Age',
@@ -115,28 +158,11 @@ const columns = reactive([
     width: 90,
   },
   {
-    title: 'Parent',
-    dataIndex: 'parent_name',
-    key: 'parent',
-    align: 'center',
-  },
-  {
-    title: 'Phone Number',
-    dataIndex: 'phone',
-    key: 'phone',
-    align: 'center',
-  },
-  {
     title: 'Active Classes',
     dataIndex: 'active_classes',
     key: 'active_classes',
     align: 'center',
-  },
-  {
-    title: 'Active Terms',
-    dataIndex: 'active_terms',
-    key: 'active_terms',
-    align: 'center',
+    width: 520,
   },
   {
     title: 'Operation',
@@ -144,7 +170,7 @@ const columns = reactive([
     key: 'operation',
     align: 'center',
     fixed: 'right',
-    width: 140,
+    width: 190,
   },
 ]);
 
@@ -172,6 +198,11 @@ const modal = reactive({
     name: [{ required: true, message: 'Please enter student name', trigger: 'change' }],
     parent: [{ required: true, message: 'Please select parent', trigger: 'change' }],
   },
+});
+
+const detail = reactive({
+  visible: false,
+  record: {} as any,
 });
 
 const myform = ref<FormInstance>();
@@ -259,6 +290,11 @@ const handleEdit = (record: any) => {
   }
 };
 
+const handleView = (record: any) => {
+  detail.record = record;
+  detail.visible = true;
+};
+
 const confirmDelete = (record: any) => {
   deleteApi({ ids: record.id })
     .then(() => {
@@ -331,5 +367,36 @@ const hideModal = () => {
 .table-operations {
   margin-bottom: 16px;
   text-align: right;
+}
+
+.class-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  line-height: 20px;
+  min-width: 360px;
+}
+
+.detail-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.detail-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px;
+  line-height: 22px;
+}
+
+.detail-row-block {
+  align-items: start;
+}
+
+.detail-label {
+  color: #64748b;
+  font-weight: 600;
 }
 </style>

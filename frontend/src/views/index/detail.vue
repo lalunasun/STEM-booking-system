@@ -13,8 +13,10 @@
               <div class="thing-info-box">
                 <div class="thing-state">
                   <span class="state hidden-sm">Class Status</span>
-                  <span v-if="detailData.status == 0">Avaliable</span>
-                  <span v-else="detailData.status == 1" style="color: rebeccapurple;" >Unavailable</span>
+                  <span :class="{
+                    'status-full': detailData.display_status === 'Full',
+                    'status-closed': detailData.display_status === 'Closed',
+                  }">{{ detailData.display_status || 'Open' }}</span>
                   &nbsp;&nbsp;&nbsp;&nbsp;<span style="color: red;" v-if="is_commmend==true" class="state hidden-sm">Already Participated</span>
                 </div>
                 <h1 class="thing-name">{{ detailData.title }}</h1>
@@ -30,14 +32,18 @@
                   <span>Time：</span>
                   <span class="name">{{ detailData.time_title }}, {{ detailData.day }}</span>
                 </div>
+                <div class="translators flex-view" style="">
+                  <span>Seats：</span>
+                  <span class="name">{{ detailData.available_seats ?? '-' }} left / {{ detailData.room_capacity ?? '-' }} total</span>
+                </div>
                 
-                <button v-if="detailData.status ==0 " class="buy-btn" @click="handleOrder(detailData)">
+                <button v-if="detailData.display_status === 'Open'" class="buy-btn" @click="handleOrder(detailData)">
                   <img :src="AddIcon" />
                   <span>Order Now</span>
                 </button>
-                <!--<button v-else class="no-buy-btn" disabled>
-                  <span>该房间已被预订</span>
-                </button>  -->
+                <button v-else class="no-buy-btn" disabled>
+                  <span>{{ detailData.display_status === 'Full' ? 'Full' : 'Unavailable' }}</span>
+                </button>
               </div>
             </div>
             <div class="thing-counts hidden-sm">
@@ -455,6 +461,16 @@ const sortCommentList = (sortType) => {
     span {
       font-size: 14px;
       color: #152844;
+    }
+
+    .status-full {
+      color: #c2410c;
+      font-weight: 700;
+    }
+
+    .status-closed {
+      color: rebeccapurple;
+      font-weight: 700;
     }
   }
 

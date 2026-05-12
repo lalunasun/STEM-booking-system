@@ -293,6 +293,39 @@ Rules:
 
 Order should keep historical purchase records for parents and students.
 
+### 10.1 Booking, Payment, and Scheduling Flow
+
+The parent-facing booking flow should be:
+
+1. Guest or parent browses available courses.
+2. Parent selects a course type.
+3. Parent selects a specific day/time slot.
+4. Parent logs in or registers if needed.
+5. Parent selects the child who will take the class.
+6. Parent selects/confirm the term.
+7. System creates an order with status `Pending payment`.
+8. Parent completes payment, or admin manually marks payment complete during local testing.
+9. Order status changes to `Paid`.
+10. Admin reviews the paid order and confirms the student on the schedule.
+11. Order status changes to `Scheduled`.
+12. The class appears on the admin weekly schedule with the student name.
+
+Capacity behavior:
+
+- `Paid` and `Scheduled` orders count toward active occupancy.
+- `Pending payment` does not count toward capacity for now unless the business later decides to temporarily hold seats.
+- `Canceled` and `Done` do not count toward current capacity.
+- A class should display `Full` when active occupancy reaches the room capacity for the same `Room + Day + Time`.
+
+Admin test workflow:
+
+1. Create or pick a parent.
+2. Create or pick a child under that parent.
+3. Create an order for the selected class/term/child.
+4. Mark the order as `Paid`.
+5. Mark the order as `Scheduled`.
+6. Verify the schedule and parent order history.
+
 ## 11. Schedule Module
 
 Admin schedule is the main operational view.

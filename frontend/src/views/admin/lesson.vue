@@ -13,8 +13,10 @@
               <div class="thing-info-box">
                 <div class="thing-state">
                   <span class="state hidden-sm">Class Status</span>
-                  <span v-if="detailData.status == 0">Available</span>
-                  <span v-else="detailData.status == 1" style="color: rebeccapurple;" >FULL</span>
+                  <span :class="{
+                    'status-full': detailData.display_status === 'Full',
+                    'status-closed': detailData.display_status === 'Closed',
+                  }">{{ detailData.display_status || 'Open' }}</span>
                 </div>
                 <h1 class="thing-name">{{ detailData.title }}</h1>
 
@@ -30,12 +32,6 @@
                   <span>Number of students：</span>
                   <span class="name">{{ students_num }}</span>
                 </div>
-                
-                <button v-if="detailData.status ==0 " class="buy-btn" @click="handleOrder(detailData)">
-                  <img :src="AddIcon" />
-                  <span>Order Now</span>
-                </button>
-
               </div>
             </div>
 
@@ -143,11 +139,6 @@
 <script setup>
 import { message } from "ant-design-vue";
 
-import AddIcon from '/@/assets/images/add.svg';
-import WantIcon from '/@/assets/images/want-read-hover.svg';
-import RecommendIcon from '/@/assets/images/recommend-hover.svg';
-import ShareIcon from '/@/assets/images/share-icon.svg';
-
 import {
   detailApi,
 } from '/@/api/index/thing'
@@ -156,13 +147,9 @@ import {
 } from '/@/api/admin/lesson'
 
 import { BASE_URL } from "/@/store/constants";
-import { useRoute, useRouter } from "vue-router/dist/vue-router";
-import { useUserStore } from "/@/store";
-import { getFormatTime } from "/@/utils";
+import { useRoute } from "vue-router/dist/vue-router";
 
-const router = useRouter()
 const route = useRoute()
-const userStore = useUserStore();
 
 let thingId = ref('')
 let lessonId = ref('')
@@ -171,8 +158,6 @@ let tabUnderLeft = ref(6)
 let tabData = ref(['Normal Students', 'Rescheduled Students', 'Trial Students', 'Absent Students'])
 let selectTabIndex = ref(0)
 
-const o_data = ref([])
-let stuData = ref({})
 let norData = ref([])
 let reData = ref([])
 let tryData = ref([])
@@ -366,6 +351,16 @@ const getStuDetail = () => {
     span {
       font-size: 14px;
       color: #152844;
+    }
+
+    .status-full {
+      color: #d9363e;
+      font-weight: 600;
+    }
+
+    .status-closed {
+      color: rebeccapurple;
+      font-weight: 600;
     }
   }
 

@@ -12,9 +12,19 @@ csaa-course-system/
 
 ## Local Development
 
-Open two terminals.
+Current local workflow uses one public browser entrypoint: Django serves the built frontend and the API on `http://127.0.0.1:8000`.
 
-### 1. Start Backend
+### 1. Build Frontend
+
+Run this after frontend code changes, or after cloning the project on a new computer.
+
+```powershell
+cd frontend
+npm install
+npm run build
+```
+
+### 2. Start Backend and Frontend Together
 
 ```powershell
 cd backend
@@ -22,17 +32,13 @@ python -m pip install -r requirements-local.txt
 python manage.py runserver 127.0.0.1:8000
 ```
 
-Backend API: `http://127.0.0.1:8000`
+Open the app at:
 
-### 2. Start Frontend
-
-```powershell
-cd frontend
-npm install
-npm run dev
+```text
+http://127.0.0.1:8000/admin/schedule
 ```
 
-Frontend app: `http://127.0.0.1:8080`
+The old `http://127.0.0.1:8080` frontend dev server is not the default local workflow anymore.
 
 ## Set Up on Another Computer
 
@@ -41,7 +47,15 @@ git clone https://github.com/lalunasun/csaa-booking-system.git
 cd csaa-booking-system
 ```
 
-Then start the backend:
+Then build the frontend:
+
+```powershell
+cd frontend
+npm install
+npm run build
+```
+
+Then start the backend from a second terminal:
 
 ```powershell
 cd backend
@@ -50,13 +64,7 @@ python manage.py migrate
 python manage.py runserver 127.0.0.1:8000
 ```
 
-Open a second terminal and start the frontend:
-
-```powershell
-cd frontend
-npm install
-npm run dev
-```
+Open `http://127.0.0.1:8000/admin/schedule`.
 
 If you want to keep the same local test data on another computer, copy `backend/db.sqlite3` manually from this computer because it is ignored by Git.
 
@@ -66,6 +74,34 @@ If you want to keep the same local test data on another computer, copy `backend/
 Username: test
 Password: test
 ```
+
+## Core Booking Flow
+
+Parent-side course purchase follows this flow:
+
+1. Browse classes from the parent link page.
+2. Select a course type first.
+3. Select a specific day/time slot.
+4. Choose the child who will take the class.
+5. Confirm the term, class count, and total amount.
+6. Submit the order as `Pending payment`.
+7. After payment is confirmed, the order becomes `Paid`.
+8. Admin confirms the student on the class schedule, then the order becomes `Scheduled`.
+9. `Paid` and `Scheduled` orders count toward class capacity.
+10. When capacity reaches the room limit, the class/time slot displays `Full`.
+
+Current test/admin behavior:
+
+- Payment is simulated by admin status changes.
+- Scheduling is simulated by marking the order as scheduled/checked in.
+- `Canceled` and `Done` orders should remain as history but should not count toward current capacity.
+
+## Project Documents
+
+- Requirements: `docs/REQUIREMENTS.md`
+- Requirements Chinese: `docs/REQUIREMENTS.zh-CN.md`
+- Test cases: `docs/TEST_CASES.md`
+- Test cases Chinese: `docs/TEST_CASES.zh-CN.md`
 
 ## Notes
 

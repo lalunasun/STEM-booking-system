@@ -10,26 +10,6 @@ from CSAA.serializers import ThingSerializer, ListThingSerializer, DetailThingSe
 @api_view(['GET'])
 def list_api(request):
     if request.method == 'GET':
-        # print("首页获取数据")
-        all_thing = Thing.objects.all()
-        for thing in all_thing:
-            same_room_thing = Thing.objects.filter(tag=thing.tag, day=thing.day, time=thing.time)
-            counts = 0
-            for item in same_room_thing:
-                order = Order.objects.filter(thing=item,
-                                                   status__in=['1', '2', '6', '8'])
-                counts = counts + order.count()
-            room_count = thing.tag.seat
-            room_count = int(room_count)
-            total_room_count = room_count - counts
-            if thing.status == '1' and total_room_count > 0:
-                thing.status = '0'
-                thing.save()
-            elif thing.status == '0' and total_room_count == 0:
-                thing.status = '1'
-                thing.save()
-
-
         keyword = request.GET.get("keyword", None)  # 关键词
         c = request.GET.get("c", None)  # 分类
         tag = request.GET.get("tag", None)  # 标签

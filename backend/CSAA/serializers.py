@@ -16,6 +16,7 @@ class ThingSerializer(serializers.ModelSerializer):
     room_name = serializers.ReadOnlyField(source='tag.title')
     room_capacity = serializers.ReadOnlyField(source='tag.seat')
     enrolled_count = serializers.SerializerMethodField()
+    available_seats = serializers.SerializerMethodField()
     display_status = serializers.SerializerMethodField()
 
     class Meta:
@@ -25,21 +26,40 @@ class ThingSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_enrolled_count(self, obj):
+        return self._room_time_enrolled_count(obj)
+
+    def _room_time_enrolled_count(self, obj):
+        if not obj.tag or not obj.time or not obj.day:
+            return Order.objects.filter(
+                thing=obj,
+                child__isnull=False,
+                status__in=[2, 6],
+            ).count()
+
+        same_room_things = Thing.objects.filter(tag=obj.tag, day=obj.day, time=obj.time)
         return Order.objects.filter(
-            thing=obj,
+            thing__in=same_room_things,
             child__isnull=False,
             status__in=[2, 6],
         ).count()
 
-    def get_display_status(self, obj):
+    def get_available_seats(self, obj):
         capacity = obj.tag.seat if obj.tag else None
-        if capacity is not None and self.get_enrolled_count(obj) >= int(capacity):
+        if capacity is None:
+            return None
+
+        seats = int(capacity) - self._room_time_enrolled_count(obj)
+        return max(seats, 0)
+
+    def get_display_status(self, obj):
+        available_seats = self.get_available_seats(obj)
+        if available_seats is not None and available_seats <= 0:
             return 'Full'
 
         if str(obj.status) == '1':
-            return 'Unavailable'
+            return 'Closed'
 
-        return 'Available'
+        return 'Open'
 
 
 # 课程详情序列化
@@ -107,12 +127,12 @@ class ListThingSerializer(serializers.ModelSerializer):
         return max(seats, 0)
 
     def get_display_status(self, obj):
-        if str(obj.status) == '1':
-            return 'Closed'
-
         available_seats = self.get_available_seats(obj)
         if available_seats is not None and available_seats <= 0:
             return 'Full'
+
+        if str(obj.status) == '1':
+            return 'Closed'
 
         return 'Open'
 
@@ -206,6 +226,9 @@ class OrderSerializer(serializers.ModelSerializer):
     # receiver_phone = serializers.ReadOnlyField(source='user.mobile')
     title = serializers.ReadOnlyField(source='thing.title')
     price = serializers.ReadOnlyField(source='thing.price')
+    day = serializers.ReadOnlyField(source='thing.day')
+    time_title = serializers.ReadOnlyField(source='thing.time.time')
+    room_title = serializers.ReadOnlyField(source='thing.tag.title')
     # 文件类型序列化
     cover = serializers.FileField(source='thing.cover', required=False)
 
@@ -253,7 +276,7 @@ class LessonSerializer(serializers.ModelSerializer):
             term__isnull=False,
             expect_time__isnull=False,
             return_time__isnull=False,
-            status__in=[2, 6],
+            status=6,
         ).select_related('child', 'term')
 
         return [
@@ -346,13 +369,25 @@ class AdminStudentSerializer(serializers.ModelSerializer):
         return Order.objects.filter(
             child=obj,
             status__in=[2, 6],
-        ).select_related('thing', 'term')
+        ).select_related('thing', 'thing__time', 'thing__tag', 'term')
 
     def get_active_classes(self, obj):
         classes = []
         for order in self._active_orders(obj):
-            if order.thing and order.thing.title not in classes:
-                classes.append(order.thing.title)
+            if not order.thing:
+                continue
+
+            class_parts = [order.thing.title]
+            if order.thing.day:
+                class_parts.append(order.thing.day)
+            if order.thing.time:
+                class_parts.append(order.thing.time.time)
+            if order.thing.tag:
+                class_parts.append(order.thing.tag.title)
+
+            class_label = ' | '.join(class_parts)
+            if class_label not in classes:
+                classes.append(class_label)
         return classes
 
     def get_active_terms(self, obj):
@@ -390,7 +425,7 @@ class LessonDetailSerializer(serializers.ModelSerializer):
         return Order.objects.filter(
             thing=obj.thing,
             child__isnull=False,
-            status__in=[2, 6],
+            status=6,
         ).select_related('user', 'child', 'term').order_by('child__name', 'id')
 
     def _serialize_order_student(self, order):

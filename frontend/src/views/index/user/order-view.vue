@@ -46,7 +46,13 @@
                 <img :src="item.cover" class="thing-img">
                 <div class="detail flex-between flex-view">
                   <div class="flex-between flex-top flex-view">
-                    <h2 class="name">{{ item.title }}</h2>
+                    <div>
+                      <h2 class="name">{{ item.title }}</h2>
+                      <p class="class-time">
+                        {{ item.day || 'Day TBD' }} <span v-if="item.time_title">| {{ item.time_title }}</span>
+                        <span v-if="item.room_title"> | {{ item.room_title }}</span>
+                      </p>
+                    </div>
                     <span class="count">x{{ item.num }}</span>
                   </div>
                   
@@ -317,6 +323,14 @@ const handlePay = (item) => {
         font-weight: 600;
         font-size: 14px;
         line-height: 18px;
+        margin: 0 0 6px;
+      }
+
+      .class-time {
+        color: #5f77a6;
+        font-size: 13px;
+        line-height: 18px;
+        margin: 0;
       }
 
       .count {
