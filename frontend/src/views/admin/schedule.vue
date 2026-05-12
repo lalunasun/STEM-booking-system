@@ -85,6 +85,14 @@
                     {{ student.name }}
                   </span>
                   <span
+                    v-for="student in getCanceledStudents(item, current)"
+                    :key="`month-canceled-${item.id}-${student.name}`"
+                    class="canceled-student"
+                    :title="student.term_title"
+                  >
+                    {{ student.name }} cancel
+                  </span>
+                  <span
                     v-for="student in getRescheduledStudents(item, current)"
                     :key="`month-rescheduled-${item.id}-${student.name}`"
                     class="rescheduled-student"
@@ -123,6 +131,8 @@ interface LessonItem {
   students?: string[];
   reschedule_students?: string[];
   scheduled_students?: ScheduleStudent[];
+  canceled_students?: AdjustmentStudent[];
+  scheduled_reschedule_students?: AdjustmentStudent[];
   room_capacity?: number | string;
 }
 
@@ -134,6 +144,15 @@ interface ScheduleStudent {
   expect_time: string;
   return_time: string;
   status: number;
+}
+
+interface AdjustmentStudent {
+  adjustment_id: number;
+  name: string;
+  date: string;
+  term_id?: number;
+  term_title?: string;
+  status: string;
 }
 
 const dayCodes = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -226,17 +245,29 @@ const isStudentActiveOnDate = (student: ScheduleStudent, date: Dayjs) => {
 };
 
 const getNormalStudents = (item: LessonItem, date: Dayjs) => {
-  return (item.scheduled_students || []).filter((student) => isStudentActiveOnDate(student, date));
+  const canceledNames = new Set(getCanceledStudents(item, date).map((student) => student.name));
+  return (item.scheduled_students || [])
+    .filter((student) => isStudentActiveOnDate(student, date))
+    .filter((student) => !canceledNames.has(student.name));
 };
 
-const getRescheduledStudents = (_item: LessonItem, _date: Dayjs) => {
-  return [];
+const isAdjustmentOnDate = (student: AdjustmentStudent, date: Dayjs) => {
+  return !!student.date && dayjs(student.date).isSame(date, 'day');
+};
+
+const getCanceledStudents = (item: LessonItem, date: Dayjs) => {
+  return (item.canceled_students || []).filter((student) => isAdjustmentOnDate(student, date));
+};
+
+const getRescheduledStudents = (item: LessonItem, date: Dayjs) => {
+  return (item.scheduled_reschedule_students || []).filter((student) => isAdjustmentOnDate(student, date));
 };
 
 const getAllDisplayStudents = (item: LessonItem, date: Dayjs) => {
   const normalStudents = getNormalStudents(item, date).map((student) => student.name);
+  const canceledStudents = getCanceledStudents(item, date).map((student) => `${student.name} cancel`);
   const rescheduledStudents = getRescheduledStudents(item, date).map((student) => `*${student.name}`);
-  return [...normalStudents, ...rescheduledStudents];
+  return [...normalStudents, ...canceledStudents, ...rescheduledStudents];
 };
 
 const getStudentSummary = (item: LessonItem, date: Dayjs) => {
@@ -256,7 +287,7 @@ const getLessonCapacity = (item: LessonItem) => {
 
 const isLessonFull = (item: LessonItem, date: Dayjs) => {
   const capacity = getLessonCapacity(item);
-  return capacity > 0 && getNormalStudents(item, date).length >= capacity;
+  return capacity > 0 && (getNormalStudents(item, date).length + getRescheduledStudents(item, date).length) >= capacity;
 };
 
 const hasStudentNames = (item: LessonItem, date?: Dayjs) => {
@@ -264,7 +295,7 @@ const hasStudentNames = (item: LessonItem, date?: Dayjs) => {
     return (item.scheduled_students || []).length > 0;
   }
 
-  return getNormalStudents(item, date).length > 0 || getRescheduledStudents(item, date).length > 0;
+  return getNormalStudents(item, date).length > 0 || getCanceledStudents(item, date).length > 0 || getRescheduledStudents(item, date).length > 0;
 };
 
 const getLessonsByDay = (dayCode?: string, date?: Dayjs) => {
@@ -547,6 +578,10 @@ const goNext = () => {
 
 .rescheduled-student {
   color: #166534;
+}
+
+.canceled-student {
+  color: #b42318;
 }
 
 .rescheduled-star {

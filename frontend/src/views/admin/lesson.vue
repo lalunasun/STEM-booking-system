@@ -86,6 +86,7 @@
                  <div class="right-box">
                   <span>{{ child.phone }}</span>
                  </div>
+                 <span v-if="child.makeup_date" class="student-tag reschedule-tag">makeup {{ child.makeup_date }}</span>
             </div>
             </div>
 
@@ -104,6 +105,7 @@
                  <div class="right-box">
                   <span>{{ child.phone }}</span>
                  </div>
+                 <span v-if="child.adjustment_status === 'cancel'" class="student-tag cancel-tag">cancel {{ child.cancel_date }}</span>
             </div>
             </div>
 
@@ -862,5 +864,23 @@ const getStuDetail = () => {
 .a-price {
   color: #0F1111;
   font-size: 20px;
+}
+
+.student-tag {
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 20px;
+  margin-left: 12px;
+  padding: 0 6px;
+}
+
+.cancel-tag {
+  background: #fff1f0;
+  color: #b42318;
+}
+
+.reschedule-tag {
+  background: #f6ffed;
+  color: #166534;
 }
 </style>

@@ -71,6 +71,10 @@ urlpatterns = [
     path('admin/student/update', views.admin.student.update),  # 修改学生
     path('admin/student/delete', views.admin.student.delete),  # 删除学生
     path('admin/courseAdjustment/list', views.admin.course_adjustment.list_api),
+    path('admin/courseAdjustment/review', views.admin.course_adjustment.review_api),
+    path('admin/courseAdjustment/recommendationOptions', views.admin.course_adjustment.recommendation_options_api),
+    path('admin/courseAdjustment/addExtraRecommendation', views.admin.course_adjustment.add_extra_recommendation_api),
+    path('admin/courseAdjustment/confirmMakeupSchedule', views.admin.course_adjustment.confirm_makeup_schedule_api),
 
     # ----------------------------前台用户api-------------------------------------------
     path('index/classification/list', views.index.classification.list_api),  # 分类列表

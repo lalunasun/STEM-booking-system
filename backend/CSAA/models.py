@@ -235,6 +235,7 @@ class CourseAdjustment(models.Model):
     STATUS_CHOICES = (
         ('pending', 'Pending'),
         ('approved', 'Approved'),
+        ('makeup_available', 'Makeup Available'),
         ('rejected', 'Rejected'),
         ('completed', 'Completed'),
         ('canceled', 'Canceled'),
@@ -244,6 +245,7 @@ class CourseAdjustment(models.Model):
     student = models.ForeignKey(Child, on_delete=models.CASCADE, null=True, related_name='course_adjustments')
     parent = models.ForeignKey(User, on_delete=models.CASCADE, null=True, related_name='course_adjustments')
     original_order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True, related_name='course_adjustments')
+    source_adjustment = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='makeup_records')
     original_class = models.ForeignKey(Thing, on_delete=models.SET_NULL, null=True, blank=True, related_name='course_adjustments')
     original_lesson_date = models.DateField(null=True, blank=True)
     original_day = models.CharField(max_length=10, blank=True, null=True)
