@@ -41,6 +41,10 @@
             <dollar-outlined/>
             <span>Order</span>
           </a-menu-item>
+          <a-menu-item key="courseAdjustment">
+            <schedule-outlined/>
+            <span>Course Adjustments</span>
+          </a-menu-item>
           <a-menu-item v-if="false" key="comment">
             <comment-outlined/>
             <span>Comment(St2)</span>

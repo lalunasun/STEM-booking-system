@@ -221,6 +221,55 @@ class Lesson(models.Model):
     class Meta:
         db_table = "b_lesson"
 
+
+class CourseAdjustment(models.Model):
+    REQUEST_TYPE_CHOICES = (
+        ('cancel_class', 'Cancel Class'),
+        ('makeup_class', 'Makeup Class'),
+        ('admin_manual_reschedule', 'Admin Manual Reschedule'),
+    )
+    SOURCE_CHOICES = (
+        ('parent', 'Parent'),
+        ('admin', 'Admin'),
+    )
+    STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('completed', 'Completed'),
+        ('canceled', 'Canceled'),
+    )
+
+    id = models.BigAutoField(primary_key=True)
+    student = models.ForeignKey(Child, on_delete=models.CASCADE, null=True, related_name='course_adjustments')
+    parent = models.ForeignKey(User, on_delete=models.CASCADE, null=True, related_name='course_adjustments')
+    original_order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True, related_name='course_adjustments')
+    original_class = models.ForeignKey(Thing, on_delete=models.SET_NULL, null=True, blank=True, related_name='course_adjustments')
+    original_lesson_date = models.DateField(null=True, blank=True)
+    original_day = models.CharField(max_length=10, blank=True, null=True)
+    original_time = models.CharField(max_length=50, blank=True, null=True)
+    original_term = models.ForeignKey(Term, on_delete=models.SET_NULL, null=True, blank=True, related_name='course_adjustments')
+    request_type = models.CharField(max_length=40, choices=REQUEST_TYPE_CHOICES, default='cancel_class')
+    request_reason = models.TextField(max_length=1000, blank=True, null=True)
+    request_source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='parent')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    recommended_options = models.TextField(max_length=2000, blank=True, null=True)
+    admin_extra_recommendation = models.TextField(max_length=1000, blank=True, null=True)
+    selected_target_class = models.ForeignKey(Thing, on_delete=models.SET_NULL, null=True, blank=True, related_name='target_course_adjustments')
+    selected_target_date = models.DateField(null=True, blank=True)
+    selected_target_day = models.CharField(max_length=10, blank=True, null=True)
+    selected_target_time = models.CharField(max_length=50, blank=True, null=True)
+    selected_target_room = models.CharField(max_length=100, blank=True, null=True)
+    admin_note = models.TextField(max_length=1000, blank=True, null=True)
+    parent_note = models.TextField(max_length=1000, blank=True, null=True)
+    approved_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_course_adjustments')
+    approved_time = models.DateTimeField(null=True, blank=True)
+    created_time = models.DateTimeField(auto_now_add=True, null=True)
+    updated_time = models.DateTimeField(auto_now=True, null=True)
+
+    class Meta:
+        db_table = "b_course_adjustment"
+
 # 广告信息表
 class Ad(models.Model):
     id = models.BigAutoField(primary_key=True)  # id

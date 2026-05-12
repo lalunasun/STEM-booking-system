@@ -9,3 +9,4 @@ from CSAA.views.index.order import *
 from CSAA.views.index.notice import *
 from CSAA.views.index.term import *
 from CSAA.views.index.child import *
+from CSAA.views.index.course_adjustment import *

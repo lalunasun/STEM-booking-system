@@ -475,6 +475,211 @@ Phase 2 手机端功能：
 - 剩余课时。
 - 家长购买历史。
 
+## 16.5 调课、取消课程、补课工作流（Phase 2 重点）
+
+本模块先在 Web 家长端完成业务闭环，确认逻辑稳定后再迁移到手机端/mobile web。第一阶段不追求一次性完成全部功能，应先完成可测试的最小闭环。
+
+### 16.5.1 核心规则
+
+- 家长发起取消/调课申请必须至少提前 48 小时。
+- 如果距离上课不足 48 小时，系统应提示家长通过电话或邮件直接联系管理员处理特殊情况。
+- 每个学生在一个 term 内可调课次数需要被记录；当前初步规则为 term 结束前有 2 次调课机会。
+- 已批准的取消课程会生成一次可补课机会。
+- 补课必须安排在原订单/term 的日期范围内，除非管理员手动特批。
+- 补课学生会占用目标教室人数容量。
+- 管理员确认排课后，补课学生显示在目标课程的 Rescheduled Students 中，并在主课表中使用特殊标记。
+- 原课程应保留历史记录，不能直接删除购买和排课历史。
+
+### 16.5.2 家长端流程
+
+家长端应从“已购买且正在使用的课程”进入调课流程。
+
+推荐入口：
+
+- My Orders / My Courses 中显示学生当前 active classes。
+- 家长选择某个孩子。
+- 家长进入某个已购买、已付款、正在使用的课程。
+- 页面显示课程日历，能看到该学生在 term 内的上课日期。
+
+家长端取消课程流程：
+
+1. 家长选择孩子。
+2. 家长进入该孩子正在上的课程。
+3. 家长在课程日历中选择要取消的某一次课。
+4. 系统检查是否提前 48 小时。
+5. 如果不足 48 小时，提示家长电话/邮件联系管理员，不允许直接提交普通申请。
+6. 如果满足 48 小时，家长点击 Cancel Class。
+7. 系统弹出确认窗口，说明取消后需要管理员审批。
+8. 家长确认后，系统创建取消课程申请。
+9. 系统发送取消课程申请邮件给管理员。
+10. 申请状态为 Pending admin review。
+
+管理员批准取消后：
+
+1. 原课程该学生本次课标记为 absent/canceled by request。
+2. 系统生成一次 makeup eligibility。
+3. 家长端显示可选择补课。
+4. 系统默认推荐 2 个可选补课时段。
+
+家长端补课申请流程：
+
+1. 家长看到系统推荐的 2 个可选时段。
+2. 推荐时段必须在 term 范围内。
+3. 推荐时段必须满足教室容量。
+4. 推荐时段应尽量匹配课程类型、年龄/level 和教室兼容规则。
+5. 家长选择一个补课时段。
+6. 家长确认提交补课申请。
+7. 系统发送课程调整申请给管理员。
+8. 申请状态为 Pending admin review。
+
+### 16.5.3 管理员端流程
+
+管理员需要新增课程调整管理模块，建议命名为 Reschedule Requests 或 Course Adjustments。
+
+管理员模块需要显示：
+
+- Request ID
+- Student
+- Parent
+- Parent phone/email
+- Original class
+- Original class date/time
+- Original term
+- Request type: cancel class / makeup class / admin manual reschedule
+- Request reason
+- Request status
+- Recommended makeup options
+- Selected makeup option
+- Admin decision
+- Admin note
+- Created time
+- Updated time
+
+管理员处理取消课程申请：
+
+1. 查看家长提交的取消申请。
+2. 检查是否满足 48 小时规则。
+3. 可批准或拒绝。
+4. 批准后，系统记录原课程取消/请假状态。
+5. 系统生成补课资格。
+6. 系统给家长端开放补课选择。
+7. 系统可发送审批结果通知给家长。
+
+管理员处理补课申请：
+
+1. 查看家长选择的补课时段。
+2. 检查目标课程是否在 term 范围内。
+3. 检查目标教室容量。
+4. 检查课程类型、年龄/level、教室兼容规则。
+5. 管理员批准后，系统将学生加入目标课程 Rescheduled Students。
+6. 目标课程人数容量增加。
+7. 主课表显示该学生为调课/补课学生。
+8. 系统通知家长申请已确认。
+
+### 16.5.4 系统推荐补课时段规则
+
+系统默认推荐 2 个可选补课时段。推荐逻辑初稿：
+
+- 必须在原订单 term 的 start/end 日期范围内。
+- 必须是当前日期之后的课程。
+- 必须有可用容量。
+- 必须不与学生已有课程冲突。
+- 优先推荐同课程名称、同课程类型的时段。
+- 如果同课程无可用时段，再考虑兼容课程/教室。
+- Robotics/building 课程优先固定教室和设备。
+- Coding 课程可根据年龄/level 和容量更灵活推荐。
+- 推荐结果应显示课程名、日期、星期、时间、教室、剩余座位。
+
+已确认规则：
+
+- 不允许补到不同课程名但同 level 的课程；补课应尽量保持同课程名。
+- 默认不允许跨 term 补课。
+- 如果学生已经报名了下一个 term，管理员可以允许补课延期到下一个 term。
+- 如果家长不接受系统推荐的 2 个时段，家长可以在申请留言中说明偏好，或直接电话联系管理员。
+- 家长留言/电话沟通后的特殊安排由管理员手动标注和处理。
+- 管理员需要可以手动添加第三个推荐补课选项。
+- 管理员添加的第三个选项应同样检查容量、term 范围和课程冲突；如需强制安排，必须填写 admin note。
+
+### 16.5.5 管理员手动调课
+
+管理员需要有手动调课能力，用于电话/邮件特殊情况或不足 48 小时的请求。
+
+管理员手动调课初步流程：
+
+1. 管理员搜索学生。
+2. 管理员查看该学生当前 active classes 和课程日历。
+3. 管理员选择原课程日期。
+4. 管理员选择目标补课日期/课程。
+5. 系统提示容量、term 范围、课程兼容性和冲突检查结果。
+6. 管理员可以强制确认，但需要填写 admin note。
+7. 系统生成 admin manual reschedule 记录。
+8. 学生进入目标课程 Rescheduled Students。
+9. 目标课程占用容量。
+10. 家长端能看到调整后的补课记录。
+
+### 16.5.6 管理员 Note 和课表标记
+
+管理员需要可以在课程调整过程中添加 note，用于记录电话沟通、特殊原因、手动安排和例外审批。
+
+Note 显示需求：
+
+- Course Adjustments 列表显示 admin note 摘要。
+- 调课详情页显示完整 admin note 和 parent note。
+- 主课表中被管理员特殊标记的课程/学生应显示 note 标识。
+- hover 或点击课程详情时可以查看 note 内容。
+- note 不应替代正式状态；状态仍然使用 pending / approved / rejected / completed / canceled。
+
+### 16.5.7 数据模型草案
+
+后续可能需要新增 RescheduleRequest / CourseAdjustment 模型。
+
+建议字段：
+
+- id
+- student/child
+- parent/user
+- original_order
+- original_class
+- original_lesson_date
+- original_day
+- original_time
+- original_term
+- request_type
+- request_reason
+- request_source: parent / admin
+- status: pending / approved / rejected / completed / canceled
+- recommended_options
+- admin_extra_recommendation
+- selected_target_class
+- selected_target_date
+- selected_target_day
+- selected_target_time
+- selected_target_room
+- admin_note
+- parent_note
+- approved_by
+- approved_time
+- created_time
+- updated_time
+
+### 16.5.8 分阶段实现建议
+
+第一步：需求和数据模型确认。
+
+第二步：家长端在已购买课程中显示课程日历和 Cancel Class 按钮。
+
+第三步：创建取消课程申请，不直接改排课。
+
+第四步：管理员 Course Adjustments 列表可审批取消申请。
+
+第五步：批准后生成补课资格，并给家长推荐 2 个补课时段。
+
+第六步：家长选择补课时段并提交申请。
+
+第七步：管理员审批补课申请并排课。
+
+第八步：主课表和课程详情显示 Rescheduled Students，并计入容量。
+
 ## 17. 当前已完成内容
 
 已完成或部分完成：

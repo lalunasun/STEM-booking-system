@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from CSAA.models import Thing, Classification, Tag, User, Comment, LoginLog, Order, OpLog, \
-    Ad, Notice, ErrorLog, Lesson, Time, Term, Child
+    Ad, Notice, ErrorLog, Lesson, Time, Term, Child, CourseAdjustment
 
 
 # 课程信息序列化
@@ -238,6 +238,30 @@ class OrderSerializer(serializers.ModelSerializer):
 
 
 # lesson信息序列化
+class CourseAdjustmentSerializer(serializers.ModelSerializer):
+    created_time = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S', required=False)
+    updated_time = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S', required=False)
+    approved_time = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S', required=False)
+    student_name = serializers.ReadOnlyField(source='student.name')
+    parent_username = serializers.ReadOnlyField(source='parent.username')
+    parent_name = serializers.SerializerMethodField()
+    parent_phone = serializers.ReadOnlyField(source='parent.mobile')
+    parent_email = serializers.ReadOnlyField(source='parent.email')
+    original_order_number = serializers.ReadOnlyField(source='original_order.order_number')
+    original_class_title = serializers.ReadOnlyField(source='original_class.title')
+    original_term_title = serializers.ReadOnlyField(source='original_term.title')
+    selected_target_class_title = serializers.ReadOnlyField(source='selected_target_class.title')
+
+    class Meta:
+        model = CourseAdjustment
+        fields = '__all__'
+
+    def get_parent_name(self, obj):
+        if not obj.parent:
+            return None
+        return obj.parent.nickname or obj.parent.username
+
+
 class LessonSerializer(serializers.ModelSerializer):
     lesson_id = serializers.ReadOnlyField(source='id')
     thing_id = serializers.ReadOnlyField(source='thing.id')

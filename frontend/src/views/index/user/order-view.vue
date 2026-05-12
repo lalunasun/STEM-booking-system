@@ -74,6 +74,7 @@
             <div class="left">
               <span class="text">A total of {{ item.num }} lessons</span>
               <span class="open" @click="handleDetail(item.thing)">Class Detail</span>
+              <span v-if="item.status === 6" class="open danger-action" @click="openCancelClass(item)">Cancel Class</span>
             </div>
             <div class="right flex-view">
 
@@ -88,6 +89,21 @@
         </template>
       </div>
     </a-spin>
+    <a-modal
+      v-model:visible="cancelModal.visible"
+      title="Cancel Class Request"
+      ok-text="Submit"
+      cancel-text="Close"
+      @ok="submitCancelClass"
+    >
+      <div class="cancel-form">
+        <p class="hint">Requests must be submitted at least 48 hours before class. For special cases, please call or email admin.</p>
+        <label>Class date</label>
+        <input v-model="cancelModal.lessonDate" class="date-input" type="date" />
+        <label>Message to admin</label>
+        <textarea v-model="cancelModal.parentNote" class="note-input" rows="4" placeholder="Optional note"></textarea>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -95,6 +111,7 @@
 import { message } from "ant-design-vue";
 import { userOrderListApi } from '/@/api/index/order'
 import { cancelUserOrderApi, payUserOrderApi } from '/@/api/index/order'
+import { createCancelRequestApi } from '/@/api/index/course-adjustment'
 import { BASE_URL } from "/@/store/constants";
 import { useUserStore } from "/@/store";
 
@@ -105,6 +122,12 @@ const userStore = useUserStore();
 const loading = ref(false)
 const orderData = ref([])
 const orderStatus = ref('')
+const cancelModal = reactive({
+  visible: false,
+  order: null,
+  lessonDate: '',
+  parentNote: '',
+})
 
 onMounted(() => {
   getOrderList()
@@ -172,6 +195,39 @@ const handleDetail = (thingId) => {
   // 跳转新页面
   let text = router.resolve({ name: 'detail', query: { id: thingId } })
   window.open(text.href, '_blank')
+}
+
+const openCancelClass = (item) => {
+  cancelModal.order = item
+  cancelModal.lessonDate = ''
+  cancelModal.parentNote = ''
+  cancelModal.visible = true
+}
+
+const submitCancelClass = () => {
+  if (!cancelModal.order) {
+    message.error('Please select an order')
+    return
+  }
+  if (!cancelModal.lessonDate) {
+    message.error('Please select the class date')
+    return
+  }
+  createCancelRequestApi({
+    order_id: cancelModal.order.id,
+    user_id: userStore.user_id,
+    lesson_date: cancelModal.lessonDate,
+    parent_note: cancelModal.parentNote,
+  }).then(res => {
+    if (res.code !== 0) {
+      message.error(res.msg || 'Submit failed')
+      return
+    }
+    message.success('Cancel request submitted')
+    cancelModal.visible = false
+  }).catch(err => {
+    message.error(err.msg || 'Submit failed')
+  })
 }
 
 // 取消订单
@@ -410,6 +466,10 @@ const handlePay = (item) => {
       cursor: pointer;
     }
 
+    .danger-action {
+      color: #d9363e;
+    }
+
     .right {
       -webkit-box-align: center;
       -ms-flex-align: center;
@@ -437,5 +497,29 @@ const handlePay = (item) => {
 
 .order-item-view:first-child {
   margin-top: 16px;
+}
+
+.cancel-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  .hint {
+    color: #5f77a6;
+    line-height: 20px;
+    margin: 0 0 8px;
+  }
+
+  label {
+    color: #152844;
+    font-weight: 600;
+  }
+
+  .date-input,
+  .note-input {
+    border: 1px solid #d9d9d9;
+    border-radius: 2px;
+    padding: 8px;
+  }
 }
 </style>

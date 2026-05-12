@@ -70,6 +70,7 @@ urlpatterns = [
     path('admin/student/create', views.admin.student.create),  # 创建学生
     path('admin/student/update', views.admin.student.update),  # 修改学生
     path('admin/student/delete', views.admin.student.delete),  # 删除学生
+    path('admin/courseAdjustment/list', views.admin.course_adjustment.list_api),
 
     # ----------------------------前台用户api-------------------------------------------
     path('index/classification/list', views.index.classification.list_api),  # 分类列表
@@ -103,5 +104,6 @@ urlpatterns = [
     path('index/term/list', views.index.term.list_api),
     path('index/child/list', views.index.child.list_api),
     path('index/child/create', views.index.child.create),
+    path('index/courseAdjustment/createCancel', views.index.course_adjustment.create_cancel_request),
 
 ]
