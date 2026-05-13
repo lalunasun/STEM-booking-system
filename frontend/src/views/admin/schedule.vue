@@ -8,6 +8,12 @@
         </div>
 
         <div class="schedule-actions">
+          <a-input
+            v-model:value="studentKeyword"
+            allow-clear
+            class="student-search"
+            placeholder="Search student"
+          />
           <a-button @click="goPrevious">Previous</a-button>
           <a-button @click="goToday">Today</a-button>
           <a-button @click="goNext">Next</a-button>
@@ -179,6 +185,7 @@ const router = useRouter();
 const value = ref<Dayjs>(dayjs());
 const viewMode = ref<ViewMode>('week');
 const lessonData = ref<LessonItem[]>([]);
+const studentKeyword = ref('');
 
 const calendarMode = computed(() => 'month');
 
@@ -270,6 +277,17 @@ const getAllDisplayStudents = (item: LessonItem, date: Dayjs) => {
   return [...normalStudents, ...canceledStudents, ...rescheduledStudents];
 };
 
+const matchesStudentSearch = (item: LessonItem, date: Dayjs) => {
+  const keyword = studentKeyword.value.trim().toLowerCase();
+  if (!keyword) {
+    return true;
+  }
+
+  return getAllDisplayStudents(item, date).some((studentName) =>
+    studentName.toLowerCase().includes(keyword)
+  );
+};
+
 const getStudentSummary = (item: LessonItem, date: Dayjs) => {
   const students = getAllDisplayStudents(item, date);
 
@@ -305,6 +323,7 @@ const getLessonsByDay = (dayCode?: string, date?: Dayjs) => {
 
   return lessonData.value
     .filter((item) => item.day === dayCode)
+    .filter((item) => !date || matchesStudentSearch(item, date))
     .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 };
 
@@ -370,11 +389,16 @@ const goNext = () => {
 }
 
 .schedule-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+  background: #fff;
+  padding: 0 0 12px;
 }
 
 .schedule-title h2 {
@@ -394,6 +418,10 @@ const goNext = () => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.student-search {
+  width: 220px;
 }
 
 .week-board {
