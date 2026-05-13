@@ -6,6 +6,7 @@ import piniaStore from './store';
 import bootstrap from './core/bootstrap';
 import '/@/styles/reset.less';
 import '/@/styles/index.less';
+import 'ant-design-vue/dist/antd.css';
 import Antd from 'ant-design-vue';
 
 const app = createApp(App);

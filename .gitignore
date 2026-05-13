@@ -10,6 +10,7 @@ venv/
 # Django local data
 *.sqlite3
 *.sqlite3.backup*
+*.sqlite3.before_*
 upload/
 logs/
 
@@ -22,6 +23,7 @@ dist/
 .env
 .env.*
 !.env.example
+*.pem
 
 # Editors / OS
 .idea/

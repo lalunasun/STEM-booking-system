@@ -54,12 +54,12 @@ class ThingSerializer(serializers.ModelSerializer):
         return max(seats, 0)
 
     def get_display_status(self, obj):
+        if str(obj.status) == '1':
+            return 'Closed'
+
         available_seats = self.get_available_seats(obj)
         if available_seats is not None and available_seats <= 0:
             return 'Full'
-
-        if str(obj.status) == '1':
-            return 'Closed'
 
         return 'Open'
 
@@ -129,12 +129,12 @@ class ListThingSerializer(serializers.ModelSerializer):
         return max(seats, 0)
 
     def get_display_status(self, obj):
+        if str(obj.status) == '1':
+            return 'Closed'
+
         available_seats = self.get_available_seats(obj)
         if available_seats is not None and available_seats <= 0:
             return 'Full'
-
-        if str(obj.status) == '1':
-            return 'Closed'
 
         return 'Open'
 

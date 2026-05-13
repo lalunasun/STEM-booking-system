@@ -12,7 +12,7 @@ from CSAA.serializers import ThingSerializer, UpdateThingSerializer, LessonSeria
 def list_api(request):
     if request.method == 'GET':  # 可以不用判断请求方式
 
-        lessons = Lesson.objects.all()
+        lessons = Lesson.objects.filter(thing__status='0')
 
         serializer = LessonSerializer(lessons, many=True)
         return APIResponse(code=0, msg='查询成功', data=serializer.data)
