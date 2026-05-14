@@ -326,6 +326,49 @@ Admin test workflow:
 5. Mark the order as `Scheduled`.
 6. Verify the schedule and parent order history.
 
+### 10.2 Trial Package Flow
+
+Trial should not be booked as a normal Class. It should behave as a separate trial package / experience product that is visible on the parent side, with booking and scheduling logic separated from regular course registration.
+
+The Trial package includes 3 trial lessons by default:
+
+1. One Robotics lesson.
+2. One Coding lesson.
+3. One Math lesson.
+
+Current business rules:
+
+- Parents can see a Trial entry on the parent portal.
+- Selecting Trial should not enter the normal Class registration flow directly.
+- Parent must select a child.
+- The system recommends trial slots in three groups:
+  - Available Robotics slots.
+  - Available Coding slots.
+  - Available Math slots.
+- Parent can choose one time slot for each of the 3 trial lessons.
+- Recommended slots must have available capacity and should be within allowed booking windows.
+- The Trial package itself does not occupy a seat; capacity is occupied by the specific selected class slots.
+- Admin schedule and class detail should show Trial students under `Trial Students`.
+- Trial students count toward the target `Room + Day + Time` capacity.
+- Math can be kept as a placeholder for now. If no Math classes exist yet, the parent side should show `Coming soon` or ask the parent to contact admin.
+
+Draft recommendation rules:
+
+- Robotics trial should prefer available classes in the Robotics category.
+- Coding trial should prefer available classes in the Coding category.
+- Math trial should later prefer available classes in the Math category.
+- Do not recommend Full slots.
+- Do not recommend slots that conflict with the student's existing active classes.
+- Later, recommendation can be improved by student age/level.
+
+Suggested implementation phases:
+
+1. Add a Trial package / Trial request data structure.
+2. Add a parent-side Trial selection page with three category choices.
+3. Add an admin-side Trial request review/confirmation entry.
+4. After confirmation, add the student to each target class's `Trial Students`.
+5. Show Trial students on the main schedule and count them toward capacity.
+
 ## 11. Schedule Module
 
 Admin schedule is the main operational view.

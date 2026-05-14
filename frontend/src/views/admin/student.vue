@@ -94,6 +94,7 @@
     <a-modal
       :visible="detail.visible"
       title="Student Detail"
+      width="820px"
       :footer="null"
       @cancel="detail.visible = false"
     >
@@ -119,10 +120,27 @@
           <span>{{ formatList(detail.record.active_terms) }}</span>
         </div>
         <div class="detail-row detail-row-block">
-          <span class="detail-label">Courses</span>
-          <div class="class-list">
-            <div v-for="item in detail.record.active_classes" :key="item">{{ item }}</div>
-            <span v-if="!detail.record.active_classes || detail.record.active_classes.length === 0">-</span>
+          <span class="detail-label">All courses</span>
+          <div class="course-history">
+            <div
+              v-for="course in detail.record.course_history"
+              :key="course.order_id"
+              class="course-history-item"
+            >
+              <div class="course-history-main">
+                <strong>{{ course.class_name || '-' }}</strong>
+                <a-tag :color="course.course_status === 'Finished' ? 'default' : 'green'">
+                  {{ course.course_status }}
+                </a-tag>
+              </div>
+              <div class="course-history-meta">
+                <span>Term: {{ course.term || '-' }}</span>
+                <span>{{ course.day || '-' }} {{ course.time || '-' }}</span>
+                <span>{{ course.room || '-' }}</span>
+                <span>{{ course.start_date || '-' }} - {{ course.end_date || '-' }}</span>
+              </div>
+            </div>
+            <span v-if="!detail.record.course_history || detail.record.course_history.length === 0">-</span>
           </div>
         </div>
       </div>
@@ -398,5 +416,33 @@ const hideModal = () => {
 .detail-label {
   color: #64748b;
   font-weight: 600;
+}
+
+.course-history {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.course-history-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 10px 12px;
+}
+
+.course-history-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.course-history-meta {
+  color: #475569;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 14px;
+  line-height: 20px;
 }
 </style>

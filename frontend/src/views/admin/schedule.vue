@@ -106,6 +106,13 @@
                   >
                     <span class="rescheduled-star">*</span>{{ student.name }}
                   </span>
+                  <span
+                    v-for="student in getTrialStudents(item, current)"
+                    :key="`month-trial-${item.id}-${student.name}`"
+                    class="trial-student"
+                  >
+                    {{ student.name }} trial
+                  </span>
                 </span>
               </button>
             </li>
@@ -139,6 +146,7 @@ interface LessonItem {
   scheduled_students?: ScheduleStudent[];
   canceled_students?: AdjustmentStudent[];
   scheduled_reschedule_students?: AdjustmentStudent[];
+  scheduled_trial_students?: TrialStudent[];
   room_capacity?: number | string;
 }
 
@@ -158,6 +166,14 @@ interface AdjustmentStudent {
   date: string;
   term_id?: number;
   term_title?: string;
+  status: string;
+}
+
+interface TrialStudent {
+  trial_request_id: number;
+  order_id?: number;
+  name: string;
+  date: string;
   status: string;
 }
 
@@ -270,11 +286,16 @@ const getRescheduledStudents = (item: LessonItem, date: Dayjs) => {
   return (item.scheduled_reschedule_students || []).filter((student) => isAdjustmentOnDate(student, date));
 };
 
+const getTrialStudents = (item: LessonItem, date: Dayjs) => {
+  return (item.scheduled_trial_students || []).filter((student) => !!student.date && dayjs(student.date).isSame(date, 'day'));
+};
+
 const getAllDisplayStudents = (item: LessonItem, date: Dayjs) => {
   const normalStudents = getNormalStudents(item, date).map((student) => student.name);
   const canceledStudents = getCanceledStudents(item, date).map((student) => `${student.name} cancel`);
   const rescheduledStudents = getRescheduledStudents(item, date).map((student) => `*${student.name}`);
-  return [...normalStudents, ...canceledStudents, ...rescheduledStudents];
+  const trialStudents = getTrialStudents(item, date).map((student) => `${student.name} trial`);
+  return [...normalStudents, ...canceledStudents, ...rescheduledStudents, ...trialStudents];
 };
 
 const matchesStudentSearch = (item: LessonItem, date: Dayjs) => {
@@ -305,15 +326,22 @@ const getLessonCapacity = (item: LessonItem) => {
 
 const isLessonFull = (item: LessonItem, date: Dayjs) => {
   const capacity = getLessonCapacity(item);
-  return capacity > 0 && (getNormalStudents(item, date).length + getRescheduledStudents(item, date).length) >= capacity;
+  return capacity > 0 && (
+    getNormalStudents(item, date).length +
+    getRescheduledStudents(item, date).length +
+    getTrialStudents(item, date).length
+  ) >= capacity;
 };
 
 const hasStudentNames = (item: LessonItem, date?: Dayjs) => {
   if (!date) {
-    return (item.scheduled_students || []).length > 0;
+    return (item.scheduled_students || []).length > 0 || (item.scheduled_trial_students || []).length > 0;
   }
 
-  return getNormalStudents(item, date).length > 0 || getCanceledStudents(item, date).length > 0 || getRescheduledStudents(item, date).length > 0;
+  return getNormalStudents(item, date).length > 0 ||
+    getCanceledStudents(item, date).length > 0 ||
+    getRescheduledStudents(item, date).length > 0 ||
+    getTrialStudents(item, date).length > 0;
 };
 
 const getLessonsByDay = (dayCode?: string, date?: Dayjs) => {
@@ -435,8 +463,8 @@ const goNext = () => {
 .time-header,
 .week-day-header {
   position: sticky;
-  top: 0;
-  z-index: 5;
+  top: 74px;
+  z-index: 15;
   min-height: 74px;
   padding: 14px;
   border-right: 1px solid #eaecf0;
@@ -606,6 +634,10 @@ const goNext = () => {
 
 .rescheduled-student {
   color: #166534;
+}
+
+.trial-student {
+  color: #7c3aed;
 }
 
 .canceled-student {

@@ -103,12 +103,13 @@ urlpatterns = [
     path('index/comment/like', views.index.comment.like),  # 点赞
     path('index/order/list', views.index.order.list_api),  # 订单列表
     path('index/order/create', views.index.order.create),  # 创建订单
-    path('index/order/createTrial', views.index.order.create_trial),
+    path('index/order/createTrial', views.index.trial.create),
     path('index/order/cancel_order', views.index.order.cancel_order),  # 取消订单
     path('index/order/pay_order', views.index.order.pay_order),  # 完成订单
     path('index/term/list', views.index.term.list_api),
     path('index/child/list', views.index.child.list_api),
     path('index/child/create', views.index.child.create),
     path('index/courseAdjustment/createCancel', views.index.course_adjustment.create_cancel_request),
+    path('index/trial/create', views.index.trial.create),
 
 ]

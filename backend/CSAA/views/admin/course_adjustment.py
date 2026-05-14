@@ -6,6 +6,7 @@ from django.utils.dateparse import parse_date
 from django.utils import timezone
 from rest_framework.decorators import api_view
 
+from CSAA.course_conflicts import student_slot_conflict_on_date
 from CSAA.handler import APIResponse
 from CSAA.models import CourseAdjustment, Lesson, Order, Thing, User
 from CSAA.serializers import CourseAdjustmentSerializer
@@ -120,31 +121,7 @@ def _build_option(thing, class_date):
 
 
 def _student_has_slot_conflict(student, thing, class_date):
-    if not student or not thing or not class_date:
-        return False
-
-    scheduled_orders = Order.objects.filter(
-        child=student,
-        status=6,
-        thing__day=thing.day,
-        thing__time=thing.time,
-        expect_time__isnull=False,
-        return_time__isnull=False,
-    )
-    for order in scheduled_orders:
-        start_date = _date_part(order.expect_time)
-        end_date = _date_part(order.return_time)
-        if start_date and end_date and start_date <= class_date <= end_date:
-            return True
-
-    return CourseAdjustment.objects.filter(
-        student=student,
-        request_type='makeup_class',
-        status='completed',
-        selected_target_date=class_date,
-        selected_target_class__day=thing.day,
-        selected_target_class__time=thing.time,
-    ).exists()
+    return bool(student_slot_conflict_on_date(student, thing, class_date))
 
 
 def _recommend_makeup_options(adjustment, limit=2):
@@ -367,8 +344,9 @@ def confirm_makeup_schedule_api(request):
     current_option = _build_option(thing, target_date)
     if current_option['available_seats'] is not None and current_option['available_seats'] <= 0:
         return APIResponse(code=1, msg='Selected class is full')
-    if _student_has_slot_conflict(adjustment.student, thing, target_date):
-        return APIResponse(code=1, msg='Student already has a class at this time')
+    conflict = student_slot_conflict_on_date(adjustment.student, thing, target_date)
+    if conflict:
+        return APIResponse(code=1, msg=conflict)
 
     lesson = Lesson.objects.get_or_create(thing=thing)[0]
     if adjustment.student:

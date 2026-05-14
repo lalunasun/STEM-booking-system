@@ -338,6 +338,7 @@
 - Roblox
 - Python
 - Java
+- Trial
 
 步骤：
 
@@ -350,3 +351,41 @@
 - 课程卡片图片显示。
 - 课程详情图片显示。
 - Scratch 和 Python 使用新的默认图片。
+
+## TC-013 Trial 试听包流程
+
+状态：`Pending`
+
+目的：
+
+验证 Trial 不走普通 Class 报名，而是作为 3 次试听包进行选择。
+
+业务规则：
+
+- Trial 默认包含 3 次课。
+- 三次课分别对应 Robotics、Coding、Math。
+- Math 课程暂未完整开放时，可以显示占位或联系管理员。
+- 试听学生最终应进入具体课程时段的 `Trial Students`。
+- 试听学生占用对应 `Room + Day + Time` 容量。
+
+步骤：
+
+1. 家长登录。
+2. 打开家长端 Trial 入口。
+3. 选择一个孩子。
+4. 查看系统推荐的 Robotics 试听时段。
+5. 查看系统推荐的 Coding 试听时段。
+6. 查看 Math 试听占位。
+7. 分别选择 Robotics 和 Coding 试听时间。
+8. 提交 Trial 试听申请。
+9. 管理员确认 Trial 申请。
+10. 打开后台 Schedule 和课程详情页。
+
+预期结果：
+
+- Trial 不进入普通 Class 订单确认页。
+- Robotics 和 Coding 推荐项只显示有空位时段。
+- Math 尚未配置时不阻塞整个流程，但需要清楚提示。
+- 管理员确认后，学生显示在目标课程的 `Trial Students` 中。
+- 主课表能看到试听学生标记。
+- 目标教室容量包含试听学生。

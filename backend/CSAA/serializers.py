@@ -1,9 +1,11 @@
+import datetime
 import json
 
+from django.db.models import Q
 from rest_framework import serializers
 
 from CSAA.models import Thing, Classification, Tag, User, Comment, LoginLog, Order, OpLog, \
-    Ad, Notice, ErrorLog, Lesson, Time, Term, Child, CourseAdjustment
+    Ad, Notice, ErrorLog, Lesson, Time, Term, Child, CourseAdjustment, TrialRequest
 
 
 # 课程信息序列化
@@ -226,7 +228,8 @@ class OrderSerializer(serializers.ModelSerializer):
     child_name = serializers.ReadOnlyField(source='child.name')
     term_title = serializers.ReadOnlyField(source='term.title')
     # receiver_phone = serializers.ReadOnlyField(source='user.mobile')
-    title = serializers.ReadOnlyField(source='thing.title')
+    title = serializers.SerializerMethodField()
+    trial_slots = serializers.SerializerMethodField()
     price = serializers.ReadOnlyField(source='thing.price')
     day = serializers.ReadOnlyField(source='thing.day')
     time_title = serializers.ReadOnlyField(source='thing.time.time')
@@ -237,6 +240,83 @@ class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = '__all__'
+
+    def _date_part(self, value):
+        if not value:
+            return None
+        if hasattr(value, 'date'):
+            return value.date()
+        return value
+
+    def _next_trial_date(self, order, thing):
+        day_index = {
+            'Mon': 0,
+            'Tue': 1,
+            'Wed': 2,
+            'Thu': 3,
+            'Fri': 4,
+            'Sat': 5,
+            'Sun': 6,
+        }
+        if not thing or thing.day not in day_index:
+            return None
+
+        base_date = self._date_part(order.order_time) or datetime.date.today()
+        days_ahead = (day_index[thing.day] - base_date.weekday()) % 7
+        return base_date + datetime.timedelta(days=days_ahead)
+
+    def _trial_request(self, obj):
+        return TrialRequest.objects.filter(package_order=obj).select_related(
+            'robotics_class',
+            'robotics_class__time',
+            'robotics_class__tag',
+            'coding_class',
+            'coding_class__time',
+            'coding_class__tag',
+            'math_class',
+            'math_class__time',
+            'math_class__tag',
+        ).first()
+
+    def get_title(self, obj):
+        if self._trial_request(obj):
+            return 'Trial Package'
+        return obj.thing.title if obj.thing else None
+
+    def _slot_data(self, order, label, thing):
+        if not thing:
+            return {
+                'label': label,
+                'class_id': None,
+                'title': 'Not configured yet',
+                'date': None,
+                'day': None,
+                'time': None,
+                'room': None,
+                'status': 'not_configured',
+            }
+        trial_date = self._next_trial_date(order, thing)
+        return {
+            'label': label,
+            'class_id': thing.id,
+            'title': thing.title,
+            'date': trial_date.strftime('%Y-%m-%d') if trial_date else None,
+            'day': thing.day,
+            'time': thing.time.time if thing.time else None,
+            'room': thing.tag.title if thing.tag else None,
+            'status': 'scheduled',
+        }
+
+    def get_trial_slots(self, obj):
+        trial_request = self._trial_request(obj)
+        if not trial_request:
+            return []
+        slots = [
+            self._slot_data(obj, 'Robotics', trial_request.robotics_class),
+            self._slot_data(obj, 'Coding', trial_request.coding_class),
+            self._slot_data(obj, 'Math', trial_request.math_class),
+        ]
+        return slots
 
 
 # lesson信息序列化
@@ -296,6 +376,7 @@ class LessonSerializer(serializers.ModelSerializer):
     scheduled_students = serializers.SerializerMethodField()
     canceled_students = serializers.SerializerMethodField()
     scheduled_reschedule_students = serializers.SerializerMethodField()
+    scheduled_trial_students = serializers.SerializerMethodField()
 
     class Meta:
         model = Lesson
@@ -312,6 +393,30 @@ class LessonSerializer(serializers.ModelSerializer):
 
     def get_try_students(self, obj):
         return [student.name for student in obj.try_students.all()]
+
+    def _date_part(self, value):
+        if not value:
+            return None
+        if hasattr(value, 'date'):
+            return value.date()
+        return value
+
+    def _next_trial_date(self, order, thing):
+        day_index = {
+            'Mon': 0,
+            'Tue': 1,
+            'Wed': 2,
+            'Thu': 3,
+            'Fri': 4,
+            'Sat': 5,
+            'Sun': 6,
+        }
+        if not order or not thing or thing.day not in day_index:
+            return None
+
+        base_date = self._date_part(order.order_time) or datetime.date.today()
+        days_ahead = (day_index[thing.day] - base_date.weekday()) % 7
+        return base_date + datetime.timedelta(days=days_ahead)
 
     def get_scheduled_students(self, obj):
         orders = Order.objects.filter(
@@ -376,6 +481,32 @@ class LessonSerializer(serializers.ModelSerializer):
             for adjustment in adjustments
         ]
 
+    def get_scheduled_trial_students(self, obj):
+        trial_requests = TrialRequest.objects.filter(
+            Q(robotics_class=obj.thing) | Q(coding_class=obj.thing) | Q(math_class=obj.thing),
+            child__isnull=False,
+            package_order__status__in=[2, 6],
+            status__in=['approved', 'scheduled'],
+        ).select_related(
+            'child',
+            'package_order',
+            'robotics_class',
+            'coding_class',
+            'math_class',
+        )
+
+        students = []
+        for trial_request in trial_requests:
+            trial_date = self._next_trial_date(trial_request.package_order, obj.thing)
+            students.append({
+                'trial_request_id': trial_request.id,
+                'order_id': trial_request.package_order.id if trial_request.package_order else None,
+                'name': trial_request.child.name,
+                'date': trial_date.strftime('%Y-%m-%d') if trial_date else None,
+                'status': 'trial',
+            })
+        return students
+
 
 # 修改课程信息序列化
 class UpdateLessonSerializer(serializers.ModelSerializer):
@@ -438,6 +569,7 @@ class AdminStudentSerializer(serializers.ModelSerializer):
     phone = serializers.ReadOnlyField(source='parent.mobile')
     active_classes = serializers.SerializerMethodField()
     active_terms = serializers.SerializerMethodField()
+    course_history = serializers.SerializerMethodField()
 
     class Meta:
         model = Child
@@ -454,6 +586,12 @@ class AdminStudentSerializer(serializers.ModelSerializer):
             child=obj,
             status__in=[2, 6],
         ).select_related('thing', 'thing__time', 'thing__tag', 'term')
+
+    def _course_orders(self, obj):
+        return Order.objects.filter(
+            child=obj,
+            status__in=[2, 6, 8],
+        ).select_related('thing', 'thing__time', 'thing__tag', 'term').order_by('-expect_time', 'thing__day', 'thing__time__time')
 
     def get_active_classes(self, obj):
         classes = []
@@ -480,6 +618,32 @@ class AdminStudentSerializer(serializers.ModelSerializer):
             if order.term and order.term.title not in terms:
                 terms.append(order.term.title)
         return terms
+
+    def get_course_history(self, obj):
+        courses = []
+        today = datetime.date.today()
+
+        for order in self._course_orders(obj):
+            thing = order.thing
+            term = order.term
+            end_date = order.return_time.date() if order.return_time else None
+            start_date = order.expect_time.date() if order.expect_time else None
+            is_finished = order.status == 8 or (end_date is not None and end_date < today)
+
+            courses.append({
+                'order_id': order.id,
+                'class_name': thing.title if thing else None,
+                'term': term.title if term else None,
+                'day': thing.day if thing else None,
+                'time': thing.time.time if thing and thing.time else None,
+                'room': thing.tag.title if thing and thing.tag else None,
+                'start_date': start_date.strftime('%Y-%m-%d') if start_date else None,
+                'end_date': end_date.strftime('%Y-%m-%d') if end_date else None,
+                'order_status': order.status,
+                'course_status': 'Finished' if is_finished else 'Active',
+            })
+
+        return courses
 
 
 class LessonDetailSerializer(serializers.ModelSerializer):
@@ -612,3 +776,15 @@ class LessonDetailSerializer(serializers.ModelSerializer):
 
     def get_students_num(self, obj):
         return self._scheduled_orders(obj).count()
+
+
+class TrialRequestSerializer(serializers.ModelSerializer):
+    child_name = serializers.ReadOnlyField(source='child.name')
+    parent_name = serializers.ReadOnlyField(source='parent.username')
+    robotics_title = serializers.ReadOnlyField(source='robotics_class.title')
+    coding_title = serializers.ReadOnlyField(source='coding_class.title')
+    math_title = serializers.ReadOnlyField(source='math_class.title')
+
+    class Meta:
+        model = TrialRequest
+        fields = '__all__'

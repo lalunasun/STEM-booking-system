@@ -12,7 +12,7 @@
       </div>
       <div class="text">The amount to be paid</div>
       <div class="price">
-        <span>¥</span>
+        <span>$</span>
         <span class="num">{{ amount }}</span>
         
       </div>

@@ -21,7 +21,7 @@
                 </div>
                 <h1 class="thing-name">{{ detailData.title }}</h1>
                 <span>
-                  <span class="a-price-symbol">¥</span>
+                  <span class="a-price-symbol">$</span>
                   <span class="a-price">{{ detailData.price }}</span>
                 </span>
                 <div class="translators flex-view" style="">
@@ -269,7 +269,8 @@ const handleOrder = (detailData) => {
       title: detailData.title,
       cover: detailData.cover,
       price: detailData.price,
-      day: detailData.day
+      day: detailData.day,
+      classification_title: detailData.classification_title
     }
   })
 }

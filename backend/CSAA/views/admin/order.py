@@ -5,8 +5,9 @@ from rest_framework.decorators import api_view, authentication_classes
 
 from CSAA import utils
 from CSAA.auth.authentication import AdminTokenAuthtication
+from CSAA.course_conflicts import selected_slot_conflict, student_slot_conflict
 from CSAA.handler import APIResponse
-from CSAA.models import Order, Thing
+from CSAA.models import Child, Lesson, Order, Thing, TrialRequest
 from CSAA.serializers import OrderSerializer, ThingSerializer
 
 
@@ -32,6 +33,11 @@ def create(request):
         return APIResponse(code=1, msg='创建订单参数错误')
 
     thing = Thing.objects.get(pk=data['thing'])
+    child = Child.objects.get(pk=data['child']) if data.get('child') else None
+    conflict = student_slot_conflict(child, thing)
+    if conflict:
+        return APIResponse(code=1, msg=conflict)
+
     count = data['count']
     #if thing.repertory < int(count):
         #return APIResponse(code=1, msg='课程数量不足')
@@ -196,12 +202,53 @@ def check_in_order(request):
     try:
         id = request.GET.get('id')
         order = Order.objects.get(id=id)
-        thing = Thing.objects.get(id=order.thing_id)
     except Order.DoesNotExist:
         return APIResponse(code=1, msg='订单不存在')
 
     if order.status == 6:  # 如果订单已经入住
         return APIResponse(code=1, msg='已入住')
+
+    trial_request = TrialRequest.objects.filter(package_order=order).select_related(
+        'robotics_class',
+        'coding_class',
+        'math_class',
+        'child',
+    ).first()
+
+    if trial_request:
+        trial_things = [
+            thing for thing in [
+                trial_request.robotics_class,
+                trial_request.coding_class,
+                trial_request.math_class,
+            ]
+            if thing
+        ]
+        conflict = selected_slot_conflict(trial_things)
+        if conflict:
+            return APIResponse(code=1, msg=conflict)
+
+        for thing in trial_things:
+            conflict = student_slot_conflict(
+                trial_request.child,
+                thing,
+                exclude_order_id=order.id,
+                exclude_trial_request_id=trial_request.id,
+            )
+            if conflict:
+                return APIResponse(code=1, msg=conflict)
+
+        for thing in trial_things:
+            lesson = Lesson.objects.get_or_create(thing=thing)[0]
+            lesson.try_students.add(trial_request.child)
+            lesson.save()
+
+        trial_request.status = 'scheduled'
+        trial_request.save()
+        order.status = 6
+        order.save()
+        serializer = OrderSerializer(order)
+        return APIResponse(code=0, msg='更新成功', data=serializer.data)
 
     data = {
         'status': 6  # 修改状态为入住

@@ -272,6 +272,35 @@ class CourseAdjustment(models.Model):
     class Meta:
         db_table = "b_course_adjustment"
 
+
+class TrialRequest(models.Model):
+    STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('scheduled', 'Scheduled'),
+        ('canceled', 'Canceled'),
+    )
+
+    id = models.BigAutoField(primary_key=True)
+    parent = models.ForeignKey(User, on_delete=models.CASCADE, null=True, related_name='trial_requests')
+    child = models.ForeignKey(Child, on_delete=models.CASCADE, null=True, related_name='trial_requests')
+    robotics_class = models.ForeignKey(Thing, on_delete=models.SET_NULL, null=True, blank=True, related_name='trial_robotics_requests')
+    coding_class = models.ForeignKey(Thing, on_delete=models.SET_NULL, null=True, blank=True, related_name='trial_coding_requests')
+    math_class = models.ForeignKey(Thing, on_delete=models.SET_NULL, null=True, blank=True, related_name='trial_math_requests')
+    package_order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True, related_name='trial_package_requests')
+    robotics_order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True, related_name='trial_robotics_requests')
+    coding_order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True, related_name='trial_coding_requests')
+    math_order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True, related_name='trial_math_requests')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    parent_note = models.TextField(max_length=1000, blank=True, null=True)
+    admin_note = models.TextField(max_length=1000, blank=True, null=True)
+    created_time = models.DateTimeField(auto_now_add=True, null=True)
+    updated_time = models.DateTimeField(auto_now=True, null=True)
+
+    class Meta:
+        db_table = "b_trial_request"
+
 # 广告信息表
 class Ad(models.Model):
     id = models.BigAutoField(primary_key=True)  # id

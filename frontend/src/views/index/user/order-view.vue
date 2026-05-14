@@ -48,10 +48,17 @@
                   <div class="flex-between flex-top flex-view">
                     <div>
                       <h2 class="name">{{ item.title }}</h2>
-                      <p class="class-time">
+                      <p v-if="!isTrialOrder(item)" class="class-time">
                         {{ item.day || 'Day TBD' }} <span v-if="item.time_title">| {{ item.time_title }}</span>
                         <span v-if="item.room_title"> | {{ item.room_title }}</span>
                       </p>
+                      <div v-else class="trial-slot-lines">
+                        <p v-for="slot in item.trial_slots" :key="slot.label">
+                          <span class="trial-label">{{ slot.label }}</span>
+                          <span class="trial-course">{{ slot.title }}</span>
+                          <span class="trial-meta">{{ formatTrialSlot(slot, item) }}</span>
+                        </p>
+                      </div>
                     </div>
                     <span class="count">x{{ item.num }}</span>
                   </div>
@@ -73,14 +80,15 @@
           <div class="bottom flex-view">
             <div class="left">
               <span class="text">A total of {{ item.num }} lessons</span>
-              <span class="open" @click="handleDetail(item.thing)">Class Detail</span>
+              <span v-if="isTrialOrder(item)" class="open" @click="openTrialDetail(item)">Trial Detail</span>
+              <span v-else class="open" @click="handleDetail(item.thing)">Class Detail</span>
               <span v-if="item.status === 6" class="open danger-action" @click="openCancelClass(item)">Cancel Class</span>
             </div>
             <div class="right flex-view">
 
 
               <span class="text">Total</span>
-              <span class="money">¥ {{ item.amount }}</span>
+              <span class="money">$ {{ item.amount }}</span>
             </div>
           </div>
         </div>
@@ -98,10 +106,50 @@
     >
       <div class="cancel-form">
         <p class="hint">Requests must be submitted at least 48 hours before class. For special cases, please call or email admin.</p>
-        <label>Class date</label>
-        <input v-model="cancelModal.lessonDate" class="date-input" type="date" />
+        <template v-if="isTrialOrder(cancelModal.order)">
+          <label>Trial class</label>
+          <select v-model="cancelModal.trialClassId" class="date-input">
+            <option value="">Please select a trial class</option>
+            <option
+              v-for="slot in cancelTrialSlots"
+              :key="slot.label"
+              :value="slot.class_id"
+            >
+              {{ slot.label }} - {{ slot.title }} - {{ formatTrialSlot(slot, cancelModal.order) }}
+            </option>
+          </select>
+        </template>
+        <template v-else>
+          <label>Class date</label>
+          <input v-model="cancelModal.lessonDate" class="date-input" type="date" />
+        </template>
         <label>Message to admin</label>
         <textarea v-model="cancelModal.parentNote" class="note-input" rows="4" placeholder="Optional note"></textarea>
+      </div>
+    </a-modal>
+    <a-modal
+      v-model:visible="trialDetailModal.visible"
+      title="Trial Package Detail"
+      :footer="null"
+      width="680px"
+    >
+      <div v-if="trialDetailModal.order" class="trial-detail-modal">
+        <div class="trial-detail-summary">
+          <span>Child: <b>{{ trialDetailModal.order.child_name || '-' }}</b></span>
+          <span>Lessons: <b>{{ trialDetailModal.order.num }}</b></span>
+          <span>Total: <b>$ {{ trialDetailModal.order.amount }}</b></span>
+        </div>
+        <div
+          v-for="slot in trialDetailModal.order.trial_slots"
+          :key="slot.label"
+          class="trial-detail-row"
+        >
+          <div class="trial-detail-label">{{ slot.label }}</div>
+          <div class="trial-detail-main">
+            <div class="trial-detail-title">{{ slot.title }}</div>
+            <div class="trial-detail-meta">{{ formatTrialSlot(slot, trialDetailModal.order) }}</div>
+          </div>
+        </div>
       </div>
     </a-modal>
   </div>
@@ -126,7 +174,12 @@ const cancelModal = reactive({
   visible: false,
   order: null,
   lessonDate: '',
+  trialClassId: '',
   parentNote: '',
+})
+const trialDetailModal = reactive({
+  visible: false,
+  order: null,
 })
 
 onMounted(() => {
@@ -174,6 +227,67 @@ const getOrderStatusLabel = (status) => {
   }
   return 'Unknown'
 }
+const isTrialOrder = (item) => {
+  return !!(item && item.trial_slots && item.trial_slots.length)
+}
+
+const dayIndex = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+}
+
+const parseDateText = (value) => {
+  if (!value) return null
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!match) return null
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+}
+
+const formatDateText = (date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const getTrialSlotDate = (slot, order) => {
+  if (slot.date) return slot.date
+  if (!slot.day || dayIndex[slot.day] === undefined) return ''
+
+  const baseDate = parseDateText(order && order.order_time)
+  if (!baseDate) return ''
+
+  const daysAhead = (dayIndex[slot.day] - baseDate.getDay() + 7) % 7
+  const date = new Date(baseDate)
+  date.setDate(baseDate.getDate() + daysAhead)
+  return formatDateText(date)
+}
+
+const formatTrialSlot = (slot, order) => {
+  if (slot.status === 'not_configured') {
+    return 'Not added yet'
+  }
+  const parts = []
+  const slotDate = getTrialSlotDate(slot, order)
+  if (slotDate) parts.push(slotDate)
+  if (slot.day) parts.push(slot.day)
+  if (slot.time) parts.push(slot.time)
+  if (slot.room) parts.push(slot.room)
+  return parts.length ? parts.join(' | ') : 'Time TBD'
+}
+
+const cancelTrialSlots = computed(() => {
+  if (!cancelModal.order || !cancelModal.order.trial_slots) {
+    return []
+  }
+  return cancelModal.order.trial_slots.filter((slot) => slot.status !== 'not_configured' && slot.class_id)
+})
+
 const getOrderList = () => {
   loading.value = true
   let userId = userStore.user_id
@@ -197,9 +311,19 @@ const handleDetail = (thingId) => {
   window.open(text.href, '_blank')
 }
 
+const openTrialDetail = (item) => {
+  trialDetailModal.order = item
+  trialDetailModal.visible = true
+}
+
 const openCancelClass = (item) => {
   cancelModal.order = item
   cancelModal.lessonDate = ''
+  cancelModal.trialClassId = ''
+  if (isTrialOrder(item)) {
+    const firstSlot = (item.trial_slots || []).find((slot) => slot.status !== 'not_configured' && slot.class_id)
+    cancelModal.trialClassId = firstSlot ? String(firstSlot.class_id) : ''
+  }
   cancelModal.parentNote = ''
   cancelModal.visible = true
 }
@@ -209,14 +333,19 @@ const submitCancelClass = () => {
     message.error('Please select an order')
     return
   }
-  if (!cancelModal.lessonDate) {
+  if (isTrialOrder(cancelModal.order) && !cancelModal.trialClassId) {
+    message.error('Please select the trial class')
+    return
+  }
+  if (!isTrialOrder(cancelModal.order) && !cancelModal.lessonDate) {
     message.error('Please select the class date')
     return
   }
   createCancelRequestApi({
     order_id: cancelModal.order.id,
     user_id: userStore.user_id,
-    lesson_date: cancelModal.lessonDate,
+    lesson_date: isTrialOrder(cancelModal.order) ? '' : cancelModal.lessonDate,
+    trial_class_id: isTrialOrder(cancelModal.order) ? cancelModal.trialClassId : '',
     parent_note: cancelModal.parentNote,
   }).then(res => {
     if (res.code !== 0) {
@@ -323,27 +452,26 @@ const handlePay = (item) => {
 
   .content {
     padding: 12px 0;
-    overflow: hidden;
+    overflow: visible;
 
     .left-list {
-      overflow: hidden;
-      height: 132px;
+      min-height: 132px;
       -webkit-box-flex: 2;
       -ms-flex: 2;
       flex: 2;
       padding-right: 16px;
 
       .list-item {
-        height: 60px;
+        min-height: 60px;
         margin-bottom: 12px;
-        overflow: hidden;
         cursor: pointer;
       }
 
       .thing-img {
         width: 48px;
-        height: 100%;
+        height: 60px;
         margin-right: 12px;
+        object-fit: cover;
       }
 
       .detail {
@@ -497,6 +625,66 @@ const handlePay = (item) => {
 
 .order-item-view:first-child {
   margin-top: 16px;
+}
+
+.trial-slot-lines {
+  margin-top: 4px;
+}
+
+.trial-slot-lines p {
+  display: grid;
+  grid-template-columns: 70px minmax(90px, 1fr) minmax(180px, 1.5fr);
+  gap: 8px;
+  align-items: center;
+  color: #475569;
+  font-size: 13px;
+  line-height: 18px;
+  margin: 3px 0;
+}
+
+.trial-label {
+  color: #315c9e;
+  font-weight: 600;
+}
+
+.trial-course {
+  color: #152844;
+  font-weight: 600;
+}
+
+.trial-meta {
+  color: #5f77a6;
+}
+
+.trial-detail-summary {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  color: #475569;
+  margin-bottom: 16px;
+}
+
+.trial-detail-row {
+  display: flex;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid #e5edf3;
+}
+
+.trial-detail-label {
+  width: 84px;
+  color: #315c9e;
+  font-weight: 600;
+}
+
+.trial-detail-title {
+  color: #152844;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.trial-detail-meta {
+  color: #5f77a6;
 }
 
 .cancel-form {

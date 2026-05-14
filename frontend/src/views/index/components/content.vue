@@ -44,7 +44,8 @@
             @click="selectCourse(course.title)"
           >
             <div class="course-cover">
-              <img :src="course.cover" :alt="course.title" />
+              <img v-if="course.cover" :src="course.cover" :alt="course.title" />
+              <div v-else class="course-cover-placeholder">{{ course.isTrialPackage ? 'Trial' : course.title }}</div>
             </div>
             <div class="course-info">
               <h3>{{ course.title }}</h3>
@@ -128,6 +129,7 @@ const contentData = reactive({
 });
 
 const selectedCourseTitle = ref('');
+const trialGroupTitle = 'Trial Package';
 
 onMounted(() => {
   initSider();
@@ -151,23 +153,9 @@ const getSelectedKey = () => {
   return contentData.selectedKeys.length > 0 ? contentData.selectedKeys[0] : -1;
 };
 
-const isTrialCategory = (item) => {
-  const title = String(item?.title || '').trim().toLowerCase();
-  return title === 'trial' || title === 'trial package';
-};
-
-const getSelectedCategory = () => {
-  const selectedKey = getSelectedKey();
-  return contentData.cData.find((item) => String(item.key) === String(selectedKey));
-};
-
 const onSelect = (selectedKeys) => {
   contentData.selectedKeys = selectedKeys;
   contentData.selectTagId = -1;
-  if (isTrialCategory(getSelectedCategory())) {
-    router.push({ name: 'confirm', query: { trial: '1' } });
-    return;
-  }
   getThingList({ c: getSelectedKey() });
 };
 
@@ -188,7 +176,7 @@ const getThingList = (params) => {
       }));
 
       const groups = buildCourseGroups(contentData.thingData);
-      selectedCourseTitle.value = groups[0]?.title || '';
+      selectedCourseTitle.value = groups.find((item) => !item.isTrialPackage)?.title || groups[0]?.title || '';
     })
     .catch((err) => {
       console.log(err);
@@ -199,6 +187,9 @@ const getThingList = (params) => {
 const buildCourseGroups = (items) => {
   const grouped = new Map();
   items.forEach((item) => {
+    if (String(item.classification_title || '').trim().toLowerCase() === 'trial') {
+      return;
+    }
     const title = item.title || 'Untitled';
     const groupKey = title.trim().toLowerCase();
     if (!grouped.has(groupKey)) {
@@ -215,10 +206,30 @@ const buildCourseGroups = (items) => {
     group.slots.push(item);
   });
 
-  return Array.from(grouped.values()).sort((a, b) => a.title.localeCompare(b.title));
+  const groups = Array.from(grouped.values()).sort((a, b) => a.title.localeCompare(b.title));
+  if (shouldShowTrialPackage()) {
+    groups.push({
+      title: trialGroupTitle,
+      cover: '',
+      slots: [],
+      isTrialPackage: true,
+    });
+  }
+  return groups;
 };
 
 const courseGroups = computed(() => buildCourseGroups(contentData.thingData));
+
+const selectedCategoryTitle = computed(() => {
+  const selectedKey = getSelectedKey();
+  const category = contentData.cData.find((item) => String(item.key) === String(selectedKey));
+  return category?.title || 'All';
+});
+
+const shouldShowTrialPackage = () => {
+  const categoryTitle = String(selectedCategoryTitle.value || '').trim().toLowerCase();
+  return contentData.selectTagId === -1 && (categoryTitle === 'all' || categoryTitle === 'trial');
+};
 
 const selectedCourse = computed(() => {
   return courseGroups.value.find((item) => item.title === selectedCourseTitle.value);
@@ -255,6 +266,11 @@ const openDetail = (slot) => {
   router.push({ name: 'detail', query: { id: slot.id } });
 };
 
+watch(selectedCourse, (course) => {
+  if (course?.isTrialPackage) {
+    router.push({ name: 'trial' });
+  }
+});
 </script>
 
 <style scoped lang="less">
@@ -326,7 +342,6 @@ h4 {
   align-items: flex-end;
   justify-content: space-between;
   margin-bottom: 22px;
-  gap: 16px;
 }
 
 .booking-header h2 {
@@ -378,6 +393,18 @@ h4 {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.course-cover-placeholder {
+  background: linear-gradient(135deg, #e0f2fe, #fef3c7);
+  width: 100%;
+  height: 100%;
+  color: #1d4ed8;
+  font-size: 24px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .course-info {
