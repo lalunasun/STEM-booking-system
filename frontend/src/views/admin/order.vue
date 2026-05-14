@@ -140,6 +140,11 @@
     pageSize: 20, //10
     page: 1,
   });
+  const ORDER_BADGE_REFRESH_EVENT = 'admin-order-badge-refresh';
+
+  const refreshOrderBadge = () => {
+    window.dispatchEvent(new Event(ORDER_BADGE_REFRESH_EVENT));
+  };
 
 
   onMounted(() => {
@@ -191,6 +196,7 @@
     checkInApi({ id: record.id })
         .then((res) => {
           getDataList();//刷新入住列表
+          refreshOrderBadge();
           message.success('Successfully scheduled')
         })
         .catch((err) => {
@@ -203,6 +209,7 @@
     checkOutApi({ id: record.id })
         .then((res) => {
           getDataList();
+          refreshOrderBadge();
           message.success('订单完成')
         })
         .catch((err) => {
@@ -219,6 +226,7 @@
     cancelApi({ id: record.id })
         .then((res) => {
           getDataList();
+          refreshOrderBadge();
           message.success('取消成功')
         })
         .catch((err) => {
@@ -233,6 +241,7 @@
     deleteApi({ ids: record.id })
       .then((res) => {
         getDataList();
+        refreshOrderBadge();
       })
       .catch((err) => {
         message.error(err.msg || '操作失败');
@@ -264,6 +273,7 @@
         message.success('删除成功');
         data.selectedRowKeys = [];
         getDataList();
+        refreshOrderBadge();
       })
       .catch((err) => {
         message.error(err.msg || '操作失败');

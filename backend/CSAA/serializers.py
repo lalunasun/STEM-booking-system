@@ -734,8 +734,68 @@ class LessonDetailSerializer(serializers.ModelSerializer):
 
         return students
 
+    def _date_part(self, value):
+        if not value:
+            return None
+        if hasattr(value, 'date'):
+            return value.date()
+        return value
+
+    def _next_trial_date(self, order, thing):
+        day_index = {
+            'Mon': 0,
+            'Tue': 1,
+            'Wed': 2,
+            'Thu': 3,
+            'Fri': 4,
+            'Sat': 5,
+            'Sun': 6,
+        }
+        if not order or not thing or thing.day not in day_index:
+            return None
+
+        base_date = self._date_part(order.order_time) or datetime.date.today()
+        days_ahead = (day_index[thing.day] - base_date.weekday()) % 7
+        return base_date + datetime.timedelta(days=days_ahead)
+
     def get_try_students(self, obj):
-        return self._serialize_students(obj.try_students.all(), 'try')
+        trial_requests = TrialRequest.objects.filter(
+            Q(robotics_class=obj.thing) | Q(coding_class=obj.thing) | Q(math_class=obj.thing),
+            child__isnull=False,
+            package_order__status__in=[2, 6],
+            status__in=['approved', 'scheduled'],
+        ).select_related(
+            'child',
+            'child__parent',
+            'parent',
+            'package_order',
+        )
+        students = []
+        seen = set()
+
+        for trial_request in trial_requests:
+            child = trial_request.child
+            parent = trial_request.parent or child.parent
+            trial_date = self._next_trial_date(trial_request.package_order, obj.thing)
+            seen.add(child.id)
+            students.append({
+                'id': child.id,
+                'name': child.name,
+                'parent_name': (parent.nickname or parent.username) if parent else None,
+                'phone': parent.mobile if parent else None,
+                'trial_request_id': trial_request.id,
+                'trial_date': trial_date.strftime('%Y-%m-%d') if trial_date else None,
+                'adjustment_status': 'trial',
+            })
+
+        for student in obj.try_students.all():
+            if student.id in seen:
+                continue
+            serialized = ChildSerializer(student, context={'lesson': obj, 'student_type': 'try'}).data
+            serialized['adjustment_status'] = 'trial'
+            students.append(serialized)
+
+        return students
 
     def get_leave_students(self, obj):
         canceled_adjustments = CourseAdjustment.objects.filter(

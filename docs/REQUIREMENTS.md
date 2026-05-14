@@ -1,7 +1,7 @@
 # CSAA Booking System Requirements
 
 Version: 0.1
-Last updated: 2026-05-11
+Last updated: 2026-05-14
 
 ## 1. Project Goal
 
@@ -330,7 +330,7 @@ Admin test workflow:
 
 Trial should not be booked as a normal Class. It should behave as a separate trial package / experience product that is visible on the parent side, with booking and scheduling logic separated from regular course registration.
 
-The Trial package includes 3 trial lessons by default:
+The Trial package includes 3 trial lessons by default, currently priced at CAD $98:
 
 1. One Robotics lesson.
 2. One Coding lesson.
@@ -345,12 +345,20 @@ Current business rules:
   - Available Robotics slots.
   - Available Coding slots.
   - Available Math slots.
-- Parent can choose one time slot for each of the 3 trial lessons.
+- In the first version, parent must choose one Robotics slot and one Coding slot. Math remains a future placeholder and is not required yet.
+- Trial slot choices must show the exact date, weekday, time, and room.
+- A Trial package creates one package order only after the required choices are complete, not multiple normal class orders.
+- Trial package total price is fixed at CAD $98, and the order quantity displays as 3 lessons.
+- Trial package starts as `Pending payment`.
+- Parent side keeps a `Pay` button; after payment, the order enters the admin scheduling flow.
+- Admin scheduling must place the student into each selected concrete class slot from the Trial package.
 - Recommended slots must have available capacity and should be within allowed booking windows.
 - The Trial package itself does not occupy a seat; capacity is occupied by the specific selected class slots.
 - Admin schedule and class detail should show Trial students under `Trial Students`.
 - Trial students count toward the target `Room + Day + Time` capacity.
 - Math can be kept as a placeholder for now. If no Math classes exist yet, the parent side should show `Coming soon` or ask the parent to contact admin.
+- `Pending payment` Trial orders should not occupy the schedule or room capacity. Trial students appear only after payment and admin scheduling.
+- Trial students should have a recognizable marker on the main schedule, and the class detail `Trial Students` tab should show the specific trial date.
 
 Draft recommendation rules:
 
@@ -358,16 +366,20 @@ Draft recommendation rules:
 - Coding trial should prefer available classes in the Coding category.
 - Math trial should later prefer available classes in the Math category.
 - Do not recommend Full slots.
-- Do not recommend slots that conflict with the student's existing active classes.
+- Do not recommend slots that conflict with the student's existing active classes, paid unscheduled Trial choices, scheduled Trial lessons, or confirmed makeup classes.
+- Selected Trial slots cannot conflict with each other. If a conflict is selected, the system should warn the parent and allow a different choice in the other column.
 - Later, recommendation can be improved by student age/level.
 
-Suggested implementation phases:
+Current implementation guidance:
 
-1. Add a Trial package / Trial request data structure.
-2. Add a parent-side Trial selection page with three category choices.
-3. Add an admin-side Trial request review/confirmation entry.
-4. After confirmation, add the student to each target class's `Trial Students`.
-5. Show Trial students on the main schedule and count them toward capacity.
+1. Use Trial request records to store concrete choices inside the package.
+2. Parent Trial page shows Robotics, Coding, and a Math placeholder column.
+3. Each column shows the nearest available options first to keep the page manageable.
+4. Submission creates one Trial package order.
+5. Parent pays the order.
+6. Admin schedules each selected slot from the order page.
+7. After scheduling, the student is added to each target class's `Trial Students`.
+8. Main schedule shows Trial students and counts them toward capacity.
 
 ## 11. Schedule Module
 
@@ -386,13 +398,20 @@ Current features:
 - Lunch separator.
 - FULL badge.
 - Click class row to open class detail.
+- Search by student name, case-insensitive.
+- Keep the top search/view controls sticky while scrolling.
+- Keep weekday headers sticky during vertical scroll.
+- When opening class detail from the schedule, pass the concrete date so the detail page can filter normal, rescheduled, trial, and absent/canceled records for that date.
+- If the selected date has Rescheduled / Trial / Absent students, the corresponding class detail tab shows a count badge.
+- The left Order menu shows a red dot when paid but unscheduled orders exist.
+- Hover student dropdowns must not block clicking the class card.
 
 Future improvements:
 
-- Full logic should use room/time shared capacity.
 - Add filters by room, category, term, and student.
 - Show room grouping more clearly.
 - Support student-specific schedule view.
+- Add admin note markers that can be shown on schedule cards and detail views.
 
 ## 12. Query Module
 
@@ -413,11 +432,22 @@ Required query fields:
 - Remaining lesson count
 - Order status
 - Leave/reschedule records
+- Course status: active / finished / canceled / pending payment / scheduled
+- Trial / Rescheduled / Absent markers
+- Concrete lesson date, weekday, time, and room
 
 Recommended admin query output:
 
 | Student | Parent | Course | Day/Time | Term | Total Lessons | Used | Remaining |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+
+Student module display rules:
+
+- List page should show core information only: student name, age, and active class summary.
+- Active class summary should include class name, date/weekday, time, and room.
+- Detail page should show all course records, including active classes, finished classes, trial classes, rescheduled classes, and canceled/absent records.
+- Finished classes must remain as historical records and should not be removed from the student profile.
+- Student name search should be case-insensitive.
 
 ## 13. Leave, Makeup, and Reschedule
 
@@ -734,25 +764,37 @@ Completed or partially completed:
 - Time sorting.
 - Local test data creation.
 - Local image file recovery.
+- Parent course portal grouped by class name, with duplicate names normalized to the newer generated course images.
+- Parent Trial package selection page.
+- Trial package order, payment, and admin scheduling flow.
+- Trial students on the main schedule and `Trial Students` tab.
+- Student name search on the main schedule.
+- Sticky schedule toolbar and weekday headers.
+- Count badges on class detail Rescheduled / Trial / Absent tabs.
+- Red dot on the Order menu for paid but unscheduled orders.
+- Basic course adjustment loop: parent cancel request, admin approval, makeup eligibility, makeup recommendations, and admin makeup scheduling.
+- Makeup recommendation avoids recommending a time when the student already has a class.
 
 ## 18. Known Risks
 
-- Full logic currently needs to be upgraded to shared room/time capacity.
+- Full logic now uses capacity checks in key flows, but shared Room + Day + Time edge cases still need more real-data validation.
 - Class needs a clearer term relationship.
-- Test data should be rebuilt around real room compatibility rules.
+- Historical test data may still contain legacy states, duplicate trial choices, or unreasonable schedules and should continue to be cleaned.
 - Uploaded images are local files and are not stored in GitHub.
-- Parent mobile flow has not started.
-- Reschedule rules need to be finalized before implementation.
+- Parent mobile flow has not formally started; the web flow is being used to validate business rules first.
+- Trial package Math remains a placeholder and must be completed after Math classes exist.
+- AWS/public demo deployment is still early and needs process persistence, static asset handling, database backups, and access control before production use.
 
 ## 19. Suggested Next Steps
 
 Web admin:
 
-1. Upgrade Full logic to shared Room + Day + Time capacity.
-2. Rebuild test course data based on real room compatibility.
-3. Add student-centered query module.
-4. Clarify Class-Term relationship.
-5. Continue updating this requirements document.
+1. Continue validating Full, Trial, Rescheduled, and Absent capacity behavior and detail-page display.
+2. Improve Student detail to show full active/finished/trial/rescheduled/canceled course history.
+3. Clarify Class-Term relationship and reduce temporary legacy term data.
+4. Add admin note markers for special rescheduling, phone conversations, and manual exceptions.
+5. Continue cleaning and adding test course data based on real room compatibility.
+6. Continue updating this requirements document and the test case document.
 
 Mobile:
 
@@ -769,3 +811,46 @@ Phase 2:
 3. Makeup recommendation.
 4. Reminder system.
 5. Course recommendation.
+
+## 20. Recent Confirmed Requirements (2026-05-14)
+
+This section captures recently confirmed requirements that may still be refined during testing.
+
+### 20.1 Main Schedule Reminders and Markers
+
+- Main schedule needs student name search, case-insensitive.
+- Schedule toolbar and weekday headers should remain visible while scrolling.
+- Course cards show a student summary; hover expansion shows student names only, one per line.
+- If the selected date/time has makeup students, the `Rescheduled Students` tab shows a count badge.
+- If the selected date/time has Trial students, the `Trial Students` tab shows a count badge.
+- If the selected date/time has canceled/absent records, the `Absent Students` tab shows a count badge.
+- The left Order menu shows a red dot when any `Paid` order is waiting for scheduling.
+
+### 20.2 Order and Scheduling Boundaries
+
+- `Pending payment` orders do not appear on the main schedule and do not occupy capacity.
+- `Paid` means the parent has paid, but admin still needs to schedule the student.
+- A student appears on the main schedule and class detail only after admin scheduling.
+- A Trial package contains multiple concrete selected slots but appears as one package order to the parent.
+- Admin scheduling must schedule each selected Trial package slot into its corresponding class.
+
+### 20.3 Student Profile
+
+- Student is the center object for future search and operations.
+- Student list should show only a compact summary.
+- Student detail should show:
+  - Parent and contact information.
+  - Current active classes.
+  - Finished classes.
+  - Trial records.
+  - Rescheduled records.
+  - Absent / canceled records.
+  - Term, date, weekday, time, room, and status for every course record.
+
+### 20.4 Trial Package
+
+- Trial is currently sold as a package: CAD $98 / 3 lessons.
+- First version requires Robotics and Coding choices; Math shows Coming soon.
+- Every selectable slot must show a concrete date, not only weekday.
+- Trial choices cannot have internal time conflicts.
+- Trial students enter the main schedule after admin scheduling and show in the `Trial Students` tab.

@@ -45,6 +45,7 @@
               <span class="tab" :class="selectTabIndex === index ? 'tab-select' : ''" v-for="(item, index) in tabData"
                 :key="index" @click="selectTab(index)">
                 {{ item }}
+                <span v-if="getTabBadgeCount(index) > 0" class="tab-badge">{{ getTabBadgeCount(index) }}</span>
               </span>
               <span :style="{ left: tabUnderLeft + 'px' }" class="tab-underline"></span>
             </div>
@@ -105,7 +106,7 @@
                  <div class="right-box">
                   <span>{{ child.phone }}</span>
                  </div>
-                 <span v-if="child.adjustment_status === 'cancel'" class="student-tag cancel-tag">cancel {{ child.cancel_date }}</span>
+                 <span v-if="child.trial_date" class="student-tag trial-tag">trial {{ child.trial_date }}</span>
             </div>
             </div>
 
@@ -124,6 +125,7 @@
                  <div class="right-box">
                   <span>{{ child.phone }}</span>
                  </div>
+                 <span v-if="child.cancel_date" class="student-tag cancel-tag">cancel {{ child.cancel_date }}</span>
             </div>
             </div>
           </div>
@@ -165,6 +167,7 @@ let reData = ref([])
 let tryData = ref([])
 let absData = ref([])
 let students_num = ref(0)
+let classDate = ref('')
 
 onMounted(() => {
   loadLessonPage()
@@ -184,6 +187,7 @@ const loadLessonPage = () => {
 
   thingId.value = String(route.query.id || '').trim()
   lessonId.value = String(route.query.lessonId || '').trim()
+  classDate.value = String(route.query.date || '').trim()
 
   if (!thingId.value) {
     return
@@ -208,6 +212,26 @@ const selectTab = (index) => {
   selectTabIndex.value = index
 
   tabUnderLeft.value = 124 * index
+}
+
+const isSameClassDate = (date) => {
+  if (!classDate.value) {
+    return true
+  }
+  return String(date || '') === classDate.value
+}
+
+const getTabBadgeCount = (index) => {
+  if (index === 1) {
+    return reData.value.filter((child) => isSameClassDate(child.makeup_date)).length
+  }
+  if (index === 2) {
+    return tryData.value.filter((child) => isSameClassDate(child.trial_date)).length
+  }
+  if (index === 3) {
+    return absData.value.filter((child) => isSameClassDate(child.cancel_date)).length
+  }
+  return 0
 }
 
 // 课程信息
@@ -567,6 +591,7 @@ const getStuDetail = () => {
   }
 
   .tab {
+    position: relative;
     margin-right: 20px;
     padding-bottom: 10px;
     display: inline-block;
@@ -584,6 +609,22 @@ const getStuDetail = () => {
   .tab-underline {
     display: none;
   }
+}
+
+.tab-badge {
+  display: inline-flex;
+  min-width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #f5222d;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
 }
 
 .recommend {
@@ -882,5 +923,10 @@ const getStuDetail = () => {
 .reschedule-tag {
   background: #f6ffed;
   color: #166534;
+}
+
+.trial-tag {
+  background: #f5f3ff;
+  color: #6d28d9;
 }
 </style>

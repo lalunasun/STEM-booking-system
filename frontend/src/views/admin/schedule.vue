@@ -48,14 +48,14 @@
               class="event-button"
               :style="getLessonColorStyle(item)"
               type="button"
-              @click="toDetailPage(item)"
+              @click="toDetailPage(item, day.date)"
             >
               <span class="event-name">{{ item.class_name || 'Untitled class' }}</span>
               <span class="student-line">
                 {{ getStudentSummary(item, day.date) || 'No students' }}
               </span>
               <span v-if="isLessonFull(item, day.date)" class="full-badge">FULL</span>
-              <span v-if="hasStudentNames(item, day.date)" class="student-hover-panel" @click.stop>
+              <span v-if="hasStudentNames(item, day.date)" class="student-hover-panel">
                 <span
                   v-for="student in getAllDisplayStudents(item, day.date)"
                   :key="`hover-${item.id}-${student}`"
@@ -80,7 +80,7 @@
         <template #dateCellRender="{ current }">
           <ul class="events">
             <li v-for="item in getListData(current)" :key="`${current.format('YYYY-MM-DD')}-${item.id}`">
-              <button class="month-event-button" type="button" @click="toDetailPage(item)">
+              <button class="month-event-button" type="button" @click="toDetailPage(item, current)">
                 <span class="month-event-title">{{ getLessonLabel(item) }}</span>
                 <span v-if="hasStudentNames(item, current)" class="month-student-list">
                   <span
@@ -234,7 +234,7 @@ onMounted(() => {
   getLessonList();
 });
 
-const toDetailPage = (item: LessonItem) => {
+const toDetailPage = (item: LessonItem, date?: Dayjs) => {
   const thingId = item.thing_id || item.thing;
   const lessonId = item.lesson_id || item.id;
 
@@ -247,6 +247,7 @@ const toDetailPage = (item: LessonItem) => {
     query: {
       id: thingId,
       lessonId,
+      date: date ? date.format('YYYY-MM-DD') : undefined,
     },
   });
 };
@@ -607,6 +608,7 @@ const goNext = () => {
   left: -1px;
   z-index: 10;
   display: none;
+  pointer-events: none;
   min-width: calc(100% + 2px);
   max-width: 240px;
   border: 1px solid var(--event-border, #b7eb8f);

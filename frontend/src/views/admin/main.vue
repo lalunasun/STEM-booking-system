@@ -39,7 +39,10 @@
           </a-menu-item>
           <a-menu-item key="order">
             <dollar-outlined/>
-            <span>Order</span>
+            <span class="menu-label">
+              Order
+              <span v-if="newOrderCount > 0" class="menu-dot" :title="`${newOrderCount} paid order(s) waiting for scheduling`"></span>
+            </span>
           </a-menu-item>
           <a-menu-item key="courseAdjustment">
             <schedule-outlined/>
@@ -113,13 +116,16 @@ import {
   DatabaseOutlined
 } from '@ant-design/icons-vue';
 
-import {ref} from 'vue';
+import {ref, watch, onUnmounted} from 'vue';
 import {useUserStore} from "/@/store";
+import { listApi as listOrderApi } from '/@/api/admin/order';
 
 const userStore = useUserStore();
 
 const selectedKeys = ref<any[]>([])
 const collapsed = ref<boolean>(false)
+const newOrderCount = ref(0)
+const ORDER_BADGE_REFRESH_EVENT = 'admin-order-badge-refresh'
 
 const router = useRouter()
 const route = useRoute()
@@ -134,7 +140,36 @@ const handleClick = ({item, key, keyPath}) => {
 onMounted(() => {
   console.log('当前路由===>', route.name)
   selectedKeys.value = [route.name]
+  loadMenuBadges()
+  window.addEventListener(ORDER_BADGE_REFRESH_EVENT, loadMenuBadges)
+  window.addEventListener('focus', loadMenuBadges)
 })
+
+onUnmounted(() => {
+  window.removeEventListener(ORDER_BADGE_REFRESH_EVENT, loadMenuBadges)
+  window.removeEventListener('focus', loadMenuBadges)
+})
+
+watch(
+  () => route.name,
+  (name) => {
+    selectedKeys.value = [name]
+    loadMenuBadges()
+  }
+)
+
+const loadMenuBadges = () => {
+  listOrderApi({})
+    .then((res) => {
+      const orders = res.data || []
+      // Red dot means: paid orders waiting for admin scheduling only.
+      // Once an order is scheduled, its status becomes 6 and the dot disappears.
+      newOrderCount.value = orders.filter((order) => Number(order.status) === 2).length
+    })
+    .catch((err) => {
+      console.log(err)
+    })
+}
 
 
 const handleLogout = () => {
@@ -183,7 +218,7 @@ const handleLogout = () => {
     line-height: 30px;
   }
 
-  .preview-link:hover {
+.preview-link:hover {
     color: #1890ff;
     border-color: #1890ff;
   }
@@ -191,6 +226,23 @@ const handleLogout = () => {
   .header-quit {
     margin-left: 12px;
   }
+}
+
+.menu-label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.menu-dot {
+  position: absolute;
+  top: 1px;
+  right: -10px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f5222d;
+  box-shadow: 0 0 0 2px rgba(245, 34, 45, 0.18);
 }
 
 
