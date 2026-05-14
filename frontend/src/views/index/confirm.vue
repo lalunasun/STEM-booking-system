@@ -26,30 +26,43 @@
           </div>
           <div v-else class="trial-package-view">
             <h3>Trial Package</h3>
-            <p>Includes one Robotics class, one Coding class, and one Math class. Math scheduling is not available yet.</p>
-            <div class="trial-select-row">
-              <label>Robotics:</label>
-              <a-select
-                placeholder="Select Robotics time"
-                :options="roboticsTrialOptions"
-                v-model:value="trialData.robotics"
-                style="width: 420px;"
-                @change="calculateAmount"
-              />
-            </div>
-            <div class="trial-select-row">
-              <label>Coding:</label>
-              <a-select
-                placeholder="Select Coding time"
-                :options="codingTrialOptions"
-                v-model:value="trialData.coding"
-                style="width: 420px;"
-                @change="calculateAmount"
-              />
-            </div>
-            <div class="trial-select-row muted">
-              <label>Math:</label>
-              <span>No math classes available yet</span>
+            <p>Includes one Robotics class, one Coding class, and Math coming soon.</p>
+            <div class="trial-grid">
+              <div class="trial-course-card">
+                <div class="trial-course-title">
+                  <span>Robotics</span>
+                  <strong>{{ trialData.robotics ? 'Open' : 'Unavailable' }}</strong>
+                </div>
+                <div v-if="trialData.robotics" class="trial-course-info">
+                  <h4>{{ trialData.robotics.title }}</h4>
+                  <span>{{ trialData.robotics.day }} {{ trialData.robotics.time_title || 'Time TBD' }}</span>
+                  <span>{{ trialData.robotics.room_name || 'Room TBD' }}</span>
+                  <span>{{ trialData.robotics.available_seats }} seats left</span>
+                </div>
+                <div v-else class="trial-course-info muted">No open Robotics class</div>
+              </div>
+              <div class="trial-course-card">
+                <div class="trial-course-title">
+                  <span>Coding</span>
+                  <strong>{{ trialData.coding ? 'Open' : 'Unavailable' }}</strong>
+                </div>
+                <div v-if="trialData.coding" class="trial-course-info">
+                  <h4>{{ trialData.coding.title }}</h4>
+                  <span>{{ trialData.coding.day }} {{ trialData.coding.time_title || 'Time TBD' }}</span>
+                  <span>{{ trialData.coding.room_name || 'Room TBD' }}</span>
+                  <span>{{ trialData.coding.available_seats }} seats left</span>
+                </div>
+                <div v-else class="trial-course-info muted">No open Coding class</div>
+              </div>
+              <div class="trial-course-card coming-soon">
+                <div class="trial-course-title">
+                  <span>Math</span>
+                  <strong>Coming Soon</strong>
+                </div>
+                <div class="trial-course-info muted">
+                  Math is included in the package, but there is no math class to schedule yet.
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -168,7 +181,7 @@ const time_period = reactive({
   time: undefined
 })
 
-const trialData = reactive<{ robotics?: number; coding?: number; slots: any[] }>({
+const trialData = reactive<{ robotics?: any; coding?: any; slots: any[] }>({
   robotics: undefined,
   coding: undefined,
   slots: []
@@ -254,45 +267,43 @@ const dayOfWeekMap = {
   "Sat": 6
 }
 
-const slotLabel = (item) => {
-  const seats = item.available_seats ?? '-'
-  return `${item.title} - ${item.day} ${item.time_title || ''} (${item.room_name || 'Room TBD'}, ${seats} seats left)`
+const normalizeCategory = (value?: string) => {
+  return String(value || '').trim().toLowerCase()
 }
 
 const isRoboticsSlot = (item) => {
-  const text = `${item.classification_title || ''} ${item.title || ''}`.toLowerCase()
-  return text.includes('robotic') || text.includes('creator')
+  return normalizeCategory(item.classification_title).includes('robotic')
 }
 
 const isCodingSlot = (item) => {
-  const text = `${item.classification_title || ''} ${item.title || ''}`.toLowerCase()
-  return text.includes('coding') || text.includes('scratch')
+  return normalizeCategory(item.classification_title).includes('coding')
 }
 
-const trialSlotOptions = (predicate) => {
+const trialSlotCandidates = (predicate) => {
   return trialData.slots
     .filter((item) => predicate(item))
     .filter((item) => item.display_status === 'Open')
     .filter((item) => Number(item.available_seats) > 0)
-    .map((item) => ({
-      label: slotLabel(item),
-      value: item.id,
-    }))
+    .sort((a, b) => {
+      const dayA = dayOfWeekMap[a.day] ?? 9
+      const dayB = dayOfWeekMap[b.day] ?? 9
+      if (dayA !== dayB) {
+        return dayA - dayB
+      }
+      return String(a.time_title || '').localeCompare(String(b.time_title || ''))
+    })
 }
 
-const roboticsTrialOptions = computed(() => trialSlotOptions(isRoboticsSlot))
-const codingTrialOptions = computed(() => trialSlotOptions(isCodingSlot))
-
 const getTrialSelectedSlots = () => {
-  return [trialData.robotics, trialData.coding]
-    .filter(Boolean)
-    .map((id) => trialData.slots.find((item) => item.id === id))
-    .filter(Boolean)
+  return [trialData.robotics, trialData.coding].filter(Boolean)
 }
 
 const listTrialThingData = () => {
   listThingApi({}).then((res) => {
     trialData.slots = res.data || []
+    trialData.robotics = trialSlotCandidates(isRoboticsSlot)[0]
+    trialData.coding = trialSlotCandidates(isCodingSlot)[0]
+    calculateAmount()
   }).catch((err) => {
     console.log(err)
     message.error('Failed to load trial class times')
@@ -422,7 +433,7 @@ const handleJiesuan = () => {
     if (trialMode.value) {
       const selectedSlots = getTrialSelectedSlots()
       if (!trialData.robotics || !trialData.coding || selectedSlots.length < 2) {
-        message.warn('Please select Robotics and Coding trial times')
+        message.warn('No available Robotics or Coding trial class')
         return
       }
       calculateAmount()
@@ -596,21 +607,59 @@ const handleJiesuan = () => {
   }
 }
 
-.trial-select-row {
+.trial-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.trial-course-card {
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  min-height: 150px;
+  padding: 14px;
+}
+
+.trial-course-title {
   align-items: center;
   display: flex;
-  gap: 12px;
-  margin-top: 12px;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
 
-  label {
+  span {
     color: #152844;
+    font-size: 16px;
     font-weight: 700;
-    width: 86px;
+  }
+
+  strong {
+    color: #2563eb;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
   }
 }
 
-.trial-select-row.muted {
+.trial-course-card.coming-soon .trial-course-title strong,
+.trial-course-info.muted {
   color: #6f6f6f;
+}
+
+.trial-course-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #334155;
+  font-size: 13px;
+  line-height: 19px;
+
+  h4 {
+    color: #152844;
+    font-size: 15px;
+    line-height: 20px;
+    margin: 0;
+  }
 }
 
 .items {

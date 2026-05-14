@@ -32,9 +32,6 @@
           <h2>Choose a Class</h2>
           <p>Select a course first, then pick a day and time that works for your child.</p>
         </div>
-        <button class="trial-package-button" type="button" @click="openTrialPackage">
-          Trial Package
-        </button>
       </section>
 
       <a-spin :spinning="contentData.loading" style="min-height: 200px;">
@@ -110,6 +107,7 @@ import { BASE_URL } from '/@/store/constants';
 
 const router = useRouter();
 
+const trialPackageKey = 'trial-package';
 const dayOrder = ['Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon'];
 const dayLabels = {
   Mon: 'Monday',
@@ -139,6 +137,7 @@ onMounted(() => {
 
 const initSider = () => {
   contentData.cData.push({ key: '-1', title: 'All' });
+  contentData.cData.push({ key: trialPackageKey, title: 'Trial Package' });
   listClassificationList().then((res) => {
     res.data.forEach((item) => {
       item.key = item.id;
@@ -157,6 +156,10 @@ const getSelectedKey = () => {
 const onSelect = (selectedKeys) => {
   contentData.selectedKeys = selectedKeys;
   contentData.selectTagId = -1;
+  if (getSelectedKey() === trialPackageKey) {
+    router.push({ name: 'confirm', query: { trial: '1' } });
+    return;
+  }
   getThingList({ c: getSelectedKey() });
 };
 
@@ -244,9 +247,6 @@ const openDetail = (slot) => {
   router.push({ name: 'detail', query: { id: slot.id } });
 };
 
-const openTrialPackage = () => {
-  router.push({ name: 'confirm', query: { trial: '1' } });
-};
 </script>
 
 <style scoped lang="less">
@@ -333,23 +333,6 @@ h4 {
   font-size: 14px;
   line-height: 22px;
   margin: 8px 0 0;
-}
-
-.trial-package-button {
-  border: 1px solid #2563eb;
-  background: #2563eb;
-  border-radius: 6px;
-  color: #fff;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 700;
-  height: 38px;
-  padding: 0 16px;
-  white-space: nowrap;
-}
-
-.trial-package-button:hover {
-  background: #1d4ed8;
 }
 
 .course-grid {

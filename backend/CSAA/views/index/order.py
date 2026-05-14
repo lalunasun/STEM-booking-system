@@ -25,6 +25,14 @@ DAY_OF_WEEK = {
 }
 
 
+def _classification_title(thing):
+    return (thing.classification.title if thing.classification else '').strip().lower()
+
+
+def _thing_matches_trial_category(thing, category):
+    return category in _classification_title(thing)
+
+
 def _active_room_time_order_count(thing):
     same_room_things = Thing.objects.filter(tag=thing.tag, day=thing.day, time=thing.time)
     return Order.objects.filter(
@@ -55,6 +63,29 @@ def _first_trial_lesson_date(thing, term):
             return cursor
         cursor += datetime.timedelta(days=1)
     return None
+
+
+def _trial_sort_key(thing):
+    day_order = DAY_OF_WEEK.get(thing.day, 9)
+    time_label = thing.time.time if thing.time else ''
+    return day_order, time_label, thing.id
+
+
+def _open_trial_candidates(category, term):
+    candidates = []
+    things = Thing.objects.filter(
+        classification__title__icontains=category,
+    ).select_related('tag', 'time', 'classification')
+    for thing in things:
+        if str(thing.status) == '1':
+            continue
+        available_seats = _available_seats(thing)
+        if available_seats is not None and available_seats <= 0:
+            continue
+        if not _first_trial_lesson_date(thing, term):
+            continue
+        candidates.append(thing)
+    return sorted(candidates, key=_trial_sort_key)
 
 
 # 获取订单列表
@@ -129,28 +160,37 @@ def create_trial(request):
     term_id = data.get('term')
     thing_ids_value = data.get('thing_ids')
 
-    if not user_id or not child_id or not term_id or not thing_ids_value:
+    if not user_id or not child_id or not term_id:
         return APIResponse(code=1, msg='Trial order parameters are missing')
-
-    try:
-        thing_ids = json.loads(thing_ids_value) if isinstance(thing_ids_value, str) else list(thing_ids_value)
-        thing_ids = [int(thing_id) for thing_id in thing_ids if thing_id]
-    except (TypeError, ValueError):
-        return APIResponse(code=1, msg='Trial class selection is invalid')
-
-    if len(thing_ids) < 2:
-        return APIResponse(code=1, msg='Please select Robotics and Coding trial classes')
 
     try:
         user = User.objects.get(id=user_id)
         child = Child.objects.get(pk=child_id)
         term = Term.objects.get(pk=term_id)
-        things = list(Thing.objects.filter(id__in=thing_ids).select_related('tag', 'time', 'classification'))
     except (User.DoesNotExist, Child.DoesNotExist, Term.DoesNotExist):
         return APIResponse(code=1, msg='Trial order references invalid data')
 
-    if len(things) != len(thing_ids):
-        return APIResponse(code=1, msg='One or more selected trial classes do not exist')
+    if thing_ids_value:
+        try:
+            thing_ids = json.loads(thing_ids_value) if isinstance(thing_ids_value, str) else list(thing_ids_value)
+            thing_ids = [int(thing_id) for thing_id in thing_ids if thing_id]
+        except (TypeError, ValueError):
+            return APIResponse(code=1, msg='Trial class selection is invalid')
+
+        things = list(Thing.objects.filter(id__in=thing_ids).select_related('tag', 'time', 'classification'))
+        if len(things) != len(thing_ids):
+            return APIResponse(code=1, msg='One or more selected trial classes do not exist')
+    else:
+        robotics = _open_trial_candidates('robotic', term)
+        coding = _open_trial_candidates('coding', term)
+        if not robotics or not coding:
+            return APIResponse(code=1, msg='No available Robotics or Coding trial class')
+        things = [robotics[0], coding[0]]
+
+    if len([thing for thing in things if _thing_matches_trial_category(thing, 'robotic')]) != 1:
+        return APIResponse(code=1, msg='Trial package requires one Robotics class')
+    if len([thing for thing in things if _thing_matches_trial_category(thing, 'coding')]) != 1:
+        return APIResponse(code=1, msg='Trial package requires one Coding class')
 
     for thing in things:
         if str(thing.status) == '1':
