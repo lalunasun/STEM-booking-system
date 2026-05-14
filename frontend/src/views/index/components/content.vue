@@ -107,7 +107,6 @@ import { BASE_URL } from '/@/store/constants';
 
 const router = useRouter();
 
-const trialPackageKey = 'trial-package';
 const dayOrder = ['Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon'];
 const dayLabels = {
   Mon: 'Monday',
@@ -137,7 +136,6 @@ onMounted(() => {
 
 const initSider = () => {
   contentData.cData.push({ key: '-1', title: 'All' });
-  contentData.cData.push({ key: trialPackageKey, title: 'Trial Package' });
   listClassificationList().then((res) => {
     res.data.forEach((item) => {
       item.key = item.id;
@@ -153,10 +151,20 @@ const getSelectedKey = () => {
   return contentData.selectedKeys.length > 0 ? contentData.selectedKeys[0] : -1;
 };
 
+const isTrialCategory = (item) => {
+  const title = String(item?.title || '').trim().toLowerCase();
+  return title === 'trial' || title === 'trial package';
+};
+
+const getSelectedCategory = () => {
+  const selectedKey = getSelectedKey();
+  return contentData.cData.find((item) => String(item.key) === String(selectedKey));
+};
+
 const onSelect = (selectedKeys) => {
   contentData.selectedKeys = selectedKeys;
   contentData.selectTagId = -1;
-  if (getSelectedKey() === trialPackageKey) {
+  if (isTrialCategory(getSelectedCategory())) {
     router.push({ name: 'confirm', query: { trial: '1' } });
     return;
   }
