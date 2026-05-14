@@ -1,14 +1,60 @@
 import datetime
+import json
 from datetime import timedelta
 
+from django.db import transaction
 from rest_framework.decorators import api_view, authentication_classes
 
 from CSAA import utils
 
 from CSAA.auth.authentication import TokenAuthtication
 from CSAA.handler import APIResponse
-from CSAA.models import Order, Thing, User, Lesson, Child
+from CSAA.models import Order, Thing, User, Lesson, Child, Term
 from CSAA.serializers import OrderSerializer, ThingSerializer
+
+
+ACTIVE_ORDER_STATUSES = [1, 2, 6]
+DAY_OF_WEEK = {
+    'Mon': 0,
+    'Tue': 1,
+    'Wed': 2,
+    'Thu': 3,
+    'Fri': 4,
+    'Sat': 5,
+    'Sun': 6,
+}
+
+
+def _active_room_time_order_count(thing):
+    same_room_things = Thing.objects.filter(tag=thing.tag, day=thing.day, time=thing.time)
+    return Order.objects.filter(
+        thing__in=same_room_things,
+        child__isnull=False,
+        status__in=ACTIVE_ORDER_STATUSES,
+    ).count()
+
+
+def _available_seats(thing):
+    if not thing.tag or thing.tag.seat is None:
+        return None
+    return int(thing.tag.seat) - _active_room_time_order_count(thing)
+
+
+def _first_trial_lesson_date(thing, term):
+    if not thing.day or thing.day not in DAY_OF_WEEK:
+        return None
+
+    today = datetime.date.today()
+    start = term.expect_time.date() if term.expect_time else today
+    end = term.return_time.date() if term.return_time else start
+    cursor = max(start, today)
+    target_weekday = DAY_OF_WEEK[thing.day]
+
+    while cursor <= end:
+        if cursor.weekday() == target_weekday:
+            return cursor
+        cursor += datetime.timedelta(days=1)
+    return None
 
 
 # 获取订单列表
@@ -53,16 +99,8 @@ def create(request):
     data['return_time'] = return_time  # 设置结课时间
     # 定义日期字符串的格式
 
-    same_room_thing = Thing.objects.filter(tag=thing.tag, day=thing.day, time=thing.time)
-    counts = 0
-    for item in same_room_thing:
-        order = Order.objects.filter(thing=item,
-                                     status__in=['1', '2', '6', '8'])
-        counts = counts + order.count()
-    room_count = thing.tag.seat
-    room_count = int(room_count)
-    total_room_count = room_count - counts
-    if total_room_count == 0:
+    total_room_count = _available_seats(thing)
+    if total_room_count is not None and total_room_count <= 0:
         return APIResponse(code=1, msg=f'Class in this period is FULL')
 
     serializer = OrderSerializer(data=data)
@@ -82,6 +120,77 @@ def create(request):
 
 
 # 取消订单
+@api_view(['POST'])
+@authentication_classes([TokenAuthtication])
+def create_trial(request):
+    data = request.data.copy()
+    user_id = data.get('user')
+    child_id = data.get('child')
+    term_id = data.get('term')
+    thing_ids_value = data.get('thing_ids')
+
+    if not user_id or not child_id or not term_id or not thing_ids_value:
+        return APIResponse(code=1, msg='Trial order parameters are missing')
+
+    try:
+        thing_ids = json.loads(thing_ids_value) if isinstance(thing_ids_value, str) else list(thing_ids_value)
+        thing_ids = [int(thing_id) for thing_id in thing_ids if thing_id]
+    except (TypeError, ValueError):
+        return APIResponse(code=1, msg='Trial class selection is invalid')
+
+    if len(thing_ids) < 2:
+        return APIResponse(code=1, msg='Please select Robotics and Coding trial classes')
+
+    try:
+        user = User.objects.get(id=user_id)
+        child = Child.objects.get(pk=child_id)
+        term = Term.objects.get(pk=term_id)
+        things = list(Thing.objects.filter(id__in=thing_ids).select_related('tag', 'time', 'classification'))
+    except (User.DoesNotExist, Child.DoesNotExist, Term.DoesNotExist):
+        return APIResponse(code=1, msg='Trial order references invalid data')
+
+    if len(things) != len(thing_ids):
+        return APIResponse(code=1, msg='One or more selected trial classes do not exist')
+
+    for thing in things:
+        if str(thing.status) == '1':
+            return APIResponse(code=1, msg=f'{thing.title} is unavailable')
+        available_seats = _available_seats(thing)
+        if available_seats is not None and available_seats <= 0:
+            time_label = thing.time.time if thing.time else ''
+            return APIResponse(code=1, msg=f'{thing.title} {thing.day} {time_label} is FULL')
+        if not _first_trial_lesson_date(thing, term):
+            return APIResponse(code=1, msg=f'{thing.title} has no available trial date in this term')
+
+    created_orders = []
+    with transaction.atomic():
+        for index, thing in enumerate(things):
+            lesson_date = _first_trial_lesson_date(thing, term)
+            lesson_datetime = datetime.datetime.combine(lesson_date, datetime.time.min)
+            order_data = {
+                'order_number': str(utils.get_timestamp() + index),
+                'user': user.id,
+                'thing': thing.id,
+                'count': 1,
+                'num': 1,
+                'child': child.id,
+                'expect_time': lesson_datetime,
+                'return_time': lesson_datetime,
+                'term': term.id,
+                'amount': str(thing.price or 0),
+                'status': 1,
+                'receiver_phone': user.mobile,
+                'remark': f'Trial package - {thing.classification.title if thing.classification else thing.title}',
+            }
+            serializer = OrderSerializer(data=order_data)
+            if not serializer.is_valid():
+                return APIResponse(code=1, msg='Create trial order failed')
+            created_orders.append(serializer.save())
+
+    serializer = OrderSerializer(created_orders, many=True)
+    return APIResponse(code=0, msg='Trial order created', data=serializer.data)
+
+
 @api_view(['POST'])
 @authentication_classes([TokenAuthtication])
 def cancel_order(request):

@@ -32,6 +32,9 @@
           <h2>Choose a Class</h2>
           <p>Select a course first, then pick a day and time that works for your child.</p>
         </div>
+        <button class="trial-package-button" type="button" @click="openTrialPackage">
+          Trial Package
+        </button>
       </section>
 
       <a-spin :spinning="contentData.loading" style="min-height: 200px;">
@@ -240,6 +243,10 @@ const selectCourse = (title) => {
 const openDetail = (slot) => {
   router.push({ name: 'detail', query: { id: slot.id } });
 };
+
+const openTrialPackage = () => {
+  router.push({ name: 'confirm', query: { trial: '1' } });
+};
 </script>
 
 <style scoped lang="less">
@@ -311,6 +318,7 @@ h4 {
   align-items: flex-end;
   justify-content: space-between;
   margin-bottom: 22px;
+  gap: 16px;
 }
 
 .booking-header h2 {
@@ -325,6 +333,23 @@ h4 {
   font-size: 14px;
   line-height: 22px;
   margin: 8px 0 0;
+}
+
+.trial-package-button {
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  height: 38px;
+  padding: 0 16px;
+  white-space: nowrap;
+}
+
+.trial-package-button:hover {
+  background: #1d4ed8;
 }
 
 .course-grid {

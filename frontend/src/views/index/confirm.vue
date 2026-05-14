@@ -7,13 +7,13 @@
           <h3>Order Details</h3>
         </div>
         <div class="cart-list-view">
-          <div class="list-th flex-view">
+          <div v-if="!trialMode" class="list-th flex-view">
             <span class="line-1">Class name</span>
             <span class="line-2">Price</span>
 
             <!--<span class="line-6">操作</span>-->
           </div>
-          <div class="list">
+          <div v-if="!trialMode" class="list">
             <div class="items flex-view">
               <div class="book flex-view">
                 <img :src="pageData.cover">
@@ -22,6 +22,34 @@
               </div>
               <div class="pay">¥{{ pageData.price }}</div>
 
+            </div>
+          </div>
+          <div v-else class="trial-package-view">
+            <h3>Trial Package</h3>
+            <p>Includes one Robotics class, one Coding class, and one Math class. Math scheduling is not available yet.</p>
+            <div class="trial-select-row">
+              <label>Robotics:</label>
+              <a-select
+                placeholder="Select Robotics time"
+                :options="roboticsTrialOptions"
+                v-model:value="trialData.robotics"
+                style="width: 420px;"
+                @change="calculateAmount"
+              />
+            </div>
+            <div class="trial-select-row">
+              <label>Coding:</label>
+              <a-select
+                placeholder="Select Coding time"
+                :options="codingTrialOptions"
+                v-model:value="trialData.coding"
+                style="width: 420px;"
+                @change="calculateAmount"
+              />
+            </div>
+            <div class="trial-select-row muted">
+              <label>Math:</label>
+              <span>No math classes available yet</span>
             </div>
           </div>
         </div>
@@ -93,7 +121,8 @@
 import {message} from "ant-design-vue";
 import Header from '/@/views/index/components/header.vue'
 import Footer from '/@/views/index/components/footer.vue'
-import {createApi} from '/@/api/index/order'
+import {createApi, createTrialApi} from '/@/api/index/order'
+import {listApi as listThingApi} from '/@/api/index/thing'
 import {listApi as listTermApi} from '/@/api/index/term'
 import {listApi as listChildApi} from '/@/api/index/child'
 import {useUserStore} from "/@/store";
@@ -103,6 +132,7 @@ const router = useRouter();
 const route = useRoute();
 const userStore = useUserStore();
 
+const trialMode = computed(() => route.query.trial === '1')
 
 
 const pageData = reactive({
@@ -138,6 +168,12 @@ const time_period = reactive({
   time: undefined
 })
 
+const trialData = reactive<{ robotics?: number; coding?: number; slots: any[] }>({
+  robotics: undefined,
+  coding: undefined,
+  slots: []
+})
+
 
 
 
@@ -153,6 +189,13 @@ onMounted(() => {
   pageData.day = route.query.day
   //pageData.amount = pageData.price
   pageData.amount = pageData.price ? Number(pageData.price) : 0
+  if (trialMode.value) {
+    pageData.title = 'Trial Package'
+    pageData.price = 0
+    pageData.amount = 0
+    pageData.num = 0
+    listTrialThingData()
+  }
   listTermData()
   listChildData()
 })
@@ -211,8 +254,59 @@ const dayOfWeekMap = {
   "Sat": 6
 }
 
+const slotLabel = (item) => {
+  const seats = item.available_seats ?? '-'
+  return `${item.title} - ${item.day} ${item.time_title || ''} (${item.room_name || 'Room TBD'}, ${seats} seats left)`
+}
+
+const isRoboticsSlot = (item) => {
+  const text = `${item.classification_title || ''} ${item.title || ''}`.toLowerCase()
+  return text.includes('robotic') || text.includes('creator')
+}
+
+const isCodingSlot = (item) => {
+  const text = `${item.classification_title || ''} ${item.title || ''}`.toLowerCase()
+  return text.includes('coding') || text.includes('scratch')
+}
+
+const trialSlotOptions = (predicate) => {
+  return trialData.slots
+    .filter((item) => predicate(item))
+    .filter((item) => item.display_status === 'Open')
+    .filter((item) => Number(item.available_seats) > 0)
+    .map((item) => ({
+      label: slotLabel(item),
+      value: item.id,
+    }))
+}
+
+const roboticsTrialOptions = computed(() => trialSlotOptions(isRoboticsSlot))
+const codingTrialOptions = computed(() => trialSlotOptions(isCodingSlot))
+
+const getTrialSelectedSlots = () => {
+  return [trialData.robotics, trialData.coding]
+    .filter(Boolean)
+    .map((id) => trialData.slots.find((item) => item.id === id))
+    .filter(Boolean)
+}
+
+const listTrialThingData = () => {
+  listThingApi({}).then((res) => {
+    trialData.slots = res.data || []
+  }).catch((err) => {
+    console.log(err)
+    message.error('Failed to load trial class times')
+  })
+}
+
 
 const calculateAmount = () => {
+  if (trialMode.value) {
+    const selectedSlots = getTrialSelectedSlots()
+    pageData.num = selectedSlots.length
+    pageData.amount = selectedSlots.reduce((sum, item) => sum + Number(item.price || 0), 0)
+    return
+  }
 
   let termPrice = 0
   termData.term.forEach((item) => {
@@ -322,6 +416,32 @@ const handleJiesuan = () => {
 
     if (!pageData.child) {
       message.warn('Please select a child')
+      return
+    }
+
+    if (trialMode.value) {
+      const selectedSlots = getTrialSelectedSlots()
+      if (!trialData.robotics || !trialData.coding || selectedSlots.length < 2) {
+        message.warn('Please select Robotics and Coding trial times')
+        return
+      }
+      calculateAmount()
+      formData.append('term', String(time_period.time))
+      formData.append('child', String(pageData.child))
+      formData.append('user', userId)
+      formData.append('thing_ids', JSON.stringify(selectedSlots.map((item) => item.id)))
+
+      createTrialApi(formData).then(res => {
+        if (res.code === 0) {
+          message.success('Please pay for the trial orders')
+          router.push({'name': 'pay', query: {'amount': pageData.amount}})
+        } else {
+          message.error(res.msg || 'Failed')
+        }
+      }).catch(err => {
+        console.error(err);
+        message.error(err.msg || 'Failed')
+      })
       return
     }
 
@@ -455,6 +575,42 @@ const handleJiesuan = () => {
       width: 28px;
     }
   }
+}
+
+.trial-package-view {
+  border-bottom: 1px solid #cedce4;
+  padding: 14px 0 22px;
+
+  h3 {
+    color: #152844;
+    font-size: 18px;
+    line-height: 24px;
+    margin: 0 0 8px;
+  }
+
+  p {
+    color: #5f77a6;
+    font-size: 14px;
+    line-height: 22px;
+    margin: 0 0 16px;
+  }
+}
+
+.trial-select-row {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+
+  label {
+    color: #152844;
+    font-weight: 700;
+    width: 86px;
+  }
+}
+
+.trial-select-row.muted {
+  color: #6f6f6f;
 }
 
 .items {

@@ -35,14 +35,14 @@ class ThingSerializer(serializers.ModelSerializer):
             return Order.objects.filter(
                 thing=obj,
                 child__isnull=False,
-                status__in=[2, 6],
+                status__in=[1, 2, 6],
             ).count()
 
         same_room_things = Thing.objects.filter(tag=obj.tag, day=obj.day, time=obj.time)
         return Order.objects.filter(
             thing__in=same_room_things,
             child__isnull=False,
-            status__in=[2, 6],
+            status__in=[1, 2, 6],
         ).count()
 
     def get_available_seats(self, obj):
@@ -107,14 +107,14 @@ class ListThingSerializer(serializers.ModelSerializer):
             return Order.objects.filter(
                 thing=obj,
                 child__isnull=False,
-                status__in=[2, 6],
+                status__in=[1, 2, 6],
             ).count()
 
         same_room_things = Thing.objects.filter(tag=obj.tag, day=obj.day, time=obj.time)
         return Order.objects.filter(
             thing__in=same_room_things,
             child__isnull=False,
-            status__in=[2, 6],
+            status__in=[1, 2, 6],
         ).count()
 
     def get_enrolled_count(self, obj):
