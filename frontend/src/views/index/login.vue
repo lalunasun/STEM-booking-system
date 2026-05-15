@@ -46,6 +46,7 @@ import PwdIcon from '/@/assets/images/pwd-icon.svg';
 
 
 const router = useRouter();
+const route = useRoute();
 const userStore = useUserStore();
 
 const pageData = reactive({
@@ -74,7 +75,12 @@ const handleCreateUser = () => {
 }
 
 const loginSuccess= ()=> {
-  router.push({ name: 'portal' })
+  const redirect = route.query.redirect
+  if (typeof redirect === 'string' && redirect.startsWith('/')) {
+    router.push(redirect)
+  } else {
+    router.push({ name: 'portal' })
+  }
   message.success('Good job！')
 }
 

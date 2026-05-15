@@ -40,6 +40,17 @@ http://127.0.0.1:8000/admin/schedule
 
 The old `http://127.0.0.1:8080` frontend dev server is not the default local workflow anymore.
 
+### Local Entry Points
+
+```text
+Admin dashboard:       http://127.0.0.1:8000/admin/schedule
+Parent web portal:     http://127.0.0.1:8000/index/portal
+Parent mobile web app: http://127.0.0.1:8000/index/mobile
+Mobile shortcut:       http://127.0.0.1:8000/mobile
+```
+
+The parent mobile web app is a separate parent-facing entry. It does not replace the existing web portal.
+
 ## Set Up on Another Computer
 
 ```powershell
@@ -95,6 +106,25 @@ Current test/admin behavior:
 - Payment is simulated by admin status changes.
 - Scheduling is simulated by marking the order as scheduled/checked in.
 - `Canceled` and `Done` orders should remain as history but should not count toward current capacity.
+
+## Parent Mobile Web App
+
+The mobile parent entry is designed around the registered parent workflow. After login, the first screen focuses on the selected child's current learning status instead of showing a course catalog first.
+
+Current mobile v1 behavior:
+
+- Login from `/index/mobile` returns to `/index/mobile` after success.
+- The home page shows a child selector.
+- `Next class` shows the next scheduled class for the selected child.
+- `Current classes` shows the selected child's active scheduled classes with class time and term start/end dates.
+- `Action needed` highlights pending payment and paid-but-not-yet-scheduled orders.
+- The lower part of the same page keeps a mobile-friendly class browsing area.
+- The bottom mobile navigation stays inside the mobile page for `Home`, `Book`, `Reschedule`, `Orders`, and `Kids`.
+
+Current mobile v1 limitations:
+
+- Mobile booking, trial request, order payment, and reschedule submission are displayed as mobile sections/placeholders first.
+- The full production actions still exist in the original parent web portal while mobile-specific second-level pages are being designed.
 
 ## Project Documents
 

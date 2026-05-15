@@ -6,6 +6,10 @@ const constantRouterMap = [
     redirect: '/admin'
   },
   {
+    path: '/mobile',
+    redirect: '/index/mobile'
+  },
+  {
     path: '/index',
     name: 'index',
     redirect: '/index/portal',
@@ -25,6 +29,11 @@ const constantRouterMap = [
         path: 'portal',
         name: 'portal',
         component: () => import('/@/views/index/portal.vue')
+      },
+      {
+        path: 'mobile',
+        name: 'mobile',
+        component: () => import('/@/views/index/mobile.vue')
       },
       {
         path: 'detail',

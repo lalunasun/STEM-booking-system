@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-05-15
+
+- Added a separate parent mobile web app entry:
+  - `/index/mobile`
+  - `/mobile` redirects to `/index/mobile`
+- Changed parent login redirect behavior:
+  - login from mobile returns to `/index/mobile`
+  - default web login still returns to the parent web portal
+- Built mobile Home v1 around the registered parent workflow:
+  - selected child appears first
+  - `Next class` shows the selected child's next scheduled class
+  - `Current classes` shows active classes with schedule and term start/end dates
+  - `Action needed` highlights pending payment and paid orders waiting for admin scheduling
+- Kept mobile navigation inside the mobile page for now:
+  - Home
+  - Book
+  - Reschedule
+  - Orders
+  - Kids
+- Added mobile in-page placeholder sections for class detail, trial package, orders, and reschedule.
+- Refined mobile visual style with a lighter parent-facing palette.
+- Improved local backend startup script to set the backend working directory and local dependency path.
+
+Verification:
+
+- `npm run build` passes in `frontend/`.
+- `/index/mobile` returns HTTP 200 locally.
+
 ## 2026-05-12
 
 - Changed local startup to a single `8000` workflow:

@@ -1,7 +1,7 @@
 # CSAA Booking System Requirements
 
-Version: 0.1
-Last updated: 2026-05-14
+Version: 0.2
+Last updated: 2026-05-15
 
 ## 1. Project Goal
 
@@ -105,6 +105,37 @@ Required parent-side behavior:
 
 - After login, parent should select which child they are booking for.
 - All booking, order, leave, and reschedule actions must include `child_id`.
+
+## 3.1 Parent Mobile Web App
+
+The parent mobile web app is a separate entry from the existing parent web portal.
+
+Entry points:
+
+```text
+/index/mobile
+/mobile
+```
+
+Mobile home priority:
+
+1. Show the selected child's current course status first.
+2. Show the next upcoming scheduled class.
+3. Show active/current classes with term start and end dates.
+4. Show action items such as pending payment or paid orders waiting for admin scheduling.
+5. Keep booking and rescheduling available, but not as the first screen priority.
+
+Mobile v1 rules:
+
+- The mobile app should stay inside the mobile experience when users tap bottom navigation.
+- The existing parent web portal remains available at `/index/portal`.
+- The mobile app should not automatically fall back to old desktop-style pages for common parent actions.
+- Login from mobile should return to `/index/mobile`.
+
+Current v1 limitation:
+
+- Booking, trial request, order payment, and reschedule submission have mobile sections/placeholders first.
+- Full forms can remain in the existing web portal until dedicated mobile second-level pages are built.
 
 ## 4. Room Module
 
