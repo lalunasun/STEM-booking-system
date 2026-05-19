@@ -22,6 +22,8 @@
 - Added mobile in-page placeholder sections for class detail, trial package, orders, and reschedule.
 - Refined mobile visual style with a lighter parent-facing palette.
 - Improved local backend startup script to set the backend working directory and local dependency path.
+- Updated local backend startup to prefer the bundled compatible Python runtime before falling back to system Python.
+- Documented the current AWS Lightsail demo IP: `35.183.120.34`.
 
 Verification:
 

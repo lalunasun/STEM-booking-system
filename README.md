@@ -51,6 +51,16 @@ Mobile shortcut:       http://127.0.0.1:8000/mobile
 
 The parent mobile web app is a separate parent-facing entry. It does not replace the existing web portal.
 
+### Current AWS Demo
+
+```text
+Current Lightsail public IP: 35.183.120.34
+Mobile demo URL:             http://35.183.120.34:8000/index/mobile
+Admin demo URL:              http://35.183.120.34:8000/admin/schedule
+```
+
+This IP may change after stopping and starting the Lightsail instance unless a static IP is attached.
+
 ## Set Up on Another Computer
 
 ```powershell
