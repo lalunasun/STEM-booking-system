@@ -1,0 +1,1 @@
+import{l as a,H as e}from"./index-Bz8XBnSs.js";const c=async s=>e({url:"/CSAA/index/child/create",data:s,headers:{}}),i=async s=>a({url:"/CSAA/index/child/list",params:s,data:{},headers:{}});export{c,i as l};

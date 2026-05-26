@@ -38,26 +38,44 @@
               <span>Math trial will be added after Math classes are created.</span>
             </div>
 
-            <div v-else-if="group.slots.length" class="slot-list">
-              <div
-                v-for="slot in group.slots"
-                :key="slot.id"
-                class="trial-slot"
-                :class="{
-                  'trial-slot-selected': trialData.selected[group.key] === slot.id,
-                }"
-                role="button"
-                tabindex="0"
-                @click="selectSlot(group.key, slot)"
-                @keydown.enter="selectSlot(group.key, slot)"
+            <div v-else-if="group.slots.length" class="course-group-list">
+              <section
+                v-for="course in group.courseGroups"
+                :key="course.title"
+                class="course-group"
               >
-                <span v-if="trialData.selected[group.key] === slot.id" class="selected-badge">Selected</span>
-                <strong>{{ slot.title }}</strong>
-                <span>{{ formatSlotDate(slot) }} | {{ dayLabels[slot.day] || slot.day }} | {{ slot.time_title || 'Time TBD' }}</span>
-                <span>{{ slot.room_name || 'Room TBD' }}</span>
-                <em>{{ getSeatText(slot) }}</em>
-                <b>{{ trialData.selected[group.key] === slot.id ? 'Selected for trial' : 'Choose this time' }}</b>
-              </div>
+                <h3>{{ course.title }}</h3>
+                <div
+                  v-for="dayGroup in course.dayGroups"
+                  :key="`${course.title}-${dayGroup.day}`"
+                  class="day-group"
+                >
+                  <button class="day-label" @click="toggleDay(group.key, course.title, dayGroup.day)">
+                    <span>{{ dayLabels[dayGroup.day] || dayGroup.day }}</span>
+                    <em>{{ dayGroup.slots.length }} time{{ dayGroup.slots.length > 1 ? 's' : '' }} · {{ isDayCollapsed(group.key, course.title, dayGroup.day) ? 'Show' : 'Hide' }}</em>
+                  </button>
+                  <template v-if="!isDayCollapsed(group.key, course.title, dayGroup.day)">
+                    <div
+                      v-for="slot in dayGroup.slots"
+                      :key="slot.id"
+                      class="trial-slot"
+                      :class="{
+                        'trial-slot-selected': trialData.selected[group.key] === slot.id,
+                      }"
+                      role="button"
+                      tabindex="0"
+                      @click="selectSlot(group.key, slot)"
+                      @keydown.enter="selectSlot(group.key, slot)"
+                    >
+                      <span v-if="trialData.selected[group.key] === slot.id" class="selected-badge">Selected</span>
+                      <strong>{{ slot.time_title || 'Time TBD' }}</strong>
+                      <span>{{ formatSlotDate(slot) }} | {{ slot.room_name || 'Room TBD' }}</span>
+                      <em>{{ getSeatText(slot) }}</em>
+                      <b>{{ trialData.selected[group.key] === slot.id ? 'Selected for trial' : 'Choose this time' }}</b>
+                    </div>
+                  </template>
+                </div>
+              </section>
             </div>
 
             <div v-else class="empty-state">
@@ -127,6 +145,7 @@ const trialData = reactive({
     coding: undefined,
     math: undefined,
   } as Record<string, any>,
+  collapsedDays: {} as Record<string, boolean>,
 });
 
 const childData = reactive({
@@ -181,19 +200,58 @@ const listThingData = () => {
 
 const normalize = (value: any) => String(value || '').trim().toLowerCase();
 
-const slotsByCategory = (category: string, groupKey: string) => {
+const collapseKey = (groupKey: string, courseTitle: string, day: string) => `${groupKey}|${courseTitle}|${day}`;
+
+const isDayCollapsed = (groupKey: string, courseTitle: string, day: string) => {
+  return Boolean(trialData.collapsedDays[collapseKey(groupKey, courseTitle, day)]);
+};
+
+const toggleDay = (groupKey: string, courseTitle: string, day: string) => {
+  const key = collapseKey(groupKey, courseTitle, day);
+  trialData.collapsedDays[key] = !trialData.collapsedDays[key];
+};
+
+const slotsByCategory = (category: string) => {
   return trialData.things
     .filter((item) => normalize(item.classification_title) === normalize(category))
     .filter((item) => isSlotSelectable(item))
-    .filter((item) => !getSelectedSlotConflict(groupKey, item))
     .sort((a, b) => {
       const dayDiff = dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
       if (dayDiff !== 0) {
         return dayDiff;
       }
       return String(a.time_title || '').localeCompare(String(b.time_title || ''));
-    })
-    .slice(0, 5);
+    });
+};
+
+const groupSlotsByCourseAndDay = (slots: any[]) => {
+  const courseMap = new Map<string, any[]>();
+
+  slots.forEach((slot) => {
+    const title = slot.title || 'Untitled';
+    if (!courseMap.has(title)) {
+      courseMap.set(title, []);
+    }
+    courseMap.get(title)?.push(slot);
+  });
+
+  return Array.from(courseMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([title, courseSlots]) => {
+      const dayGroups = dayOrder
+        .map((day) => ({
+          day,
+          slots: courseSlots
+            .filter((slot) => slot.day === day)
+            .sort((a, b) => String(a.time_title || '').localeCompare(String(b.time_title || ''))),
+        }))
+        .filter((dayGroup) => dayGroup.slots.length > 0);
+
+      return {
+        title,
+        dayGroups,
+      };
+    });
 };
 
 const trialGroups = computed(() => [
@@ -201,22 +259,25 @@ const trialGroups = computed(() => [
     key: 'robotics',
     title: 'Robotics',
     subtitle: 'Choose one robotics trial class',
-    slots: slotsByCategory('Robotics', 'robotics'),
+    slots: slotsByCategory('Robotics'),
+    courseGroups: groupSlotsByCourseAndDay(slotsByCategory('Robotics')),
     comingSoon: false,
   },
   {
     key: 'coding',
     title: 'Coding',
     subtitle: 'Choose one coding trial class',
-    slots: slotsByCategory('Coding', 'coding'),
+    slots: slotsByCategory('Coding'),
+    courseGroups: groupSlotsByCourseAndDay(slotsByCategory('Coding')),
     comingSoon: false,
   },
   {
     key: 'math',
     title: 'Math',
     subtitle: 'Reserved for the future math trial',
-    slots: slotsByCategory('Math', 'math'),
-    comingSoon: slotsByCategory('Math', 'math').length === 0,
+    slots: slotsByCategory('Math'),
+    courseGroups: groupSlotsByCourseAndDay(slotsByCategory('Math')),
+    comingSoon: slotsByCategory('Math').length === 0,
   },
 ]);
 
@@ -486,10 +547,65 @@ const getSeatText = (slot: any) => {
   font-size: 13px;
 }
 
-.slot-list {
+.course-group-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
+}
+
+.course-group {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fbfdff;
+  padding: 12px;
+}
+
+.course-group h3 {
+  margin: 0 0 10px;
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 800;
+}
+
+.day-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.day-group:first-of-type {
+  padding-top: 0;
+  margin-top: 0;
+  border-top: 0;
+}
+
+.day-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: #eef6ff;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.day-label span {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.day-label em {
+  color: #64748b;
+  font-size: 12px;
+  font-style: normal;
 }
 
 .trial-slot {

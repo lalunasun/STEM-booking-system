@@ -8,9 +8,15 @@
           <small>Learning studio</small>
         </span>
       </button>
-      <button v-if="userStore.user_token" class="profile-pill" @click="scrollOrders">
-        {{ userStore.user_name || 'Parent' }}
-      </button>
+      <div v-if="userStore.user_token" class="profile-menu">
+        <button class="profile-pill" @click="profileMenuOpen = !profileMenuOpen">
+          {{ userStore.user_name || 'Parent' }}
+        </button>
+        <div v-if="profileMenuOpen" class="profile-dropdown">
+          <button @click="goToOrders">Orders</button>
+          <button @click="logoutMobile">Log out</button>
+        </div>
+      </div>
       <button v-else class="profile-pill" @click="router.push({ name: 'login', query: { redirect: '/index/mobile' } })">
         Log in
       </button>
@@ -272,6 +278,7 @@ const rescheduleRef = ref(null);
 const trialRef = ref(null);
 const selectedSlot = ref(null);
 const selectedOrder = ref(null);
+const profileMenuOpen = ref(false);
 
 const dayOrder = ['Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon'];
 const dayLabels = {
@@ -648,6 +655,23 @@ const showMobileNotice = (text) => {
   message.info(text);
 };
 
+const goToOrders = () => {
+  profileMenuOpen.value = false;
+  scrollOrders();
+};
+
+const logoutMobile = async () => {
+  profileMenuOpen.value = false;
+  await userStore.logout();
+  selectedChildId.value = '';
+  selectedSlot.value = null;
+  selectedOrder.value = null;
+  homeData.children = [];
+  homeData.orders = [];
+  message.success('Logged out');
+  scrollHome();
+};
+
 const scrollHome = () => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 };
@@ -708,6 +732,7 @@ const scrollKids = () => {
 
 .brand,
 .profile-pill,
+.profile-dropdown button,
 .text-link {
   border: 0;
   background: transparent;
@@ -762,6 +787,37 @@ const scrollKids = () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.profile-menu {
+  position: relative;
+}
+
+.profile-dropdown {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  z-index: 30;
+  min-width: 122px;
+  padding: 8px;
+  border: 1px solid rgba(31, 122, 140, .16);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 16px 34px rgba(23, 50, 77, .16);
+}
+
+.profile-dropdown button {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 11px;
+  color: #17324d;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.profile-dropdown button:hover {
+  background: #eef9fb;
 }
 
 .mobile-main {
