@@ -5,7 +5,7 @@ from rest_framework.decorators import api_view
 
 from CSAA.handler import APIResponse
 from CSAA.models import CourseAdjustment, Order, TrialRequest
-from CSAA.serializers import CourseAdjustmentSerializer
+from CSAA.serializers import CourseAdjustmentSerializer, ParentCourseAdjustmentSerializer
 
 
 DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -18,6 +18,31 @@ DAY_INDEX = {
     'Sat': 5,
     'Sun': 6,
 }
+
+
+@api_view(['GET'])
+def list_api(request):
+    parent_id = request.GET.get('parent_id') or request.GET.get('user_id')
+    child_id = request.GET.get('child_id')
+    if not parent_id:
+        return APIResponse(code=1, msg='Missing parent')
+
+    adjustments = CourseAdjustment.objects.filter(parent_id=parent_id).select_related(
+        'student',
+        'original_order',
+        'original_class',
+        'original_term',
+        'selected_target_class',
+    )
+    if child_id:
+        adjustments = adjustments.filter(student_id=child_id)
+
+    adjustments = adjustments.order_by('-updated_time', '-created_time', '-id')
+    return APIResponse(
+        code=0,
+        msg='success',
+        data=ParentCourseAdjustmentSerializer(adjustments, many=True).data,
+    )
 
 
 def _parse_lesson_start(lesson_date, time_label):
@@ -108,7 +133,13 @@ def create_cancel_request(request):
     if selected_class.day:
         expected_day = DAY_LABELS[lesson_date.weekday()]
         if expected_day.lower() != selected_class.day.lower():
-            return APIResponse(code=1, msg=f'Selected date must be a {selected_class.day}')
+            return APIResponse(
+                code=1,
+                msg=(
+                    f'No class is scheduled on {lesson_date.strftime("%Y-%m-%d")}. '
+                    f'This class meets on {selected_class.day}.'
+                ),
+            )
 
     lesson_start = _parse_lesson_start(lesson_date, selected_class.time.time if selected_class.time else '')
     if lesson_start - datetime.datetime.now() < datetime.timedelta(hours=48):
@@ -122,7 +153,12 @@ def create_cancel_request(request):
         status__in=['pending', 'approved', 'completed'],
     ).first()
     if existing:
-        return APIResponse(code=1, msg='A cancel request already exists for this class date')
+        serializer = CourseAdjustmentSerializer(existing)
+        return APIResponse(
+            code=0,
+            msg='Schedule change request already submitted',
+            data=serializer.data,
+        )
 
     adjustment = CourseAdjustment.objects.create(
         student=order.child,

@@ -1,3 +1,4 @@
+from django.db.models import Q
 from rest_framework.decorators import api_view, authentication_classes
 
 from CSAA import utils
@@ -66,8 +67,19 @@ def info(request):
 @api_view(['GET'])
 def list_api(request):
     if request.method == 'GET':
-        keyword = request.GET.get("keyword", '')
-        users = User.objects.filter(username__contains=keyword).order_by('-create_time')
+        keyword = request.GET.get("keyword", '').strip()
+        users = User.objects.all()
+        if keyword:
+            filters = (
+                Q(username__icontains=keyword)
+                | Q(nickname__icontains=keyword)
+                | Q(mobile__icontains=keyword)
+                | Q(email__icontains=keyword)
+            )
+            if keyword.isdigit():
+                filters |= Q(id=int(keyword))
+            users = users.filter(filters)
+        users = users.order_by('-create_time')
         serializer = UserSerializer(users, many=True)
         return APIResponse(code=0, msg='查询成功', data=serializer.data)
 

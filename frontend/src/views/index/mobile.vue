@@ -36,15 +36,7 @@
       </section>
 
       <template v-if="userStore.user_token">
-        <section ref="kidsRef" class="section-head kids-head">
-          <div>
-            <h2>Student status</h2>
-            <p>Start here before booking anything new.</p>
-          </div>
-          <button class="text-link" @click="showMobileNotice('Kid editing will be added to the mobile app next.')">Edit</button>
-        </section>
-
-        <div v-if="childOptions.length > 0" class="child-strip">
+        <div v-if="childOptions.length > 0" ref="kidsRef" class="child-strip kids-head">
           <button
             v-for="child in childOptions"
             :key="child.id"
@@ -57,6 +49,22 @@
         </div>
 
         <a-spin :spinning="homeData.loading" style="min-height: 160px;">
+          <article v-if="selectedChild" class="child-summary">
+            <div class="child-avatar">{{ selectedChildInitial }}</div>
+            <div class="child-summary-copy">
+              <strong>{{ selectedChild.name }}</strong>
+              <span>{{ selectedChild.age ? `${selectedChild.age} years old` : 'Age not set' }}</span>
+            </div>
+            <div class="child-summary-count">
+              <b>{{ currentClasses.length }}</b>
+              <span>Current classes</span>
+            </div>
+            <div class="child-summary-count">
+              <b>{{ selectedAdjustments.length }}</b>
+              <span>Schedule changes</span>
+            </div>
+          </article>
+
           <section class="status-grid">
             <article class="status-card next-card">
               <div class="card-label">Next class</div>
@@ -64,6 +72,9 @@
                 <h3>{{ nextClass.title }}</h3>
                 <p>{{ nextClass.dateLine }}</p>
                 <span>{{ nextClass.room || 'Room TBD' }}</span>
+                <span v-if="nextClass.adjustment" class="class-change-badge">
+                  {{ getClassAdjustmentLabel(nextClass.adjustment, nextClass) }}
+                </span>
               </template>
               <template v-else>
                 <h3>No scheduled class</h3>
@@ -78,6 +89,9 @@
                   <strong>{{ item.title }}</strong>
                   <span>{{ item.dateLine }}</span>
                   <span class="term-line">{{ item.termLine }}</span>
+                  <span v-if="item.adjustment" class="inline-change-status">
+                    {{ getClassAdjustmentLabel(item.adjustment, item) }}
+                  </span>
                 </button>
               </div>
               <p v-else class="muted">No active scheduled classes yet.</p>
@@ -94,6 +108,28 @@
               <p v-else class="muted">Nothing waiting right now.</p>
             </article>
           </section>
+
+          <section class="message-panel">
+            <div class="message-panel-head">
+              <div>
+                <div class="card-label">System messages</div>
+                <h2>Schedule updates</h2>
+              </div>
+              <span>{{ systemMessages.length }}</span>
+            </div>
+            <div v-if="systemMessages.length > 0" class="system-message-list">
+              <article
+                v-for="item in systemMessages.slice(0, 5)"
+                :key="`message-${item.id}`"
+                :class="`message-${item.tone}`"
+              >
+                <strong>{{ item.title }}</strong>
+                <p>{{ item.text }}</p>
+                <small>{{ item.time }}</small>
+              </article>
+            </div>
+            <p v-else class="muted">No schedule change messages for this child.</p>
+          </section>
         </a-spin>
       </template>
 
@@ -104,12 +140,22 @@
         </section>
       </template>
 
+      <div v-if="bookPanelOpen" class="mobile-sheet-backdrop" @click.self="closeBookPanel">
+        <section class="mobile-sheet">
+          <header class="mobile-sheet-head">
+            <div>
+              <div class="card-label">Classes</div>
+              <h2>Choose a class</h2>
+            </div>
+            <button aria-label="Close class selection" @click="closeBookPanel">×</button>
+          </header>
+
       <section ref="catalogRef" class="section-head catalog-head">
         <div>
           <h2>Book a class</h2>
           <p>Choose a course first, then pick a day and time.</p>
         </div>
-        <button class="text-link" @click="scrollTrial">Trial</button>
+        <button class="text-link" @click="router.push({ name: 'trial' })">Trial</button>
       </section>
 
       <div class="category-strip">
@@ -192,8 +238,8 @@
         <h2>{{ selectedSlot.title }}</h2>
         <p>{{ selectedSlot.day || 'Day TBD' }} | {{ selectedSlot.time_title || 'Time TBD' }}</p>
         <p>{{ selectedSlot.room_name || 'Room TBD' }} · {{ selectedSlot.display_status || 'Open' }}</p>
-        <button class="primary-action" @click="showMobileNotice('Mobile booking form is next. For now, booking stays in the web portal.')">
-          Book this class
+        <button class="primary-action" @click="openDesktopClass(selectedSlot)">
+          Continue booking
         </button>
       </section>
 
@@ -201,10 +247,12 @@
         <div class="card-label">Trial package</div>
         <h2>Try Robotics + Coding</h2>
         <p>$98 / 3 lessons. Pick one Robotics time and one Coding time; Math is reserved for the next phase.</p>
-        <button class="primary-action" @click="showMobileNotice('Mobile trial booking is next. The current full trial form is still on the web page.')">
+        <button class="primary-action" @click="router.push({ name: 'trial' })">
           Start trial request
         </button>
       </section>
+        </section>
+      </div>
 
       <section ref="ordersRef" class="mobile-detail-card">
         <div class="card-label">Orders</div>
@@ -234,25 +282,71 @@
         </div>
       </section>
 
-      <section ref="rescheduleRef" class="mobile-detail-card">
-        <div class="card-label">Reschedule</div>
-        <h2>Request a change</h2>
-        <p>Select one of the child’s scheduled classes. The mobile request form will keep the 48-hour rule.</p>
-        <div v-if="currentClasses.length > 0" class="mobile-order-list">
-          <button v-for="item in currentClasses.slice(0, 5)" :key="`res-${item.key}`" @click="selectMobileClass(item)">
-            <strong>{{ item.title }}</strong>
-            <span>{{ item.dateLine }} · {{ item.room || 'Room TBD' }}</span>
-            <span class="term-line">{{ item.termLine }}</span>
-          </button>
-        </div>
-        <p v-else class="muted">No scheduled classes available for reschedule.</p>
-      </section>
+      <div v-if="reschedulePanelOpen" class="mobile-sheet-backdrop" @click.self="closeReschedulePanel">
+        <section ref="rescheduleRef" class="mobile-sheet">
+          <header class="mobile-sheet-head">
+            <div>
+              <div class="card-label">Schedule change</div>
+              <h2>{{ selectedChild?.name || 'Student' }}</h2>
+            </div>
+            <button aria-label="Close schedule change" @click="closeReschedulePanel">×</button>
+          </header>
+
+          <div v-if="changeableOrders.length > 0" class="reschedule-order-list">
+            <button
+              v-for="order in changeableOrders"
+              :key="`change-${order.id}`"
+              :class="{ active: String(scheduleChange.orderId) === String(order.id) }"
+              @click="selectScheduleChangeOrder(order)"
+            >
+              <strong>{{ order.title || 'Class' }}</strong>
+              <span>{{ order.day || 'Day TBD' }} | {{ order.time_title || 'Time TBD' }} | {{ order.room_title || 'Room TBD' }}</span>
+              <small>{{ order.term_title || 'Term TBD' }} · {{ getOrderStatusLabel(order.status) }}</small>
+            </button>
+          </div>
+          <p v-else class="muted">No paid or scheduled classes are available.</p>
+
+          <template v-if="scheduleChange.order">
+            <label class="sheet-field-label">Class date</label>
+            <div v-if="mobileAvailableChangeDates.length > 0" class="available-date-list mobile-date-list">
+              <button
+                v-for="date in mobileAvailableChangeDates"
+                :key="date.value"
+                :class="{ selected: scheduleChange.lessonDate === date.value }"
+                @click="scheduleChange.lessonDate = date.value"
+              >
+                <span>{{ date.weekday }}</span>
+                <strong>{{ date.label }}</strong>
+              </button>
+            </div>
+            <p v-else class="muted">No eligible dates remain in this term under the 48-hour rule.</p>
+
+            <label class="sheet-field-label">Message to admin</label>
+            <textarea v-model="scheduleChange.parentNote" class="sheet-textarea" rows="3" placeholder="Optional note"></textarea>
+            <button class="primary-action full-action" :disabled="scheduleChange.submitting" @click="submitMobileScheduleChange">
+              {{ scheduleChange.submitting ? 'Submitting...' : 'Submit request' }}
+            </button>
+          </template>
+
+          <div v-if="selectedAdjustments.length > 0" class="adjustment-history sheet-history">
+            <div class="card-label">Request history</div>
+            <article v-for="item in selectedAdjustments" :key="`adjustment-${item.id}`">
+              <div class="adjustment-title">
+                <strong>{{ item.original_class_title || 'Class change' }}</strong>
+                <span :class="`adjustment-status status-${item.status}`">{{ getAdjustmentStatusLabel(item.status) }}</span>
+              </div>
+              <p>Original: {{ formatAdjustmentOriginal(item) }}</p>
+              <p v-if="item.selected_target_date" class="makeup-result">Makeup: {{ formatAdjustmentTarget(item) }}</p>
+            </article>
+          </div>
+        </section>
+      </div>
     </main>
 
     <nav class="mobile-tabbar">
       <button class="active" @click="scrollHome">Home</button>
-      <button @click="scrollCatalog">Book</button>
-      <button @click="scrollReschedule">Reschedule</button>
+      <button @click="openBookPanel">Book</button>
+      <button @click="openReschedulePanel">Reschedule</button>
       <button @click="scrollOrders">Orders</button>
       <button @click="scrollKids">Kids</button>
     </nav>
@@ -266,6 +360,7 @@ import { listApi as listClassificationList } from '/@/api/index/classification';
 import { listApi as listThingList } from '/@/api/index/thing';
 import { listApi as listChildApi } from '/@/api/index/child';
 import { userOrderListApi } from '/@/api/index/order';
+import { createCancelRequestApi, listCourseAdjustmentsApi } from '/@/api/index/course-adjustment';
 import { BASE_URL } from '/@/store/constants';
 import { useUserStore } from '/@/store';
 
@@ -279,6 +374,15 @@ const trialRef = ref(null);
 const selectedSlot = ref(null);
 const selectedOrder = ref(null);
 const profileMenuOpen = ref(false);
+const bookPanelOpen = ref(false);
+const reschedulePanelOpen = ref(false);
+const scheduleChange = reactive({
+  orderId: '',
+  order: null,
+  lessonDate: '',
+  parentNote: '',
+  submitting: false,
+});
 
 const dayOrder = ['Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon'];
 const dayLabels = {
@@ -319,6 +423,7 @@ const homeData = reactive({
   loading: false,
   children: [],
   orders: [],
+  adjustments: [],
 });
 
 const selectedCategoryKey = ref('-1');
@@ -335,6 +440,7 @@ const childOptions = computed(() => homeData.children || []);
 const selectedChild = computed(() => (
   childOptions.value.find((item) => String(item.id) === String(selectedChildId.value))
 ));
+const selectedChildInitial = computed(() => String(selectedChild.value?.name || '?').trim().charAt(0).toUpperCase());
 
 onMounted(() => {
   loadCategories();
@@ -373,10 +479,12 @@ const loadHomeData = () => {
   Promise.all([
     listChildApi({ parent: userStore.user_id }),
     userOrderListApi({ userId: userStore.user_id, orderStatus: '' }),
+    listCourseAdjustmentsApi({ parent_id: userStore.user_id }),
   ])
-    .then(([childrenRes, ordersRes]) => {
+    .then(([childrenRes, ordersRes, adjustmentsRes]) => {
       homeData.children = childrenRes.data || [];
       homeData.orders = ordersRes.data || [];
+      homeData.adjustments = adjustmentsRes.data || [];
       if (!selectedChildId.value && homeData.children.length > 0) {
         selectedChildId.value = homeData.children[0].id;
       }
@@ -495,6 +603,19 @@ const selectedOrders = computed(() => {
   });
 });
 
+const changeableOrders = computed(() => selectedOrders.value.filter(
+  (order) => [2, 6].includes(Number(order.status)) && !isTrialOrder(order),
+));
+
+const selectedAdjustments = computed(() => {
+  if (!selectedChildId.value) {
+    return [];
+  }
+  return (homeData.adjustments || []).filter(
+    (item) => String(item.student) === String(selectedChildId.value),
+  );
+});
+
 const currentClasses = computed(() => {
   const items = [];
   selectedOrders.value
@@ -510,10 +631,18 @@ const currentClasses = computed(() => {
       }
       items.push(normalizeOrderClass(order));
     });
-  return items.sort((a, b) => a.sortTime - b.sortTime);
+  return items.filter((item) => item.date).sort((a, b) => a.sortTime - b.sortTime);
 });
 
 const nextClass = computed(() => currentClasses.value[0] || null);
+
+const systemMessages = computed(() => selectedAdjustments.value.map((item) => ({
+  id: item.id,
+  title: getAdjustmentMessageTitle(item),
+  text: getAdjustmentMessageText(item),
+  tone: getAdjustmentTone(item.status),
+  time: item.updated_time || item.created_time || '',
+})));
 
 const actionItems = computed(() => {
   const items = [];
@@ -553,6 +682,7 @@ const isTrialOrder = (item) => {
 
 const parseDateText = (value) => {
   if (!value) return null;
+  if (value instanceof Date) return new Date(value);
   const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!match) return null;
   return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
@@ -569,6 +699,57 @@ const formatOrderDate = (value) => {
   const date = parseDateText(value);
   return date ? formatDateText(date) : '';
 };
+
+const isEligibleMobileChangeDate = (order, value) => {
+  const date = parseDateText(value);
+  if (!order || !date || dayIndex[order.day] === undefined) return false;
+
+  const start = parseDateText(order.expect_time);
+  const end = parseDateText(order.return_time);
+  if ((start && date < start) || (end && date > end)) return false;
+  if (date.getDay() !== dayIndex[order.day]) return false;
+
+  const timeMatch = String(order.time_title || '').match(/^(\d{1,2}):(\d{2})/);
+  const lessonStart = new Date(date);
+  lessonStart.setHours(
+    timeMatch ? Number(timeMatch[1]) : 0,
+    timeMatch ? Number(timeMatch[2]) : 0,
+    0,
+    0,
+  );
+  return lessonStart.getTime() - Date.now() >= 48 * 60 * 60 * 1000;
+};
+
+const mobileAvailableChangeDates = computed(() => {
+  const order = scheduleChange.order;
+  if (!order || dayIndex[order.day] === undefined) return [];
+
+  const start = parseDateText(order.expect_time);
+  const end = parseDateText(order.return_time);
+  if (!start || !end) return [];
+
+  const first = new Date(Math.max(start.getTime(), Date.now()));
+  first.setHours(0, 0, 0, 0);
+  first.setDate(first.getDate() + ((dayIndex[order.day] - first.getDay() + 7) % 7));
+
+  const dates = [];
+  for (let date = new Date(first); date <= end && dates.length < 12; date.setDate(date.getDate() + 7)) {
+    const value = formatDateText(date);
+    if (!isEligibleMobileChangeDate(order, value)) continue;
+    const alreadyRequested = selectedAdjustments.value.some((item) => (
+      String(item.original_order) === String(order.id)
+      && item.original_lesson_date === value
+      && ['pending', 'approved', 'makeup_available', 'completed'].includes(item.status)
+    ));
+    if (alreadyRequested) continue;
+    dates.push({
+      value,
+      weekday: date.toLocaleDateString('en-CA', { weekday: 'short' }),
+      label: date.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }),
+    });
+  }
+  return dates;
+});
 
 const formatTermLine = (order) => {
   const termName = order.term_title || 'Term TBD';
@@ -592,9 +773,17 @@ const nextDateForDay = (day, baseValue) => {
 };
 
 const normalizeOrderClass = (order) => {
-  const date = nextDateForDay(order.day, new Date());
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const termStart = parseDateText(order.expect_time);
+  const baseDate = termStart && termStart > today ? termStart : today;
+  let date = nextDateForDay(order.day, baseDate);
+  const termEnd = parseDateText(order.return_time);
+  if (date && termEnd && date > termEnd) {
+    date = null;
+  }
   const time = order.time_title || 'Time TBD';
-  return {
+  const item = {
     key: `order-${order.id}`,
     order,
     title: order.title || 'Class',
@@ -604,12 +793,16 @@ const normalizeOrderClass = (order) => {
     termLine: formatTermLine(order),
     room: order.room_title || '',
   };
+  return {
+    ...item,
+    adjustment: findClassAdjustment(item),
+  };
 };
 
 const normalizeTrialSlot = (order, slot) => {
   const date = parseDateText(slot.date) || nextDateForDay(slot.day, order.order_time);
   const time = slot.time || 'Time TBD';
-  return {
+  const item = {
     key: `trial-${order.id}-${slot.class_id}-${slot.label}`,
     order,
     title: `${slot.title || 'Trial'} (${slot.label})`,
@@ -619,11 +812,92 @@ const normalizeTrialSlot = (order, slot) => {
     termLine: formatTermLine(order),
     room: slot.room || '',
   };
+  return {
+    ...item,
+    adjustment: findClassAdjustment(item),
+  };
+};
+
+const findClassAdjustment = (classItem) => {
+  const orderId = classItem.order?.id;
+  const lessonDate = classItem.date ? formatDateText(classItem.date) : '';
+  return selectedAdjustments.value.find((item) => (
+    (String(item.original_order) === String(orderId) && item.original_lesson_date === lessonDate)
+    || (item.status === 'completed'
+      && item.selected_target_date === lessonDate
+      && String(item.selected_target_class) === String(classItem.order?.thing))
+  )) || null;
+};
+
+const getAdjustmentStatusLabel = (status) => {
+  const labels = {
+    pending: 'Pending review',
+    approved: 'Absence approved',
+    makeup_available: 'Choose makeup time',
+    completed: 'Makeup scheduled',
+    rejected: 'Request declined',
+  };
+  return labels[status] || 'Updated';
+};
+
+const getAdjustmentTone = (status) => {
+  if (status === 'completed') return 'success';
+  if (status === 'rejected') return 'danger';
+  if (status === 'makeup_available') return 'action';
+  return 'info';
+};
+
+const formatAdjustmentOriginal = (item) => (
+  [item.original_lesson_date, item.original_day, item.original_time].filter(Boolean).join(' | ')
+);
+
+const formatAdjustmentTarget = (item) => (
+  [
+    item.selected_target_date,
+    item.selected_target_day,
+    item.selected_target_time,
+    item.selected_target_room,
+  ].filter(Boolean).join(' | ')
+);
+
+const getAdjustmentMessageTitle = (item) => {
+  if (item.status === 'completed') return 'Makeup class confirmed';
+  if (item.status === 'makeup_available') return 'Makeup options available';
+  if (item.status === 'approved') return 'Absence approved';
+  if (item.status === 'rejected') return 'Schedule change declined';
+  return 'Schedule change submitted';
+};
+
+const getAdjustmentMessageText = (item) => {
+  const className = item.original_class_title || 'Class';
+  if (item.status === 'completed') {
+    return `${className}: makeup is scheduled for ${formatAdjustmentTarget(item)}.`;
+  }
+  if (item.status === 'makeup_available') {
+    return `${className} on ${item.original_lesson_date}: please choose a makeup time.`;
+  }
+  if (item.status === 'approved') {
+    return `${className} on ${item.original_lesson_date}: absence approved; makeup details will follow.`;
+  }
+  if (item.status === 'rejected') {
+    return `${className} on ${item.original_lesson_date}: the request was declined.`;
+  }
+  return `${className} on ${item.original_lesson_date}: waiting for admin review.`;
+};
+
+const getClassAdjustmentLabel = (adjustment, classItem) => {
+  if (
+    adjustment.status === 'completed'
+    && adjustment.selected_target_date === formatDateText(classItem.date)
+  ) {
+    return 'Makeup class';
+  }
+  return getAdjustmentStatusLabel(adjustment.status);
 };
 
 const selectCourse = (course) => {
   if (course.isTrialPackage) {
-    scrollTrial();
+    router.push({ name: 'trial' });
     return;
   }
   selectedCourseTitle.value = course.title;
@@ -631,6 +905,11 @@ const selectCourse = (course) => {
 
 const selectSlot = (slot) => {
   selectedSlot.value = slot;
+};
+
+const openDesktopClass = (slot) => {
+  if (!slot?.id) return;
+  router.push({ name: 'detail', query: { id: slot.id } });
 };
 
 const selectMobileClass = (item) => {
@@ -668,6 +947,7 @@ const logoutMobile = async () => {
   selectedOrder.value = null;
   homeData.children = [];
   homeData.orders = [];
+  homeData.adjustments = [];
   message.success('Logged out');
   scrollHome();
 };
@@ -676,12 +956,76 @@ const scrollHome = () => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
-const scrollCatalog = () => {
-  catalogRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+const openBookPanel = () => {
+  bookPanelOpen.value = true;
+  selectedSlot.value = null;
 };
 
-const scrollTrial = () => {
-  trialRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+const closeBookPanel = () => {
+  bookPanelOpen.value = false;
+};
+
+const selectScheduleChangeOrder = (order) => {
+  scheduleChange.order = order;
+  scheduleChange.orderId = order.id;
+  scheduleChange.lessonDate = '';
+  scheduleChange.parentNote = '';
+};
+
+const openReschedulePanel = () => {
+  if (!userStore.user_token) {
+    router.push({ name: 'login', query: { redirect: '/index/mobile' } });
+    return;
+  }
+  reschedulePanelOpen.value = true;
+  if (changeableOrders.value.length > 0) {
+    selectScheduleChangeOrder(changeableOrders.value[0]);
+  }
+};
+
+const closeReschedulePanel = () => {
+  reschedulePanelOpen.value = false;
+  scheduleChange.order = null;
+  scheduleChange.orderId = '';
+  scheduleChange.lessonDate = '';
+  scheduleChange.parentNote = '';
+};
+
+const submitMobileScheduleChange = () => {
+  if (scheduleChange.submitting) {
+    return;
+  }
+  if (!scheduleChange.order || !scheduleChange.lessonDate) {
+    message.error('Please select a class and class date');
+    return;
+  }
+  if (!isEligibleMobileChangeDate(scheduleChange.order, scheduleChange.lessonDate)) {
+    message.error('Please select one of the available class dates');
+    return;
+  }
+
+  scheduleChange.submitting = true;
+  createCancelRequestApi({
+    order_id: scheduleChange.order.id,
+    user_id: userStore.user_id,
+    lesson_date: scheduleChange.lessonDate,
+    parent_note: scheduleChange.parentNote,
+  })
+    .then((res) => {
+      if (res.code !== 0) {
+        message.error(res.msg || 'Submit failed');
+        return;
+      }
+      message.success(res.msg || 'Schedule change request submitted');
+      closeReschedulePanel();
+      loadHomeData();
+    })
+    .catch((err) => {
+      message.error(err.msg || 'Submit failed');
+    })
+    .finally(() => {
+      scheduleChange.submitting = false;
+    });
 };
 
 const scrollOrders = () => {
@@ -690,14 +1034,6 @@ const scrollOrders = () => {
     return;
   }
   ordersRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-};
-
-const scrollReschedule = () => {
-  if (!userStore.user_token) {
-    router.push({ name: 'login', query: { redirect: '/index/mobile' } });
-    return;
-  }
-  rescheduleRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
 const scrollKids = () => {
@@ -906,7 +1242,7 @@ const scrollKids = () => {
 .child-strip {
   display: flex;
   gap: 18px;
-  margin: -2px -14px 14px;
+  margin: 22px -14px 14px;
   padding: 0 14px 4px;
   overflow-x: auto;
   scrollbar-width: none;
@@ -948,6 +1284,59 @@ const scrollKids = () => {
   color: #6b7f94;
   font-size: 12px;
   font-weight: 800;
+}
+
+.child-summary {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 70px 82px;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 13px;
+  border: 1px solid #d7e8ee;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.child-avatar {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #d9f8f2;
+  color: #1f7a8c;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.child-summary-copy,
+.child-summary-count {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.child-summary-copy strong,
+.child-summary-count b {
+  color: #17324d;
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.child-summary-copy span,
+.child-summary-count span {
+  color: #6b7f94;
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.child-summary-count {
+  text-align: center;
+}
+
+.child-summary-count b {
+  font-size: 18px;
 }
 
 .status-grid {
@@ -1005,6 +1394,112 @@ const scrollKids = () => {
 .next-card p,
 .next-card span {
   color: #fff;
+}
+
+.class-change-badge {
+  display: block;
+  width: fit-content;
+  margin-top: 10px !important;
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, .44);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .15);
+  font-size: 11px !important;
+  font-weight: 900;
+}
+
+.inline-change-status {
+  width: fit-content;
+  margin-top: 2px !important;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #fff3d6;
+  color: #9a5a00 !important;
+  font-weight: 900;
+}
+
+.message-panel {
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.message-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.message-panel-head h2 {
+  margin: 4px 0 0;
+  color: #17324d;
+  font-size: 18px;
+  line-height: 23px;
+  font-weight: 900;
+}
+
+.message-panel-head > span {
+  min-width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #eef9fb;
+  color: #1f7a8c;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.system-message-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.system-message-list article {
+  padding: 11px 12px;
+  border-left: 4px solid #1f7a8c;
+  background: #f4fbff;
+}
+
+.system-message-list article.message-success {
+  border-left-color: #2a9d8f;
+  background: #effdf8;
+}
+
+.system-message-list article.message-action {
+  border-left-color: #f4a261;
+  background: #fff7ed;
+}
+
+.system-message-list article.message-danger {
+  border-left-color: #dc5a5a;
+  background: #fff1f1;
+}
+
+.system-message-list strong,
+.system-message-list p,
+.system-message-list small {
+  display: block;
+}
+
+.system-message-list strong {
+  color: #17324d;
+  font-size: 13px;
+}
+
+.system-message-list p {
+  margin: 3px 0 !important;
+  color: #49677f;
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.system-message-list small {
+  color: #8293a5;
+  font-size: 10px;
 }
 
 .mini-list,
@@ -1331,6 +1826,227 @@ const scrollKids = () => {
   color: #6b7f94;
   font-size: 12px;
   line-height: 17px;
+}
+
+.adjustment-history {
+  display: grid;
+  gap: 9px;
+  margin-top: 13px;
+}
+
+.adjustment-history > article {
+  padding: 12px;
+  border: 1px solid #d7e8ee;
+  border-radius: 8px;
+  background: #f8fcfe;
+}
+
+.adjustment-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.adjustment-title strong {
+  color: #17324d;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.adjustment-status {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #e8f4ff;
+  color: #28628f;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.adjustment-status.status-completed {
+  background: #dff8ec;
+  color: #177257;
+}
+
+.adjustment-status.status-makeup_available {
+  background: #fff0d6;
+  color: #9a5a00;
+}
+
+.adjustment-status.status-rejected {
+  background: #ffe1e1;
+  color: #a43131;
+}
+
+.adjustment-history p {
+  margin: 5px 0 0;
+  font-size: 12px;
+}
+
+.adjustment-history .makeup-result {
+  color: #177257;
+  font-weight: 800;
+}
+
+.adjustment-history small {
+  display: block;
+  margin-top: 5px;
+  color: #6b7f94;
+  font-size: 11px;
+}
+
+.mobile-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-top: 48px;
+  background: rgba(23, 50, 77, .42);
+}
+
+.mobile-sheet {
+  width: min(100%, 620px);
+  max-height: calc(100vh - 48px);
+  padding: 18px 14px 32px;
+  overflow-y: auto;
+  border-radius: 8px 8px 0 0;
+  background: #f6fbff;
+  box-shadow: 0 -16px 48px rgba(23, 50, 77, .2);
+}
+
+.mobile-sheet-head {
+  position: sticky;
+  top: -18px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: -18px -14px 16px;
+  padding: 16px 14px 13px;
+  border-bottom: 1px solid #d7e8ee;
+  background: rgba(246, 251, 255, .96);
+  backdrop-filter: blur(12px);
+}
+
+.mobile-sheet-head h2 {
+  margin: 3px 0 0;
+  color: #17324d;
+  font-size: 21px;
+  line-height: 27px;
+  font-weight: 900;
+}
+
+.mobile-sheet-head > button {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  background: transparent;
+  color: #49677f;
+  font-size: 28px;
+  line-height: 38px;
+  cursor: pointer;
+}
+
+.mobile-sheet .catalog-head {
+  margin-top: 0;
+}
+
+.mobile-sheet .mobile-detail-card {
+  box-shadow: none;
+}
+
+.reschedule-order-list {
+  display: grid;
+  gap: 8px;
+}
+
+.reschedule-order-list > button {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #d7e8ee;
+  border-radius: 8px;
+  background: #fff;
+  color: #17324d;
+  text-align: left;
+}
+
+.reschedule-order-list > button.active {
+  border-color: #1f7a8c;
+  background: #eef9fb;
+}
+
+.reschedule-order-list strong {
+  font-size: 14px;
+}
+
+.reschedule-order-list span,
+.reschedule-order-list small {
+  color: #6b7f94;
+  font-size: 12px;
+}
+
+.sheet-field-label {
+  display: block;
+  margin: 17px 0 8px;
+  color: #17324d;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.mobile-date-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.mobile-date-list button {
+  min-width: 0;
+  padding: 9px 5px;
+  border: 1px solid #d7e8ee;
+  border-radius: 8px;
+  background: #fff;
+  color: #49677f;
+}
+
+.mobile-date-list button.selected {
+  border-color: #1f7a8c;
+  background: #1f7a8c;
+  color: #fff;
+}
+
+.mobile-date-list span,
+.mobile-date-list strong {
+  display: block;
+  font-size: 11px;
+}
+
+.sheet-textarea {
+  width: 100%;
+  padding: 10px;
+  resize: vertical;
+  border: 1px solid #cbdde5;
+  border-radius: 8px;
+  background: #fff;
+  color: #17324d;
+  font: inherit;
+}
+
+.full-action {
+  width: 100%;
+}
+
+.full-action:disabled {
+  opacity: .6;
+  cursor: wait;
+}
+
+.sheet-history {
+  margin-top: 24px;
 }
 
 .empty-state {

@@ -41,13 +41,20 @@
         </template>
         <template v-if="column.key === 'recommendations'">
           <div class="recommendation-cell">
-            <div v-for="(option, index) in record.recommended_option_list" :key="`${record.id}-${index}`">
-              {{ index + 1 }}. {{ formatOption(option) }}
-            </div>
-            <div v-if="record.admin_extra_recommendation_detail" class="extra-option">
-              3. {{ formatOption(record.admin_extra_recommendation_detail) }}
-            </div>
-            <span v-if="!hasRecommendations(record)">-</span>
+            <template v-if="record.status === 'completed' && record.selected_target_date">
+              <div class="selected-schedule">
+                <strong>Scheduled:</strong> {{ formatSelectedSchedule(record) }}
+              </div>
+            </template>
+            <template v-else>
+              <div v-for="(option, index) in record.recommended_option_list" :key="`${record.id}-${index}`">
+                {{ index + 1 }}. {{ formatOption(option) }}
+              </div>
+              <div v-if="record.admin_extra_recommendation_detail" class="extra-option">
+                3. {{ formatOption(record.admin_extra_recommendation_detail) }}
+              </div>
+              <span v-if="!hasRecommendations(record)">-</span>
+            </template>
           </div>
         </template>
         <template v-if="column.key === 'operation'">
@@ -88,7 +95,10 @@
       @ok="submitExtraRecommendation"
     >
       <div class="review-form">
-        <p class="hint">Only options that match the same class name, term range, and capacity rules are shown.</p>
+        <p class="hint">
+          Options exclude the student's existing classes and stay in the current term.
+          A later term is included only when the student is already enrolled in that term.
+        </p>
         <label>Makeup option</label>
         <a-select v-model:value="extraModal.selectedValue" placeholder="Select an option">
           <a-select-option
@@ -223,7 +233,19 @@ const formatOption = (option: any) => {
     return '-';
   }
   const seats = option.available_seats === null || option.available_seats === undefined ? '-' : option.available_seats;
-  return `${option.class_title} | ${option.date} ${option.day} | ${option.time} | ${option.room} | seats ${seats}`;
+  const term = option.term_title ? ` | ${option.term_title}` : '';
+  return `${option.class_title} | ${option.date} ${option.day} | ${option.time} | ${option.room}${term} | seats ${seats}`;
+};
+
+const formatSelectedSchedule = (record: any) => {
+  const parts = [
+    record.selected_target_class_title,
+    record.selected_target_date,
+    record.selected_target_day,
+    record.selected_target_time,
+    record.selected_target_room,
+  ].filter(Boolean);
+  return parts.length ? parts.join(' | ') : '-';
 };
 
 const hasRecommendations = (record: any) => {
@@ -378,6 +400,13 @@ const statusColor = (status: string) => {
   max-width: 260px;
   white-space: normal;
   line-height: 20px;
+}
+
+.selected-schedule {
+  border-left: 3px solid #52c41a;
+  background: #f6ffed;
+  color: #135200;
+  padding: 6px 8px;
 }
 
 .recommendation-cell {

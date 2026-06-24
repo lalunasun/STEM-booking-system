@@ -6,7 +6,7 @@
         <a-space>
           <a-button type="primary" @click="handleAdd">New</a-button>
           <a-button danger @click="handleBatchDelete">Mass Delete</a-button>
-          <a-input-search addon-before="Username" enter-button @search="onSearch" @change="onSearchChange" />
+          <a-input-search addon-before="User" placeholder="ID, username, nickname, phone or email" enter-button @search="onSearch" @change="onSearchChange" />
         </a-space>
       </div>
       <a-table
@@ -118,6 +118,12 @@
 
 
   const columns = reactive([
+    {
+      title: 'User ID',
+      dataIndex: 'id',
+      key: 'id',
+      align: 'center',
+    },
     {
       title: 'No.',
       dataIndex: 'index',

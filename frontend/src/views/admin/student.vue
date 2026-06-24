@@ -28,7 +28,11 @@
       >
         <template #bodyCell="{ text, record, column }">
           <template v-if="column.key === 'parent'">
-            <span>{{ record.parent_name || record.parent_username || '-' }}</span>
+            <div class="parent-identity">
+              <strong>{{ record.parent_name || record.parent_username || '-' }}</strong>
+              <span v-if="record.parent_username">@{{ record.parent_username }}</span>
+              <span v-if="record.parent">User ID {{ record.parent }}</span>
+            </div>
           </template>
           <template v-if="column.key === 'active_classes'">
             <div class="class-list">
@@ -38,6 +42,17 @@
           </template>
           <template v-if="column.key === 'active_terms'">
             <span>{{ formatList(record.active_terms) }}</span>
+          </template>
+          <template v-if="column.key === 'absences'">
+            <a-badge
+              :count="record.absence_records?.length || 0"
+              :show-zero="true"
+              :number-style="{
+                backgroundColor: record.absence_records?.length ? '#fff1f0' : '#f5f5f5',
+                color: record.absence_records?.length ? '#cf1322' : '#8c8c8c',
+                boxShadow: 'none',
+              }"
+            />
           </template>
           <template v-if="column.key === 'operation'">
             <span>
@@ -109,7 +124,11 @@
         </div>
         <div class="detail-row">
           <span class="detail-label">Parent</span>
-          <span>{{ detail.record.parent_name || detail.record.parent_username || '-' }}</span>
+          <span>
+            {{ detail.record.parent_name || detail.record.parent_username || '-' }}
+            <template v-if="detail.record.parent_username"> · @{{ detail.record.parent_username }}</template>
+            <template v-if="detail.record.parent"> · User ID {{ detail.record.parent }}</template>
+          </span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Phone</span>
@@ -141,6 +160,38 @@
               </div>
             </div>
             <span v-if="!detail.record.course_history || detail.record.course_history.length === 0">-</span>
+          </div>
+        </div>
+        <div class="detail-row detail-row-block">
+          <span class="detail-label">Absence / Leave History</span>
+          <div class="absence-history">
+            <div
+              v-for="absence in detail.record.absence_records"
+              :key="absence.adjustment_id"
+              class="absence-history-item"
+            >
+              <div class="absence-history-main">
+                <div>
+                  <strong>{{ absence.class_name || '-' }}</strong>
+                  <span class="absence-date">{{ absence.lesson_date || '-' }}</span>
+                </div>
+                <a-tag :color="getAbsenceStatusColor(absence.status)">
+                  {{ formatAbsenceStatus(absence.status) }}
+                </a-tag>
+              </div>
+              <div class="absence-history-meta">
+                <span>Term: {{ absence.term || '-' }}</span>
+                <span>{{ absence.day || '-' }} {{ absence.time || '-' }}</span>
+                <span>Room: {{ absence.room || '-' }}</span>
+                <span>Requested: {{ absence.created_time || '-' }}</span>
+              </div>
+              <p v-if="absence.reason" class="absence-reason">
+                Reason: {{ absence.reason }}
+              </p>
+            </div>
+            <span v-if="!detail.record.absence_records || detail.record.absence_records.length === 0">
+              No absence records
+            </span>
           </div>
         </div>
       </div>
@@ -176,11 +227,25 @@ const columns = reactive([
     width: 90,
   },
   {
+    title: 'Parent',
+    dataIndex: 'parent',
+    key: 'parent',
+    align: 'left',
+    width: 250,
+  },
+  {
     title: 'Active Classes',
     dataIndex: 'active_classes',
     key: 'active_classes',
     align: 'center',
     width: 520,
+  },
+  {
+    title: 'Absences',
+    dataIndex: 'absence_records',
+    key: 'absences',
+    align: 'center',
+    width: 100,
   },
   {
     title: 'Operation',
@@ -237,6 +302,30 @@ const formatList = (value: string[] | undefined) => {
   return value.join(', ');
 };
 
+const formatAbsenceStatus = (status: string | undefined) => {
+  const labels: Record<string, string> = {
+    pending: 'Pending',
+    approved: 'Approved',
+    makeup_available: 'Makeup available',
+    completed: 'Completed',
+    rejected: 'Rejected',
+    canceled: 'Canceled',
+  };
+  return labels[status || ''] || status || 'Unknown';
+};
+
+const getAbsenceStatusColor = (status: string | undefined) => {
+  const colors: Record<string, string> = {
+    pending: 'orange',
+    approved: 'blue',
+    makeup_available: 'cyan',
+    completed: 'green',
+    rejected: 'red',
+    canceled: 'default',
+  };
+  return colors[status || ''] || 'default';
+};
+
 const getDataList = () => {
   data.loading = true;
   listApi({
@@ -262,7 +351,7 @@ const getParentDataList = () => {
         .filter((item: any) => item.role === '1')
         .map((item: any) => ({
           value: item.id,
-          label: `${item.nickname || item.username}${item.mobile ? ` (${item.mobile})` : ''}`,
+          label: `${item.nickname || item.username} · @${item.username} · ID ${item.id}${item.mobile ? ` · ${item.mobile}` : ''}`,
         }));
     })
     .catch((err) => {
@@ -374,6 +463,21 @@ const hideModal = () => {
 </script>
 
 <style scoped lang="less">
+.parent-identity {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.parent-identity strong {
+  color: #152844;
+}
+
+.parent-identity span {
+  color: #64748b;
+  font-size: 12px;
+}
+
 .page-view {
   min-height: 100%;
   background: #fff;
@@ -444,5 +548,46 @@ const hideModal = () => {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px 14px;
   line-height: 20px;
+}
+
+.absence-history {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.absence-history-item {
+  border: 1px solid #ffd8bf;
+  border-radius: 4px;
+  background: #fffaf5;
+  padding: 10px 12px;
+}
+
+.absence-history-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.absence-date {
+  color: #b45309;
+  font-weight: 600;
+  margin-left: 10px;
+}
+
+.absence-history-meta {
+  color: #475569;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 14px;
+  line-height: 20px;
+}
+
+.absence-reason {
+  color: #7c2d12;
+  margin: 8px 0 0;
+  white-space: pre-wrap;
 }
 </style>

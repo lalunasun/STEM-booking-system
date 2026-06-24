@@ -14,9 +14,9 @@
                 <div class="thing-state">
                   <span class="state hidden-sm">Class Status</span>
                   <span :class="{
-                    'status-full': detailData.display_status === 'Full',
-                    'status-closed': detailData.display_status === 'Closed',
-                  }">{{ detailData.display_status || 'Open' }}</span>
+                    'status-full': classDisplayStatus === 'Full',
+                    'status-closed': classDisplayStatus === 'Closed',
+                  }">{{ classDisplayStatus }}</span>
                 </div>
                 <h1 class="thing-name">{{ detailData.title }}</h1>
 
@@ -30,7 +30,7 @@
                 </div>
                 <div class="translators flex-view" style="">
                   <span>Number of students：</span>
-                  <span class="name">{{ students_num }}</span>
+                  <span class="name">{{ attendanceCount }}</span>
                 </div>
               </div>
             </div>
@@ -169,6 +169,27 @@ let absData = ref([])
 let students_num = ref(0)
 let classDate = ref('')
 
+const attendanceCount = computed(() => {
+  if (!classDate.value) {
+    return students_num.value
+  }
+  return norData.value.length + reData.value.length + tryData.value.length
+})
+
+const classDisplayStatus = computed(() => {
+  if (!classDate.value) {
+    return detailData.value.display_status || 'Open'
+  }
+  if (String(detailData.value.status) === '1') {
+    return 'Closed'
+  }
+  const capacity = Number(detailData.value.room_capacity)
+  if (Number.isFinite(capacity) && capacity > 0 && attendanceCount.value >= capacity) {
+    return 'Full'
+  }
+  return 'Open'
+})
+
 onMounted(() => {
   loadLessonPage()
 })
@@ -247,7 +268,11 @@ const getThingDetail = () => {
 
 // 学生信息
 const getStuDetail = () => {
-  const params = lessonId.value ? { id: thingId.value, lesson_id: lessonId.value } : { id: thingId.value }
+  const params = {
+    id: thingId.value,
+    ...(lessonId.value ? { lesson_id: lessonId.value } : {}),
+    ...(classDate.value ? { date: classDate.value } : {}),
+  }
 
   detailStuApi(params).then(res => {
     if (res.code !== 0 || !res.data) {

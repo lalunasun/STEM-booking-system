@@ -82,6 +82,53 @@ def _next_class_date(day, start_date, end_date):
     return class_date
 
 
+def _class_dates(day, start_date, end_date):
+    class_date = _next_class_date(day, start_date, end_date)
+    while class_date and class_date <= end_date:
+        yield class_date
+        class_date += timedelta(days=7)
+
+
+def _eligible_term_ranges(adjustment):
+    original_start = adjustment.original_lesson_date or _date_part(adjustment.original_term.expect_time)
+    original_end = _date_part(adjustment.original_term.return_time)
+    if not original_start or not original_end:
+        return []
+
+    ranges = [{
+        'term_id': adjustment.original_term_id,
+        'term_title': adjustment.original_term.title,
+        'start_date': original_start,
+        'end_date': original_end,
+    }]
+
+    if not adjustment.student or not adjustment.original_class:
+        return ranges
+
+    future_orders = Order.objects.filter(
+        child=adjustment.student,
+        status__in=[2, 6],
+        term__isnull=False,
+        thing__title__iexact=adjustment.original_class.title,
+        term__expect_time__isnull=False,
+        term__return_time__isnull=False,
+        term__expect_time__gt=adjustment.original_term.return_time,
+    ).select_related('term').order_by('term__expect_time', 'term_id')
+
+    seen_terms = {adjustment.original_term_id}
+    for order in future_orders:
+        if order.term_id in seen_terms:
+            continue
+        seen_terms.add(order.term_id)
+        ranges.append({
+            'term_id': order.term_id,
+            'term_title': order.term.title,
+            'start_date': _date_part(order.term.expect_time),
+            'end_date': _date_part(order.term.return_time),
+        })
+    return ranges
+
+
 def _scheduled_count_for_slot(thing, target_date=None):
     if not thing:
         return 0
@@ -90,8 +137,13 @@ def _scheduled_count_for_slot(thing, target_date=None):
     scheduled_orders = Order.objects.filter(
         thing__in=same_slot,
         child__isnull=False,
-        status=6,
-    ).count()
+        status__in=[2, 6],
+    )
+    if target_date:
+        scheduled_orders = scheduled_orders.filter(
+            expect_time__date__lte=target_date,
+            return_time__date__gte=target_date,
+        )
     scheduled_makeups = CourseAdjustment.objects.filter(
         selected_target_class__in=same_slot,
         request_type='makeup_class',
@@ -99,10 +151,10 @@ def _scheduled_count_for_slot(thing, target_date=None):
     )
     if target_date:
         scheduled_makeups = scheduled_makeups.filter(selected_target_date=target_date)
-    return scheduled_orders + scheduled_makeups.count()
+    return scheduled_orders.count() + scheduled_makeups.count()
 
 
-def _build_option(thing, class_date):
+def _build_option(thing, class_date, term_range=None):
     capacity = thing.tag.seat if thing.tag else None
     enrolled_count = _scheduled_count_for_slot(thing, class_date)
     available_seats = None if capacity is None else max(int(capacity) - enrolled_count, 0)
@@ -117,6 +169,8 @@ def _build_option(thing, class_date):
         'capacity': capacity,
         'enrolled_count': enrolled_count,
         'available_seats': available_seats,
+        'term_id': term_range.get('term_id') if term_range else None,
+        'term_title': term_range.get('term_title') if term_range else None,
     }
 
 
@@ -128,9 +182,8 @@ def _recommend_makeup_options(adjustment, limit=2):
     if not adjustment.original_class or not adjustment.original_term:
         return []
 
-    start_date = adjustment.original_lesson_date or _date_part(adjustment.original_term.expect_time)
-    end_date = _date_part(adjustment.original_term.return_time)
-    if not start_date or not end_date:
+    term_ranges = _eligible_term_ranges(adjustment)
+    if not term_ranges:
         return []
 
     candidates = Thing.objects.filter(
@@ -142,20 +195,28 @@ def _recommend_makeup_options(adjustment, limit=2):
     ).select_related('time', 'tag').order_by('day', 'time__time', 'tag__title', 'id')
 
     options = []
-    for thing in candidates:
-        class_date = _next_class_date(thing.day, start_date, end_date)
-        if not class_date:
-            continue
-        option = _build_option(thing, class_date)
-        if option['available_seats'] is not None and option['available_seats'] <= 0:
-            continue
-        if _student_has_slot_conflict(adjustment.student, thing, class_date):
-            continue
-        if adjustment.student and thing.id == adjustment.original_class_id and class_date == adjustment.original_lesson_date:
-            continue
-        options.append(option)
-        if limit and len(options) >= limit:
-            break
+    seen_options = set()
+    for term_range in term_ranges:
+        for thing in candidates:
+            for class_date in _class_dates(
+                thing.day,
+                term_range['start_date'],
+                term_range['end_date'],
+            ):
+                option_key = (thing.id, class_date)
+                if option_key in seen_options:
+                    continue
+                if thing.id == adjustment.original_class_id and class_date == adjustment.original_lesson_date:
+                    continue
+                if _student_has_slot_conflict(adjustment.student, thing, class_date):
+                    continue
+                option = _build_option(thing, class_date, term_range)
+                if option['available_seats'] is not None and option['available_seats'] <= 0:
+                    continue
+                seen_options.add(option_key)
+                options.append(option)
+                if limit and len(options) >= limit:
+                    return options
 
     return options
 
@@ -340,6 +401,24 @@ def confirm_makeup_schedule_api(request):
     target_date = parse_date(class_date)
     if not target_date:
         return APIResponse(code=1, msg='Invalid makeup date')
+
+    current_recommendation = next(
+        (
+            option
+            for option in _recommend_makeup_options(adjustment, limit=0)
+            if str(option.get('class_id')) == str(class_id)
+            and option.get('date') == class_date
+        ),
+        None,
+    )
+    if not current_recommendation:
+        return APIResponse(
+            code=1,
+            msg=(
+                'This makeup option is no longer eligible. '
+                'Check the student schedule, term enrollment, and capacity.'
+            ),
+        )
 
     current_option = _build_option(thing, target_date)
     if current_option['available_seats'] is not None and current_option['available_seats'] <= 0:

@@ -1,0 +1,1 @@
+import{l as s,I as t}from"./index-CM1rsCJe.js";const c=async e=>s({url:"/CSAA/index/courseAdjustment/list",params:e}),n=async e=>t({url:"/CSAA/index/courseAdjustment/createCancel",data:e,headers:{}});export{n as c,c as l};

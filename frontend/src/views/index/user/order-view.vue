@@ -17,7 +17,7 @@
     </a-tabs>
     <a-spin :spinning="loading" style="min-height: 200px;">
       <div class="list-content">
-        <div class="order-item-view" v-for="(item, index) in orderData" :key="index">
+        <div class="order-item-view" v-for="item in orderData" :key="item.id">
           <div class="header flex-view">
             <div class="left">
               <span class="text">Order number</span>
@@ -48,6 +48,11 @@
                   <div class="flex-between flex-top flex-view">
                     <div>
                       <h2 class="name">{{ item.title }}</h2>
+                      <div class="student-line">
+                        <span class="student-label">Student</span>
+                        <strong>{{ item.child_name || 'Not assigned' }}</strong>
+                        <span v-if="item.child" class="student-id">ID {{ item.child }}</span>
+                      </div>
                       <p v-if="!isTrialOrder(item)" class="class-time">
                         {{ item.day || 'Day TBD' }} <span v-if="item.time_title">| {{ item.time_title }}</span>
                         <span v-if="item.room_title"> | {{ item.room_title }}</span>
@@ -74,7 +79,6 @@
               <p class="title">Notes</p>
               <p class="text">{{ item.remark || 'None' }}
               </p>
-              <p><span style="font-weight: bolder;">Child name: {{ item.child_name }}</span></p>
             </div>
           </div>
           <div class="bottom flex-view">
@@ -82,7 +86,7 @@
               <span class="text">A total of {{ item.num }} lessons</span>
               <span v-if="isTrialOrder(item)" class="open" @click="openTrialDetail(item)">Trial Detail</span>
               <span v-else class="open" @click="handleDetail(item.thing)">Class Detail</span>
-              <span v-if="item.status === 6" class="open danger-action" @click="openCancelClass(item)">Cancel Class</span>
+              <span v-if="[2, 6].includes(Number(item.status))" class="open danger-action" @click="openCancelClass(item)">Request Schedule Change</span>
             </div>
             <div class="right flex-view">
 
@@ -99,9 +103,10 @@
     </a-spin>
     <a-modal
       v-model:visible="cancelModal.visible"
-      title="Cancel Class Request"
+      title="Schedule Change Request"
       ok-text="Submit"
       cancel-text="Close"
+      :confirm-loading="cancelModal.submitting"
       @ok="submitCancelClass"
     >
       <div class="cancel-form">
@@ -121,7 +126,32 @@
         </template>
         <template v-else>
           <label>Class date</label>
-          <input v-model="cancelModal.lessonDate" class="date-input" type="date" />
+          <input
+            v-model="cancelModal.lessonDate"
+            class="date-input"
+            type="date"
+            :min="cancelDateLimits.min"
+            :max="cancelDateLimits.max"
+            @change="validateCancelDate"
+          />
+          <p class="date-guidance">
+            This class meets on {{ cancelModal.order?.day || 'its scheduled weekday' }}.
+            Select one of the highlighted dates:
+          </p>
+          <div v-if="availableCancelDates.length" class="available-date-list">
+            <button
+              v-for="date in availableCancelDates"
+              :key="date.value"
+              class="available-date"
+              :class="{ selected: cancelModal.lessonDate === date.value }"
+              type="button"
+              @click="selectCancelDate(date.value)"
+            >
+              <span>{{ date.weekday }}</span>
+              <strong>{{ date.label }}</strong>
+            </button>
+          </div>
+          <p v-else class="no-date-hint">No eligible class dates are available for this term.</p>
         </template>
         <label>Message to admin</label>
         <textarea v-model="cancelModal.parentNote" class="note-input" rows="4" placeholder="Optional note"></textarea>
@@ -176,6 +206,7 @@ const cancelModal = reactive({
   lessonDate: '',
   trialClassId: '',
   parentNote: '',
+  submitting: false,
 })
 const trialDetailModal = reactive({
   visible: false,
@@ -255,6 +286,84 @@ const formatDateText = (date) => {
   return `${year}-${month}-${day}`
 }
 
+const dateAtStartOfDay = (value) => {
+  const date = parseDateText(value)
+  if (!date) return null
+  date.setHours(0, 0, 0, 0)
+  return date
+}
+
+const cancelDateLimits = computed(() => {
+  const order = cancelModal.order
+  return {
+    min: order ? String(order.expect_time || '').slice(0, 10) : '',
+    max: order ? String(order.return_time || '').slice(0, 10) : '',
+  }
+})
+
+const isEligibleCancelDate = (value) => {
+  const order = cancelModal.order
+  const date = dateAtStartOfDay(value)
+  if (!order || !date || dayIndex[order.day] === undefined) return false
+
+  const start = dateAtStartOfDay(order.expect_time)
+  const end = dateAtStartOfDay(order.return_time)
+  if ((start && date < start) || (end && date > end)) return false
+  if (date.getDay() !== dayIndex[order.day]) return false
+
+  const timeMatch = String(order.time_title || '').match(/^(\d{1,2}):(\d{2})/)
+  const lessonStart = new Date(date)
+  lessonStart.setHours(
+    timeMatch ? Number(timeMatch[1]) : 0,
+    timeMatch ? Number(timeMatch[2]) : 0,
+    0,
+    0,
+  )
+  return lessonStart.getTime() - Date.now() >= 48 * 60 * 60 * 1000
+}
+
+const availableCancelDates = computed(() => {
+  const order = cancelModal.order
+  if (!order || isTrialOrder(order) || dayIndex[order.day] === undefined) return []
+
+  const start = dateAtStartOfDay(order.expect_time)
+  const end = dateAtStartOfDay(order.return_time)
+  if (!start || !end) return []
+
+  const first = new Date(Math.max(start.getTime(), Date.now()))
+  first.setHours(0, 0, 0, 0)
+  const daysAhead = (dayIndex[order.day] - first.getDay() + 7) % 7
+  first.setDate(first.getDate() + daysAhead)
+
+  const dates = []
+  for (let date = new Date(first); date <= end && dates.length < 12; date.setDate(date.getDate() + 7)) {
+    const value = formatDateText(date)
+    if (!isEligibleCancelDate(value)) continue
+    dates.push({
+      value,
+      weekday: date.toLocaleDateString('en-CA', { weekday: 'short' }),
+      label: date.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }),
+    })
+  }
+  return dates
+})
+
+const validateCancelDate = () => {
+  if (!cancelModal.lessonDate || isEligibleCancelDate(cancelModal.lessonDate)) return true
+
+  const selected = cancelModal.lessonDate
+  cancelModal.lessonDate = ''
+  message.warning(
+    `${selected} has no ${cancelModal.order?.title || 'selected'} class. ` +
+    `Please choose a highlighted ${cancelModal.order?.day || ''} date.`
+  )
+  return false
+}
+
+const selectCancelDate = (value) => {
+  cancelModal.lessonDate = value
+}
+
 const getTrialSlotDate = (slot, order) => {
   if (slot.date) return slot.date
   if (!slot.day || dayIndex[slot.day] === undefined) return ''
@@ -329,6 +438,9 @@ const openCancelClass = (item) => {
 }
 
 const submitCancelClass = () => {
+  if (cancelModal.submitting) {
+    return
+  }
   if (!cancelModal.order) {
     message.error('Please select an order')
     return
@@ -341,6 +453,10 @@ const submitCancelClass = () => {
     message.error('Please select the class date')
     return
   }
+  if (!isTrialOrder(cancelModal.order) && !validateCancelDate()) {
+    return
+  }
+  cancelModal.submitting = true
   createCancelRequestApi({
     order_id: cancelModal.order.id,
     user_id: userStore.user_id,
@@ -352,10 +468,12 @@ const submitCancelClass = () => {
       message.error(res.msg || 'Submit failed')
       return
     }
-    message.success('Cancel request submitted')
+    message.success(res.msg || 'Schedule change request submitted')
     cancelModal.visible = false
   }).catch(err => {
     message.error(err.msg || 'Submit failed')
+  }).finally(() => {
+    cancelModal.submitting = false
   })
 }
 
@@ -515,6 +633,29 @@ const handlePay = (item) => {
         font-size: 13px;
         line-height: 18px;
         margin: 0;
+      }
+
+      .student-line {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 0 0 7px;
+        color: #152844;
+        font-size: 12px;
+        line-height: 18px;
+      }
+
+      .student-label {
+        padding: 2px 7px;
+        border-radius: 3px;
+        background: #e7f0ff;
+        color: #3568b8;
+        font-weight: 600;
+      }
+
+      .student-id {
+        color: #718096;
       }
 
       .count {
@@ -708,6 +849,58 @@ const handlePay = (item) => {
     border: 1px solid #d9d9d9;
     border-radius: 2px;
     padding: 8px;
+  }
+
+  .date-guidance {
+    color: #5f77a6;
+    line-height: 20px;
+    margin: 4px 0 0;
+  }
+
+  .available-date-list {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .available-date {
+    border: 1px solid #91caff;
+    border-radius: 4px;
+    background: #e6f4ff;
+    color: #0958d9;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 7px 5px;
+    text-align: center;
+
+    span {
+      font-size: 11px;
+    }
+
+    strong {
+      font-size: 13px;
+    }
+
+    &:hover,
+    &.selected {
+      border-color: #1677ff;
+      background: #1677ff;
+      color: #fff;
+    }
+  }
+
+  .no-date-hint {
+    color: #b42318;
+    margin: 4px 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .cancel-form .available-date-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 </style>

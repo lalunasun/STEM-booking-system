@@ -1,3 +1,5 @@
+import datetime
+
 from rest_framework.decorators import api_view, authentication_classes
 
 from CSAA import utils
@@ -34,7 +36,17 @@ def detail(request):
         return APIResponse(code=1, msg='课程不存在')
 
     if request.method == 'GET':
-        serializer = LessonDetailSerializer(lesson)
+        class_date = request.GET.get('date')
+        if class_date:
+            try:
+                class_date = datetime.date.fromisoformat(class_date)
+            except ValueError:
+                return APIResponse(code=1, msg='Invalid class date')
+
+        serializer = LessonDetailSerializer(
+            lesson,
+            context={'class_date': class_date},
+        )
         return APIResponse(code=0, msg='查询成功', data=serializer.data)
 
 

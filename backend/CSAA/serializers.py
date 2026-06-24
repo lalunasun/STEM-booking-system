@@ -37,14 +37,14 @@ class ThingSerializer(serializers.ModelSerializer):
             return Order.objects.filter(
                 thing=obj,
                 child__isnull=False,
-                status__in=[1, 2, 6],
+                status__in=[2, 6],
             ).count()
 
         same_room_things = Thing.objects.filter(tag=obj.tag, day=obj.day, time=obj.time)
         return Order.objects.filter(
             thing__in=same_room_things,
             child__isnull=False,
-            status__in=[1, 2, 6],
+            status__in=[2, 6],
         ).count()
 
     def get_available_seats(self, obj):
@@ -109,14 +109,14 @@ class ListThingSerializer(serializers.ModelSerializer):
             return Order.objects.filter(
                 thing=obj,
                 child__isnull=False,
-                status__in=[1, 2, 6],
+                status__in=[2, 6],
             ).count()
 
         same_room_things = Thing.objects.filter(tag=obj.tag, day=obj.day, time=obj.time)
         return Order.objects.filter(
             thing__in=same_room_things,
             child__isnull=False,
-            status__in=[1, 2, 6],
+            status__in=[2, 6],
         ).count()
 
     def get_enrolled_count(self, obj):
@@ -360,6 +360,44 @@ class CourseAdjustmentSerializer(serializers.ModelSerializer):
         return self._parse_json_field(obj.admin_extra_recommendation, None)
 
 
+class ParentCourseAdjustmentSerializer(serializers.ModelSerializer):
+    student_name = serializers.ReadOnlyField(source='student.name')
+    original_order_number = serializers.ReadOnlyField(source='original_order.order_number')
+    original_class_title = serializers.ReadOnlyField(source='original_class.title')
+    original_term_title = serializers.ReadOnlyField(source='original_term.title')
+    selected_target_class_title = serializers.ReadOnlyField(source='selected_target_class.title')
+    created_time = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S', required=False)
+    updated_time = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S', required=False)
+
+    class Meta:
+        model = CourseAdjustment
+        fields = [
+            'id',
+            'student',
+            'student_name',
+            'original_order',
+            'original_order_number',
+            'original_class',
+            'original_class_title',
+            'original_lesson_date',
+            'original_day',
+            'original_time',
+            'original_term',
+            'original_term_title',
+            'request_type',
+            'status',
+            'parent_note',
+            'selected_target_class',
+            'selected_target_class_title',
+            'selected_target_date',
+            'selected_target_day',
+            'selected_target_time',
+            'selected_target_room',
+            'created_time',
+            'updated_time',
+        ]
+
+
 class LessonSerializer(serializers.ModelSerializer):
     lesson_id = serializers.ReadOnlyField(source='id')
     thing_id = serializers.ReadOnlyField(source='thing.id')
@@ -570,6 +608,7 @@ class AdminStudentSerializer(serializers.ModelSerializer):
     active_classes = serializers.SerializerMethodField()
     active_terms = serializers.SerializerMethodField()
     course_history = serializers.SerializerMethodField()
+    absence_records = serializers.SerializerMethodField()
 
     class Meta:
         model = Child
@@ -645,6 +684,53 @@ class AdminStudentSerializer(serializers.ModelSerializer):
 
         return courses
 
+    def get_absence_records(self, obj):
+        adjustments = CourseAdjustment.objects.filter(
+            student=obj,
+            request_type='cancel_class',
+        ).select_related(
+            'original_order',
+            'original_class',
+            'original_class__time',
+            'original_class__tag',
+            'original_term',
+        ).order_by('-original_lesson_date', '-created_time')
+
+        return [
+            {
+                'adjustment_id': adjustment.id,
+                'order_id': adjustment.original_order_id,
+                'class_name': adjustment.original_class.title if adjustment.original_class else None,
+                'lesson_date': (
+                    adjustment.original_lesson_date.strftime('%Y-%m-%d')
+                    if adjustment.original_lesson_date
+                    else None
+                ),
+                'day': adjustment.original_day or (
+                    adjustment.original_class.day if adjustment.original_class else None
+                ),
+                'time': adjustment.original_time or (
+                    adjustment.original_class.time.time
+                    if adjustment.original_class and adjustment.original_class.time
+                    else None
+                ),
+                'room': (
+                    adjustment.original_class.tag.title
+                    if adjustment.original_class and adjustment.original_class.tag
+                    else None
+                ),
+                'term': adjustment.original_term.title if adjustment.original_term else None,
+                'status': adjustment.status,
+                'reason': adjustment.request_reason or adjustment.parent_note or None,
+                'created_time': (
+                    adjustment.created_time.strftime('%Y-%m-%d %H:%M:%S')
+                    if adjustment.created_time
+                    else None
+                ),
+            }
+            for adjustment in adjustments
+        ]
+
 
 class LessonDetailSerializer(serializers.ModelSerializer):
     students = serializers.SerializerMethodField()
@@ -670,11 +756,34 @@ class LessonDetailSerializer(serializers.ModelSerializer):
         return serializer.data
 
     def _scheduled_orders(self, obj):
-        return Order.objects.filter(
+        orders = Order.objects.filter(
             thing=obj.thing,
             child__isnull=False,
             status=6,
-        ).select_related('user', 'child', 'term').order_by('child__name', 'id')
+        )
+        class_date = self.context.get('class_date')
+        if class_date:
+            orders = orders.filter(
+                expect_time__date__lte=class_date,
+                return_time__date__gte=class_date,
+            )
+            canceled = CourseAdjustment.objects.filter(
+                original_class=obj.thing,
+                original_lesson_date=class_date,
+                request_type='cancel_class',
+                status='approved',
+                student__isnull=False,
+            )
+            canceled_order_ids = canceled.exclude(
+                original_order__isnull=True,
+            ).values_list('original_order_id', flat=True)
+            canceled_student_ids = canceled.filter(
+                original_order__isnull=True,
+            ).values_list('student_id', flat=True)
+            orders = orders.exclude(id__in=canceled_order_ids).exclude(
+                child_id__in=canceled_student_ids,
+            )
+        return orders.select_related('user', 'child', 'term').order_by('child__name', 'id')
 
     def _serialize_order_student(self, order):
         parent = order.user
@@ -704,6 +813,9 @@ class LessonDetailSerializer(serializers.ModelSerializer):
             status='completed',
             student__isnull=False,
         ).select_related('student', 'parent', 'original_term')
+        class_date = self.context.get('class_date')
+        if class_date:
+            completed_makeups = completed_makeups.filter(selected_target_date=class_date)
         students = []
         seen = set()
 
@@ -726,11 +838,12 @@ class LessonDetailSerializer(serializers.ModelSerializer):
                 'adjustment_status': 'reschedule',
             })
 
-        for student in obj.reschedule_students.all():
-            if student.id in seen:
-                continue
-            serialized = ChildSerializer(student, context={'lesson': obj, 'student_type': 'reschedule'}).data
-            students.append(serialized)
+        if not class_date:
+            for student in obj.reschedule_students.all():
+                if student.id in seen:
+                    continue
+                serialized = ChildSerializer(student, context={'lesson': obj, 'student_type': 'reschedule'}).data
+                students.append(serialized)
 
         return students
 
@@ -777,6 +890,9 @@ class LessonDetailSerializer(serializers.ModelSerializer):
             child = trial_request.child
             parent = trial_request.parent or child.parent
             trial_date = self._next_trial_date(trial_request.package_order, obj.thing)
+            class_date = self.context.get('class_date')
+            if class_date and trial_date != class_date:
+                continue
             seen.add(child.id)
             students.append({
                 'id': child.id,
@@ -788,12 +904,13 @@ class LessonDetailSerializer(serializers.ModelSerializer):
                 'adjustment_status': 'trial',
             })
 
-        for student in obj.try_students.all():
-            if student.id in seen:
-                continue
-            serialized = ChildSerializer(student, context={'lesson': obj, 'student_type': 'try'}).data
-            serialized['adjustment_status'] = 'trial'
-            students.append(serialized)
+        if not self.context.get('class_date'):
+            for student in obj.try_students.all():
+                if student.id in seen:
+                    continue
+                serialized = ChildSerializer(student, context={'lesson': obj, 'student_type': 'try'}).data
+                serialized['adjustment_status'] = 'trial'
+                students.append(serialized)
 
         return students
 
@@ -804,6 +921,9 @@ class LessonDetailSerializer(serializers.ModelSerializer):
             status='approved',
             student__isnull=False,
         ).select_related('student', 'parent', 'original_term')
+        class_date = self.context.get('class_date')
+        if class_date:
+            canceled_adjustments = canceled_adjustments.filter(original_lesson_date=class_date)
         students = []
         seen = set()
 
@@ -826,11 +946,12 @@ class LessonDetailSerializer(serializers.ModelSerializer):
                 'adjustment_status': 'cancel',
             })
 
-        for student in obj.leave_students.all():
-            if student.id in seen:
-                continue
-            serialized = ChildSerializer(student, context={'lesson': obj, 'student_type': 'leave'}).data
-            students.append(serialized)
+        if not class_date:
+            for student in obj.leave_students.all():
+                if student.id in seen:
+                    continue
+                serialized = ChildSerializer(student, context={'lesson': obj, 'student_type': 'leave'}).data
+                students.append(serialized)
 
         return students
 

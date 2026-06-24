@@ -52,16 +52,28 @@
             >
               <span class="event-name">{{ item.class_name || 'Untitled class' }}</span>
               <span class="student-line">
-                {{ getStudentSummary(item, day.date) || 'No students' }}
+                <template v-if="getStudentSummaryEntries(item, day.date).length">
+                  <span
+                    v-for="student in getStudentSummaryEntries(item, day.date)"
+                    :key="`summary-${item.id}-${student.type}-${student.name}`"
+                    :class="`schedule-student schedule-student-${student.type}`"
+                  >
+                    {{ student.label }}
+                  </span>
+                  <span v-if="getHiddenStudentCount(item, day.date) > 0" class="student-more">
+                    +{{ getHiddenStudentCount(item, day.date) }}
+                  </span>
+                </template>
+                <span v-else>No students</span>
               </span>
               <span v-if="isLessonFull(item, day.date)" class="full-badge">FULL</span>
               <span v-if="hasStudentNames(item, day.date)" class="student-hover-panel">
                 <span
-                  v-for="student in getAllDisplayStudents(item, day.date)"
-                  :key="`hover-${item.id}-${student}`"
-                  class="student-hover-name"
+                  v-for="student in getDisplayStudentEntries(item, day.date)"
+                  :key="`hover-${item.id}-${student.type}-${student.name}`"
+                  :class="`student-hover-name schedule-student-${student.type}`"
                 >
-                  {{ student }}
+                  {{ student.label }}
                 </span>
               </span>
             </button>
@@ -292,10 +304,30 @@ const getTrialStudents = (item: LessonItem, date: Dayjs) => {
 };
 
 const getAllDisplayStudents = (item: LessonItem, date: Dayjs) => {
-  const normalStudents = getNormalStudents(item, date).map((student) => student.name);
-  const canceledStudents = getCanceledStudents(item, date).map((student) => `${student.name} cancel`);
-  const rescheduledStudents = getRescheduledStudents(item, date).map((student) => `*${student.name}`);
-  const trialStudents = getTrialStudents(item, date).map((student) => `${student.name} trial`);
+  return getDisplayStudentEntries(item, date).map((student) => student.label);
+};
+
+const getDisplayStudentEntries = (item: LessonItem, date: Dayjs) => {
+  const normalStudents = getNormalStudents(item, date).map((student) => ({
+    name: student.name,
+    label: student.name,
+    type: 'normal',
+  }));
+  const canceledStudents = getCanceledStudents(item, date).map((student) => ({
+    name: student.name,
+    label: `${student.name} cancel`,
+    type: 'canceled',
+  }));
+  const rescheduledStudents = getRescheduledStudents(item, date).map((student) => ({
+    name: student.name,
+    label: `*${student.name}`,
+    type: 'rescheduled',
+  }));
+  const trialStudents = getTrialStudents(item, date).map((student) => ({
+    name: student.name,
+    label: `${student.name} trial`,
+    type: 'trial',
+  }));
   return [...normalStudents, ...canceledStudents, ...rescheduledStudents, ...trialStudents];
 };
 
@@ -318,6 +350,22 @@ const getStudentSummary = (item: LessonItem, date: Dayjs) => {
   }
 
   return `${students.slice(0, 2).join(', ')} +${students.length - 2}`;
+};
+
+const getStudentSummaryEntries = (item: LessonItem, date: Dayjs) => {
+  const priority = {
+    canceled: 0,
+    rescheduled: 1,
+    trial: 2,
+    normal: 3,
+  };
+  return [...getDisplayStudentEntries(item, date)]
+    .sort((a, b) => priority[a.type] - priority[b.type])
+    .slice(0, 2);
+};
+
+const getHiddenStudentCount = (item: LessonItem, date: Dayjs) => {
+  return Math.max(getDisplayStudentEntries(item, date).length - 2, 0);
 };
 
 const getLessonCapacity = (item: LessonItem) => {
@@ -581,7 +629,9 @@ const goNext = () => {
 }
 
 .student-line {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -590,6 +640,39 @@ const goNext = () => {
   font-size: 12px;
   line-height: 16px;
   opacity: 0.92;
+}
+
+.schedule-student {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-student-normal {
+  color: #344054;
+}
+
+.schedule-student-canceled {
+  color: #b42318;
+  font-weight: 700;
+  text-decoration: line-through;
+}
+
+.schedule-student-rescheduled {
+  color: #166534;
+  font-weight: 700;
+}
+
+.schedule-student-trial {
+  color: #7c3aed;
+  font-weight: 600;
+}
+
+.student-more {
+  flex: 0 0 auto;
+  color: #667085;
+  font-size: 11px;
 }
 
 .full-badge {

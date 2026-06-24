@@ -25,6 +25,9 @@
           <template #overlay>
             <a-menu>
               <a-menu-item>
+                <a @click="$router.push({ name: 'portal' })">Choose Classes</a>
+              </a-menu-item>
+              <a-menu-item>
                 <a @click="goUserCenter('orderView')">My Order</a>
               </a-menu-item>
               <a-menu-item>

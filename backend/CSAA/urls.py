@@ -109,6 +109,7 @@ urlpatterns = [
     path('index/term/list', views.index.term.list_api),
     path('index/child/list', views.index.child.list_api),
     path('index/child/create', views.index.child.create),
+    path('index/courseAdjustment/list', views.index.course_adjustment.list_api),
     path('index/courseAdjustment/createCancel', views.index.course_adjustment.create_cancel_request),
     path('index/trial/create', views.index.trial.create),
 
