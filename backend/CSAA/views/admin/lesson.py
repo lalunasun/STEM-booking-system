@@ -1,22 +1,130 @@
 import datetime
+from collections import defaultdict
 
+from django.db.models import Q
 from rest_framework.decorators import api_view, authentication_classes
 
 from CSAA import utils
 from CSAA.auth.authentication import AdminTokenAuthtication
 from CSAA.handler import APIResponse
-from CSAA.models import Classification, Thing, Tag, Lesson
-from CSAA.serializers import ThingSerializer, UpdateThingSerializer, LessonSerializer, LessonDetailSerializer
+from CSAA.models import Classification, Thing, Tag, Lesson, Order, CourseAdjustment, TrialRequest
+from CSAA.serializers import ThingSerializer, UpdateThingSerializer, LessonSerializer, LessonDetailSerializer, DailyLessonSerializer
 
 
 # 查询课程数据
 @api_view(['GET'])  # 装饰器，只接受get请求
 def list_api(request):
     if request.method == 'GET':  # 可以不用判断请求方式
+        class_date = None
+        date_value = request.GET.get('date')
+        if date_value:
+            try:
+                class_date = datetime.date.fromisoformat(date_value)
+            except ValueError:
+                return APIResponse(code=1, msg='Invalid class date')
 
-        lessons = Lesson.objects.filter(thing__status='0')
+        lessons = Lesson.objects.filter(
+            thing__status='0',
+        ).select_related(
+            'thing',
+            'thing__time',
+            'thing__tag',
+        ).prefetch_related(
+            'students',
+            'leave_students',
+            'reschedule_students',
+            'try_students',
+        )
+        if class_date:
+            day_code = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][class_date.weekday()]
+            lessons = lessons.filter(thing__day=day_code)
 
-        serializer = LessonSerializer(lessons, many=True)
+        if not class_date:
+            serializer = LessonSerializer(lessons, many=True)
+            return APIResponse(code=0, msg='查询成功', data=serializer.data)
+
+        lessons = list(lessons)
+        thing_ids = [lesson.thing_id for lesson in lessons]
+
+        orders_by_thing = defaultdict(list)
+        orders = Order.objects.filter(
+            thing_id__in=thing_ids,
+            child__isnull=False,
+            term__isnull=False,
+            expect_time__date__lte=class_date,
+            return_time__date__gte=class_date,
+            status=6,
+        ).select_related('child', 'term')
+        for order in orders:
+            orders_by_thing[order.thing_id].append(order)
+
+        cancels_by_thing = defaultdict(list)
+        cancels = CourseAdjustment.objects.filter(
+            original_class_id__in=thing_ids,
+            original_lesson_date=class_date,
+            request_type='cancel_class',
+            status='approved',
+            student__isnull=False,
+        ).select_related('student', 'original_term')
+        for adjustment in cancels:
+            cancels_by_thing[adjustment.original_class_id].append(adjustment)
+
+        makeups_by_thing = defaultdict(list)
+        makeups = CourseAdjustment.objects.filter(
+            selected_target_class_id__in=thing_ids,
+            selected_target_date=class_date,
+            request_type='makeup_class',
+            status='completed',
+            student__isnull=False,
+        ).select_related('student', 'original_term')
+        for adjustment in makeups:
+            makeups_by_thing[adjustment.selected_target_class_id].append(adjustment)
+
+        trials_by_thing = defaultdict(list)
+        trials = TrialRequest.objects.filter(
+            Q(robotics_class_id__in=thing_ids)
+            | Q(coding_class_id__in=thing_ids)
+            | Q(math_class_id__in=thing_ids),
+            child__isnull=False,
+            package_order__status__in=[2, 6],
+            status__in=['approved', 'scheduled'],
+        ).select_related(
+            'child',
+            'package_order',
+            'robotics_class',
+            'coding_class',
+            'math_class',
+        )
+        day_index = {'Mon': 0, 'Tue': 1, 'Wed': 2, 'Thu': 3, 'Fri': 4, 'Sat': 5, 'Sun': 6}
+        for trial in trials:
+            base_date = trial.package_order.order_time.date()
+            for thing in [trial.robotics_class, trial.coding_class, trial.math_class]:
+                if not thing or thing.id not in thing_ids:
+                    continue
+                trial_date = base_date + datetime.timedelta(
+                    days=(day_index[thing.day] - base_date.weekday()) % 7
+                )
+                if trial_date != class_date:
+                    continue
+                trials_by_thing[thing.id].append({
+                    'trial_request_id': trial.id,
+                    'student_id': trial.child.id,
+                    'order_id': trial.package_order_id,
+                    'name': trial.child.name,
+                    'date': trial_date.strftime('%Y-%m-%d'),
+                    'status': 'trial',
+                })
+
+        serializer = DailyLessonSerializer(
+            lessons,
+            many=True,
+            context={
+                'orders_by_thing': orders_by_thing,
+                'cancels_by_thing': cancels_by_thing,
+                'makeups_by_thing': makeups_by_thing,
+                'trials_by_thing': trials_by_thing,
+            },
+        )
         return APIResponse(code=0, msg='查询成功', data=serializer.data)
 
 

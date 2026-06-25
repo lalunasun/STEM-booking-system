@@ -15,6 +15,7 @@ urlpatterns = [
     path('admin/thing/delete', views.admin.thing.delete),  # 删除课程
     path('admin/lesson/list', views.admin.lesson.list_api),  # 课程列表
     path('admin/lesson/detail', views.admin.lesson.detail),  # 课程详情
+    path('admin/studentLessonNote', views.admin.student_lesson_note.list_or_save),
     path('admin/lesson/create', views.admin.lesson.create),  # 新建课程
     path('admin/lesson/update', views.admin.lesson.update),  # 更新课程
     path('admin/lesson/delete', views.admin.lesson.delete),  # 删除课程

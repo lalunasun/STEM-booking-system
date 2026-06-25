@@ -17,26 +17,6 @@
             <schedule-outlined />
             <span>Schedule</span>
           </a-menu-item>
-          <a-menu-item key="thing">
-            <database-outlined/>
-            <span>Class</span>
-          </a-menu-item>
-          <a-menu-item key="classification">
-            <layout-outlined/>
-            <span>Category</span>
-          </a-menu-item>
-          <a-menu-item key="tag">
-            <tag-outlined/>
-            <span>Room</span>
-          </a-menu-item>
-          <a-menu-item key="time">
-            <tag-outlined/>
-            <span>Time</span>
-          </a-menu-item>
-          <a-menu-item key="term">
-            <tag-outlined/>
-            <span>Term</span>
-          </a-menu-item>
           <a-menu-item key="order">
             <dollar-outlined/>
             <span class="menu-label">
@@ -60,6 +40,32 @@
             <team-outlined/>
             <span>Student</span>
           </a-menu-item>
+          <a-sub-menu key="setup">
+            <template #icon>
+              <setting-outlined/>
+            </template>
+            <template #title>Setup</template>
+            <a-menu-item key="thing">
+              <database-outlined/>
+              <span>Classes</span>
+            </a-menu-item>
+            <a-menu-item key="classification">
+              <layout-outlined/>
+              <span>Categories</span>
+            </a-menu-item>
+            <a-menu-item key="tag">
+              <tag-outlined/>
+              <span>Rooms</span>
+            </a-menu-item>
+            <a-menu-item key="time">
+              <clock-circle-outlined/>
+              <span>Time Slots</span>
+            </a-menu-item>
+            <a-menu-item key="term">
+              <calendar-outlined/>
+              <span>Terms</span>
+            </a-menu-item>
+          </a-sub-menu>
           <a-sub-menu v-if="false">
             <template #icon>
               <folder-outlined/>
@@ -113,7 +119,10 @@ import {
   PieChartOutlined,
   DollarOutlined,
   LayoutOutlined,
-  DatabaseOutlined
+  DatabaseOutlined,
+  SettingOutlined,
+  ClockCircleOutlined,
+  CalendarOutlined
 } from '@ant-design/icons-vue';
 
 import {ref, watch, onUnmounted} from 'vue';

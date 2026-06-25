@@ -1,0 +1,1 @@
+import{I as e,l as s}from"./index-CGNbiDCY.js";const d=async r=>e({url:"/CSAA/index/order/create",data:r,headers:{}}),c=async r=>s({url:"/CSAA/index/order/list",params:r,data:{},headers:{}}),n=async r=>e({url:"/CSAA/index/order/cancel_order",params:r,headers:{}}),o=async r=>e({url:"/CSAA/index/order/pay_order",params:r,headers:{}});export{n as a,d as c,o as p,c as u};

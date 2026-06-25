@@ -22,20 +22,17 @@ DRF还提供了一些常用的身份验证类（如TokenAuthentication、Session
 # 身份认证
 class AdminTokenAuthtication(BaseAuthentication):
     def authenticate(self, request):
-        adminToken = request.META.get("HTTP_ADMINTOKEN")
-        print("检查adminToken==>" + adminToken)
-        users = User.objects.filter(admin_token=adminToken)
-        print(users)
+        adminToken = request.META.get("HTTP_ADMINTOKEN", "")
+        users = User.objects.filter(admin_token=adminToken, role='0')
         """
         判定条件：
             1. 传了adminToken 
             2. 查到了该帐号 
             3. 该帐号是管理员
         """
-        if not adminToken or len(users) == 0 or users[0].role == '2':
+        if not adminToken or len(users) == 0:
             raise exceptions.AuthenticationFailed("管理员身份认证失败！")
-        else:
-            print('adminToken验证通过')
+        return users[0], adminToken
 
 
 # 身份认证

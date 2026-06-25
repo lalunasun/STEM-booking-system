@@ -5,7 +5,7 @@ from django.db.models import Q
 from rest_framework import serializers
 
 from CSAA.models import Thing, Classification, Tag, User, Comment, LoginLog, Order, OpLog, \
-    Ad, Notice, ErrorLog, Lesson, Time, Term, Child, CourseAdjustment, TrialRequest
+    Ad, Notice, ErrorLog, Lesson, Time, Term, Child, CourseAdjustment, TrialRequest, StudentLessonNote
 
 
 # 课程信息序列化
@@ -404,6 +404,8 @@ class LessonSerializer(serializers.ModelSerializer):
     class_name = serializers.ReadOnlyField(source='thing.title')
     day = serializers.ReadOnlyField(source='thing.day')
     time = serializers.ReadOnlyField(source='thing.time.time')
+    room_id = serializers.ReadOnlyField(source='thing.tag.id')
+    room_name = serializers.ReadOnlyField(source='thing.tag.title')
     room_capacity = serializers.ReadOnlyField(source='thing.tag.seat')
 
     # 添加学生姓名字段
@@ -465,10 +467,17 @@ class LessonSerializer(serializers.ModelSerializer):
             return_time__isnull=False,
             status=6,
         ).select_related('child', 'term')
+        class_date = self.context.get('class_date')
+        if class_date:
+            orders = orders.filter(
+                expect_time__date__lte=class_date,
+                return_time__date__gte=class_date,
+            )
 
         return [
             {
                 'order_id': order.id,
+                'student_id': order.child.id,
                 'name': order.child.name,
                 'term_id': order.term.id,
                 'term_title': order.term.title,
@@ -486,10 +495,14 @@ class LessonSerializer(serializers.ModelSerializer):
             status='approved',
             student__isnull=False,
         ).select_related('student', 'parent', 'original_term')
+        class_date = self.context.get('class_date')
+        if class_date:
+            adjustments = adjustments.filter(original_lesson_date=class_date)
 
         return [
             {
                 'adjustment_id': adjustment.id,
+                'student_id': adjustment.student.id,
                 'name': adjustment.student.name,
                 'date': adjustment.original_lesson_date.strftime('%Y-%m-%d') if adjustment.original_lesson_date else None,
                 'term_id': adjustment.original_term.id if adjustment.original_term else None,
@@ -506,10 +519,14 @@ class LessonSerializer(serializers.ModelSerializer):
             status='completed',
             student__isnull=False,
         ).select_related('student', 'parent', 'original_term')
+        class_date = self.context.get('class_date')
+        if class_date:
+            adjustments = adjustments.filter(selected_target_date=class_date)
 
         return [
             {
                 'adjustment_id': adjustment.id,
+                'student_id': adjustment.student.id,
                 'name': adjustment.student.name,
                 'date': adjustment.selected_target_date.strftime('%Y-%m-%d') if adjustment.selected_target_date else None,
                 'term_id': adjustment.original_term.id if adjustment.original_term else None,
@@ -538,12 +555,111 @@ class LessonSerializer(serializers.ModelSerializer):
             trial_date = self._next_trial_date(trial_request.package_order, obj.thing)
             students.append({
                 'trial_request_id': trial_request.id,
+                'student_id': trial_request.child.id,
                 'order_id': trial_request.package_order.id if trial_request.package_order else None,
                 'name': trial_request.child.name,
                 'date': trial_date.strftime('%Y-%m-%d') if trial_date else None,
                 'status': 'trial',
             })
         return students
+
+
+class DailyLessonSerializer(serializers.ModelSerializer):
+    lesson_id = serializers.ReadOnlyField(source='id')
+    thing_id = serializers.ReadOnlyField(source='thing.id')
+    class_name = serializers.ReadOnlyField(source='thing.title')
+    day = serializers.ReadOnlyField(source='thing.day')
+    time = serializers.ReadOnlyField(source='thing.time.time')
+    room_id = serializers.ReadOnlyField(source='thing.tag.id')
+    room_name = serializers.ReadOnlyField(source='thing.tag.title')
+    room_capacity = serializers.ReadOnlyField(source='thing.tag.seat')
+    scheduled_students = serializers.SerializerMethodField()
+    canceled_students = serializers.SerializerMethodField()
+    scheduled_reschedule_students = serializers.SerializerMethodField()
+    scheduled_trial_students = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Lesson
+        fields = [
+            'id',
+            'lesson_id',
+            'thing',
+            'thing_id',
+            'class_name',
+            'day',
+            'time',
+            'room_id',
+            'room_name',
+            'room_capacity',
+            'scheduled_students',
+            'canceled_students',
+            'scheduled_reschedule_students',
+            'scheduled_trial_students',
+        ]
+
+    def get_scheduled_students(self, obj):
+        orders = self.context['orders_by_thing'].get(obj.thing_id, [])
+        return [
+            {
+                'order_id': order.id,
+                'student_id': order.child.id,
+                'name': order.child.name,
+                'term_id': order.term.id,
+                'term_title': order.term.title,
+                'expect_time': order.expect_time.strftime('%Y-%m-%d'),
+                'return_time': order.return_time.strftime('%Y-%m-%d'),
+                'status': order.status,
+            }
+            for order in orders
+        ]
+
+    def get_canceled_students(self, obj):
+        adjustments = self.context['cancels_by_thing'].get(obj.thing_id, [])
+        return [
+            {
+                'adjustment_id': adjustment.id,
+                'student_id': adjustment.student.id,
+                'name': adjustment.student.name,
+                'date': adjustment.original_lesson_date.strftime('%Y-%m-%d'),
+                'term_id': adjustment.original_term.id if adjustment.original_term else None,
+                'term_title': adjustment.original_term.title if adjustment.original_term else None,
+                'status': 'cancel',
+            }
+            for adjustment in adjustments
+        ]
+
+    def get_scheduled_reschedule_students(self, obj):
+        adjustments = self.context['makeups_by_thing'].get(obj.thing_id, [])
+        return [
+            {
+                'adjustment_id': adjustment.id,
+                'student_id': adjustment.student.id,
+                'name': adjustment.student.name,
+                'date': adjustment.selected_target_date.strftime('%Y-%m-%d'),
+                'term_id': adjustment.original_term.id if adjustment.original_term else None,
+                'term_title': adjustment.original_term.title if adjustment.original_term else None,
+                'status': 'reschedule',
+            }
+            for adjustment in adjustments
+        ]
+
+    def get_scheduled_trial_students(self, obj):
+        return self.context['trials_by_thing'].get(obj.thing_id, [])
+
+
+class StudentLessonNoteSerializer(serializers.ModelSerializer):
+    student_name = serializers.ReadOnlyField(source='student.name')
+    lesson_name = serializers.ReadOnlyField(source='lesson.thing.title')
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StudentLessonNote
+        fields = '__all__'
+
+    def get_created_by_name(self, obj):
+        if not obj.created_by:
+            return None
+        return obj.created_by.nickname or obj.created_by.username
 
 
 # 修改课程信息序列化

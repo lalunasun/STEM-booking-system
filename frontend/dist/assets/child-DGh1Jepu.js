@@ -1,1 +1,0 @@
-import{l as a,I as e}from"./index-CM1rsCJe.js";const c=async s=>e({url:"/CSAA/index/child/create",data:s,headers:{}}),i=async s=>a({url:"/CSAA/index/child/list",params:s,data:{},headers:{}});export{c,i as l};

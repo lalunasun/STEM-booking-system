@@ -9,8 +9,10 @@ from CSAA.models import (
     CourseAdjustment,
     Lesson,
     Order,
+    Tag,
     Term,
     Thing,
+    Time,
     TrialRequest,
     User,
 )
@@ -29,6 +31,10 @@ class Command(BaseCommand):
         "wed_creator": ("Creator", "Wed", "16:00-17:00"),
         "thu_scratch": ("Scratch", "Thu", "17:00-18:00"),
         "fri_python": ("Python", "Fri", "18:00-19:00"),
+        "sat_creator": ("Creator", "Sat", "9:00-10:00"),
+        "sat_wedo": ("Wedo", "Sat", "10:00-11:00"),
+        "sun_creator": ("Creator", "Sun", "9:00-10:00"),
+        "sun_wedo": ("Wedo", "Sun", "10:00-11:00"),
     }
 
     students = [
@@ -60,6 +66,60 @@ class Command(BaseCommand):
             )
         Lesson.objects.get_or_create(thing=course)
         return course
+
+    def _ensure_weekend_courses(self):
+        rooms = Tag.objects.all().order_by("title")
+        weekend_times = [
+            time
+            for time in Time.objects.all()
+            if self._start_minutes(time.time) is not None
+            and 9 * 60 <= self._start_minutes(time.time) < 18 * 60
+            and self._start_minutes(time.time) != 12 * 60
+        ]
+        weekend_times.sort(key=lambda item: self._start_minutes(item.time))
+
+        Thing.objects.filter(
+            day__in=["Sat", "Sun"],
+            time__time="12:00-13:00",
+        ).update(status="1")
+
+        for day in ["Sat", "Sun"]:
+            for room in rooms:
+                template = (
+                    Thing.objects.filter(tag=room, status="0")
+                    .exclude(day__in=["Sat", "Sun"])
+                    .select_related("classification", "tag")
+                    .order_by("id")
+                    .first()
+                )
+                if not template:
+                    continue
+
+                for time in weekend_times:
+                    course, _ = Thing.objects.update_or_create(
+                        title=template.title,
+                        day=day,
+                        time=time,
+                        tag=room,
+                        defaults={
+                            "classification": template.classification,
+                            "cover": template.cover.name if template.cover else None,
+                            "description": template.description,
+                            "price": template.price,
+                            "repertory": template.repertory,
+                            "status": "0",
+                        },
+                    )
+                    Lesson.objects.get_or_create(thing=course)
+
+    @staticmethod
+    def _start_minutes(value):
+        try:
+            start = str(value).split("-", 1)[0]
+            hour, minute = start.split(":", 1)
+            return int(hour) * 60 + int(minute)
+        except (TypeError, ValueError):
+            return None
 
     def _parent_and_child(self, username, child_name, age, index):
         parent, _ = User.objects.update_or_create(
@@ -205,6 +265,7 @@ class Command(BaseCommand):
             },
         )
 
+        self._ensure_weekend_courses()
         courses = {
             key: self._course(*spec)
             for key, spec in self.course_specs.items()
@@ -222,6 +283,10 @@ class Command(BaseCommand):
             ("SD260621005", 4, "tue_wedo"),
             ("SD260621006", 5, "wed_creator"),
             ("SD260621007", 6, "thu_scratch"),
+            ("SD260621009", 0, "sat_creator"),
+            ("SD260621010", 1, "sat_wedo"),
+            ("SD260621011", 2, "sun_creator"),
+            ("SD260621012", 3, "sun_wedo"),
         ]
 
         orders = {}
@@ -319,6 +384,7 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(
                 "Schedule demo ready: 1 term, 8 parents, 8 students, "
-                "8 orders, 1 absence, 1 makeup, and 1 trial package."
+                "12 orders, weekend classes, 1 absence, 1 makeup, "
+                "and 1 trial package."
             )
         )

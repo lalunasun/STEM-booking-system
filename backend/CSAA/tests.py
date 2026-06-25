@@ -2,8 +2,8 @@ import datetime
 
 from django.test import TestCase
 
-from CSAA.models import Child, CourseAdjustment, Lesson, Order, Tag, Term, Thing, Time, User
-from CSAA.serializers import AdminStudentSerializer, LessonDetailSerializer
+from CSAA.models import Child, CourseAdjustment, Lesson, Order, StudentLessonNote, Tag, Term, Thing, Time, User
+from CSAA.serializers import AdminStudentSerializer, LessonDetailSerializer, LessonSerializer
 from CSAA.views.admin.course_adjustment import _recommend_makeup_options
 
 
@@ -76,6 +76,74 @@ class LessonDetailDateFilterTests(TestCase):
 
         self.assertEqual(names, ['Current Student', 'Future Student'])
         self.assertEqual(data['students_num'], 2)
+
+    def test_lesson_list_includes_room_identity_for_daily_grid(self):
+        data = LessonSerializer(self.lesson).data
+
+        self.assertEqual(data['room_id'], self.thing.tag_id)
+        self.assertEqual(data['room_name'], 'Date Filter Room')
+
+    def test_lesson_list_filters_to_requested_date(self):
+        other_thing = Thing.objects.create(
+            title='Other Day Class',
+            tag=self.thing.tag,
+            time=self.thing.time,
+            day='Tue',
+            status='0',
+        )
+        Lesson.objects.create(thing=other_thing)
+
+        response = self.client.get(
+            '/CSAA/admin/lesson/list',
+            {'date': '2026-06-28'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            {lesson['day'] for lesson in response.json()['data']},
+            {'Sun'},
+        )
+
+    def test_student_lesson_note_is_saved_and_updated_for_one_date(self):
+        admin = User.objects.create(
+            username='note_admin',
+            password='unused',
+            role='0',
+            admin_token='note-admin-token',
+        )
+        payload = {
+            'student_id': self.current_child.id,
+            'lesson_id': self.lesson.id,
+            'lesson_date': '2026-06-28',
+            'note': 'Needs extra setup time',
+            'admin_user_id': admin.id,
+        }
+
+        response = self.client.post(
+            '/CSAA/admin/studentLessonNote',
+            payload,
+            HTTP_ADMINTOKEN='note-admin-token',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['code'], 0)
+
+        payload['note'] = 'Bring the project kit'
+        update_response = self.client.post(
+            '/CSAA/admin/studentLessonNote',
+            payload,
+            HTTP_ADMINTOKEN='note-admin-token',
+        )
+        self.assertEqual(update_response.json()['code'], 0)
+        self.assertEqual(StudentLessonNote.objects.count(), 1)
+        self.assertEqual(StudentLessonNote.objects.get().note, 'Bring the project kit')
+
+        list_response = self.client.get(
+            '/CSAA/admin/studentLessonNote',
+            {'date': '2026-06-28'},
+            HTTP_ADMINTOKEN='note-admin-token',
+        )
+        self.assertEqual(list_response.json()['data'][0]['student'], self.current_child.id)
+        self.assertEqual(list_response.json()['data'][0]['lesson'], self.lesson.id)
 
     def test_lesson_detail_separates_absent_student_for_selected_date(self):
         current_order = Order.objects.get(order_number='DATEFILTER001')

@@ -222,6 +222,32 @@ class Lesson(models.Model):
         db_table = "b_lesson"
 
 
+class StudentLessonNote(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    student = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='lesson_notes')
+    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='student_notes')
+    lesson_date = models.DateField()
+    note = models.TextField(max_length=1000, blank=True, default='')
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='created_student_lesson_notes',
+    )
+    created_time = models.DateTimeField(auto_now_add=True)
+    updated_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "b_student_lesson_note"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['student', 'lesson', 'lesson_date'],
+                name='unique_student_lesson_note',
+            ),
+        ]
+
+
 class CourseAdjustment(models.Model):
     REQUEST_TYPE_CHOICES = (
         ('cancel_class', 'Cancel Class'),
