@@ -77,6 +77,7 @@ urlpatterns = [
     path('admin/student/list', views.admin.student.list_api),  # 学生列表
     path('admin/student/detail', views.admin.student.detail),
     path('admin/student/comment/create', views.admin.student.create_comment),
+    path('admin/student/comment/import', views.admin.student.import_comments),
     path('admin/student/create', views.admin.student.create),  # 创建学生
     path('admin/student/update', views.admin.student.update),  # 修改学生
     path('admin/student/delete', views.admin.student.delete),  # 删除学生

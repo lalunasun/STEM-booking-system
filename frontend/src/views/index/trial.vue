@@ -5,7 +5,7 @@
       <section class="trial-header">
         <div>
           <h1>Trial Package</h1>
-          <p>Choose one Robotics trial, one Coding trial, and keep Math as a placeholder for now.</p>
+          <p>Choose one Robotics trial, one Coding trial, and one Math trial. All three are required for a Trial package.</p>
         </div>
         <button class="back-btn" @click="router.back()">Back</button>
       </section>
@@ -34,8 +34,8 @@
             </div>
 
             <div v-if="group.comingSoon" class="coming-soon">
-              <strong>Coming soon</strong>
-              <span>Math trial will be added after Math classes are created.</span>
+              <strong>Math time required</strong>
+              <span>A Trial package cannot be submitted until a Math trial time is available.</span>
             </div>
 
             <div v-else-if="group.slots.length" class="course-group-list">
@@ -274,7 +274,7 @@ const trialGroups = computed(() => [
   {
     key: 'math',
     title: 'Math',
-    subtitle: 'Reserved for the future math trial',
+    subtitle: 'Choose one math trial class',
     slots: slotsByCategory('Math'),
     courseGroups: groupSlotsByCourseAndDay(slotsByCategory('Math')),
     comingSoon: slotsByCategory('Math').length === 0,
@@ -350,13 +350,11 @@ const summaryItems = computed(() => {
 });
 
 const canSubmit = computed(() => {
-  const mathGroup = trialGroups.value.find((group) => group.key === 'math');
-  const requiresMath = Boolean(mathGroup && !mathGroup.comingSoon && mathGroup.slots.length > 0);
   return Boolean(
     trialData.child &&
     trialData.selected.robotics &&
     trialData.selected.coding &&
-    (!requiresMath || trialData.selected.math)
+    trialData.selected.math
   );
 });
 
@@ -418,10 +416,10 @@ const submitTrialRequest = () => {
       message.warn('Please select one Robotics trial');
     } else if (!trialData.selected.coding) {
       message.warn('Please select one Coding trial');
-    } else if (!trialData.selected.math && trialGroups.value.find((group) => group.key === 'math' && !group.comingSoon && group.slots.length > 0)) {
+    } else if (!trialData.selected.math) {
       message.warn('Please select one Math trial');
     } else {
-      message.warn('Please select a child, one Robotics trial, and one Coding trial');
+      message.warn('Please select a child and one trial class from each category');
     }
     return;
   }
@@ -431,9 +429,7 @@ const submitTrialRequest = () => {
   formData.append('child', String(trialData.child));
   formData.append('robotics_class', String(trialData.selected.robotics));
   formData.append('coding_class', String(trialData.selected.coding));
-  if (trialData.selected.math) {
-    formData.append('math_class', String(trialData.selected.math));
-  }
+  formData.append('math_class', String(trialData.selected.math));
 
   trialData.submitting = true;
   createTrialRequestApi(formData)

@@ -4,6 +4,7 @@
       <div class="table-operations">
         <a-space>
           <a-button type="primary" @click="handleAdd">New</a-button>
+          <a-button @click="openImportComments">Import Comments</a-button>
           <a-button danger @click="handleBatchDelete">Mass Delete</a-button>
           <a-input-search addon-before="Student" enter-button @search="onSearch" @change="onSearchChange" />
         </a-space>
@@ -107,6 +108,49 @@
     </a-modal>
 
     <a-modal
+      :visible="importModal.visible"
+      title="Import student comments"
+      ok-text="Import"
+      cancel-text="Cancel"
+      :confirm-loading="importModal.loading"
+      @cancel="closeImportComments"
+      @ok="submitImportComments"
+    >
+      <div class="import-help">
+        Upload a CSV file with headers. Supported formats:
+        <code>student_id,comment,created_time</code>
+        or
+        <code>student_name,parent_username,comment,created_time</code>.
+      </div>
+      <a-upload
+        accept=".csv,text/csv"
+        :before-upload="beforeImportFileUpload"
+        :file-list="importModal.fileList"
+        :max-count="1"
+        @remove="removeImportFile"
+      >
+        <a-button>Select CSV File</a-button>
+      </a-upload>
+      <div class="import-fallback-label">Optional: paste CSV here if you do not want to select a file.</div>
+      <a-textarea
+        v-model:value="importModal.text"
+        :rows="6"
+        placeholder="student_name,parent_username,comment,created_time&#10;Ivy Demo,parent_02,Great focus in robotics,2026-05-18 16:30"
+      />
+      <div v-if="importModal.result" class="import-result">
+        Imported {{ importModal.result.created_count }} comments.
+        <span v-if="importModal.result.error_count">
+          {{ importModal.result.error_count }} rows need review.
+        </span>
+      </div>
+      <div v-if="importModal.result?.errors?.length" class="import-errors">
+        <div v-for="error in importModal.result.errors.slice(0, 5)" :key="`${error.row}-${error.error}`">
+          Row {{ error.row }}: {{ error.error }}
+        </div>
+      </div>
+    </a-modal>
+
+    <a-modal
       :visible="detail.visible"
       title="Student Detail"
       width="820px"
@@ -138,6 +182,37 @@
         <div class="detail-row">
           <span class="detail-label">Active terms</span>
           <span>{{ formatList(detail.record.active_terms) }}</span>
+        </div>
+        <div v-if="detail.record.trial_packages?.length" class="detail-row detail-row-block">
+          <span class="detail-label">Trial package</span>
+          <div class="trial-package-list">
+            <section
+              v-for="trialPackage in detail.record.trial_packages"
+              :key="trialPackage.trial_request_id"
+              class="trial-package-item"
+            >
+              <div class="trial-package-head">
+                <strong>Trial</strong>
+                <a-tag :color="getTrialStatusColor(trialPackage.status)">
+                  {{ formatTrialStatus(trialPackage.status) }}
+                </a-tag>
+              </div>
+              <div class="trial-course-list">
+                <div
+                  v-for="course in trialPackage.courses"
+                  :key="course.category"
+                  class="trial-course-row"
+                  :class="{ 'trial-course-missing': !course.configured }"
+                >
+                  <strong>{{ course.category }}</strong>
+                  <span v-if="course.configured">
+                    {{ course.class_name }} | {{ course.scheduled_date || 'Date TBD' }} | {{ course.day }} {{ course.time }} | {{ course.room }}
+                  </span>
+                  <span v-else>Not selected</span>
+                </div>
+              </div>
+            </section>
+          </div>
         </div>
         <div class="detail-row detail-row-block">
           <span class="detail-label">All courses</span>
@@ -199,7 +274,7 @@
           <span class="detail-label">Internal comments</span>
           <div class="comment-history">
             <div
-              v-for="comment in detail.record.comments"
+              v-for="comment in visibleDetailComments"
               :key="comment.id"
               class="comment-history-item"
             >
@@ -212,6 +287,14 @@
             <span v-if="!detail.record.comments || detail.record.comments.length === 0">
               No comments
             </span>
+            <a-button
+              v-if="detail.record.comments && detail.record.comments.length > 3"
+              type="link"
+              class="comment-toggle"
+              @click="commentsExpanded = !commentsExpanded"
+            >
+              {{ commentsExpanded ? 'Hide old comments' : `Show ${detail.record.comments.length - 3} older comments` }}
+            </a-button>
           </div>
         </div>
       </div>
@@ -222,7 +305,7 @@
 
 <script setup lang="ts">
 import { FormInstance, message } from 'ant-design-vue';
-import { createApi, deleteApi, detailApi, listApi, updateApi } from '/@/api/admin/student';
+import { createApi, deleteApi, detailApi, importCommentsApi, listApi, updateApi } from '/@/api/admin/student';
 import { listApi as listUserApi } from '/@/api/admin/user';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -313,6 +396,16 @@ const detail = reactive({
   loading: false,
   record: {} as any,
 });
+const commentsExpanded = ref(false);
+
+const importModal = reactive({
+  visible: false,
+  loading: false,
+  file: null as any,
+  fileList: [] as any[],
+  text: '',
+  result: null as any,
+});
 
 const myform = ref<FormInstance>();
 
@@ -365,6 +458,33 @@ const getAbsenceStatusColor = (status: string | undefined) => {
   };
   return colors[status || ''] || 'default';
 };
+
+const formatTrialStatus = (status: string | undefined) => {
+  const labels: Record<string, string> = {
+    pending: 'Pending payment',
+    approved: 'Approved',
+    scheduled: 'Scheduled',
+    rejected: 'Rejected',
+    canceled: 'Canceled',
+  };
+  return labels[status || ''] || status || 'Trial';
+};
+
+const getTrialStatusColor = (status: string | undefined) => {
+  const colors: Record<string, string> = {
+    pending: 'orange',
+    approved: 'blue',
+    scheduled: 'purple',
+    rejected: 'red',
+    canceled: 'default',
+  };
+  return colors[status || ''] || 'purple';
+};
+
+const visibleDetailComments = computed(() => {
+  const comments = detail.record.comments || [];
+  return commentsExpanded.value ? comments : comments.slice(0, 3);
+});
 
 const getDataList = () => {
   data.loading = true;
@@ -450,6 +570,7 @@ const handleEdit = (record: any) => {
 const loadStudentDetail = async (studentId: number) => {
   detail.visible = true;
   detail.loading = true;
+  commentsExpanded.value = false;
   try {
     const res = await detailApi({ id: studentId });
     detail.record = res.data || {};
@@ -458,6 +579,65 @@ const loadStudentDetail = async (studentId: number) => {
     detail.visible = false;
   } finally {
     detail.loading = false;
+  }
+};
+
+const openImportComments = () => {
+  importModal.visible = true;
+  importModal.result = null;
+};
+
+const closeImportComments = () => {
+  importModal.visible = false;
+};
+
+const beforeImportFileUpload = (file: any) => {
+  const fileName = String(file?.name || '').toLowerCase();
+  if (!fileName.endsWith('.csv')) {
+    message.warning('Please select a CSV file');
+    return false;
+  }
+  importModal.file = file;
+  importModal.fileList = [file];
+  importModal.result = null;
+  return false;
+};
+
+const removeImportFile = () => {
+  importModal.file = null;
+  importModal.fileList = [];
+};
+
+const submitImportComments = async () => {
+  const text = importModal.text.trim();
+  if (!importModal.file && !text) {
+    message.warning('Please select a CSV file or paste CSV content');
+    return;
+  }
+  const formData = new FormData();
+  if (importModal.file) {
+    formData.append('file', importModal.file);
+  }
+  if (text) {
+    formData.append('text', text);
+  }
+  importModal.loading = true;
+  try {
+    const res = await importCommentsApi(formData);
+    importModal.result = res.data;
+    message.success(res.msg || 'Comments imported');
+    if (!importModal.result?.error_count) {
+      importModal.visible = false;
+      importModal.text = '';
+      removeImportFile();
+    }
+    if (detail.visible && detail.record.id) {
+      loadStudentDetail(detail.record.id);
+    }
+  } catch (err: any) {
+    message.error(err.msg || 'Failed to import comments');
+  } finally {
+    importModal.loading = false;
   }
 };
 
@@ -604,6 +784,45 @@ const hideModal = () => {
   gap: 10px;
 }
 
+.trial-package-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.trial-package-item {
+  border: 1px solid #d8c7ff;
+  border-left: 4px solid #722ed1;
+  border-radius: 4px;
+  background: #fbf9ff;
+  padding: 10px 12px;
+}
+
+.trial-package-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.trial-course-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.trial-course-row {
+  color: #334155;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 78px minmax(0, 1fr);
+  line-height: 20px;
+}
+
+.trial-course-missing {
+  color: #b45309;
+}
+
 .course-history-item {
   border: 1px solid #e5e7eb;
   border-radius: 4px;
@@ -693,5 +912,44 @@ const hideModal = () => {
   color: #1e293b;
   line-height: 20px;
   white-space: pre-wrap;
+}
+
+.comment-toggle {
+  align-self: flex-start;
+  padding-left: 0;
+}
+
+.import-help {
+  color: #475569;
+  line-height: 22px;
+  margin-bottom: 10px;
+}
+
+.import-help code {
+  background: #f1f5f9;
+  border-radius: 4px;
+  color: #0f172a;
+  display: block;
+  margin-top: 6px;
+  padding: 3px 6px;
+}
+
+.import-result {
+  color: #166534;
+  margin-top: 10px;
+}
+
+.import-fallback-label {
+  color: #64748b;
+  font-size: 12px;
+  margin: 12px 0 6px;
+}
+
+.import-errors {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  margin-top: 10px;
+  padding: 8px 10px;
 }
 </style>

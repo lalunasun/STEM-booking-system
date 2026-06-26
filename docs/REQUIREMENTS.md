@@ -376,7 +376,7 @@ Current business rules:
   - Available Robotics slots.
   - Available Coding slots.
   - Available Math slots.
-- In the first version, parent must choose one Robotics slot and one Coding slot. Math remains a future placeholder and is not required yet.
+- Parents must choose one Robotics slot, one Coding slot, and one Math slot. A Trial package cannot be submitted until all three selections are available and complete.
 - Trial slot choices must show the exact date, weekday, time, and room.
 - A Trial package creates one package order only after the required choices are complete, not multiple normal class orders.
 - Trial package total price is fixed at CAD $98, and the order quantity displays as 3 lessons.
@@ -387,7 +387,7 @@ Current business rules:
 - The Trial package itself does not occupy a seat; capacity is occupied by the specific selected class slots.
 - Admin schedule and class detail should show Trial students under `Trial Students`.
 - Trial students count toward the target `Room + Day + Time` capacity.
-- Math can be kept as a placeholder for now. If no Math classes exist yet, the parent side should show `Coming soon` or ask the parent to contact admin.
+- If no Math trial slot exists yet, the parent side must explain that a Math time is required and disable Trial submission.
 - `Pending payment` Trial orders should not occupy the schedule or room capacity. Trial students appear only after payment and admin scheduling.
 - Trial students should have a recognizable marker on the main schedule, and the class detail `Trial Students` tab should show the specific trial date.
 
@@ -404,7 +404,7 @@ Draft recommendation rules:
 Current implementation guidance:
 
 1. Use Trial request records to store concrete choices inside the package.
-2. Parent Trial page shows Robotics, Coding, and a Math placeholder column.
+2. Parent Trial page shows Robotics, Coding, and Math columns; all three require one selected slot.
 3. Each column shows the nearest available options first to keep the page manageable.
 4. Submission creates one Trial package order.
 5. Parent pays the order.
@@ -813,7 +813,7 @@ Completed or partially completed:
 - Historical test data may still contain legacy states, duplicate trial choices, or unreasonable schedules and should continue to be cleaned.
 - Uploaded images are local files and are not stored in GitHub.
 - Parent mobile flow has not formally started; the web flow is being used to validate business rules first.
-- Trial package Math remains a placeholder and must be completed after Math classes exist.
+- Trial package requires a configured Math class before it can be submitted. Historical incomplete packages remain visible to administrators for follow-up.
 - AWS/public demo deployment is still early and needs process persistence, static asset handling, database backups, and access control before production use.
 - Permanent course change now has a basic workflow, but the candidate list and revert action are still closer to demo/operations validation and should become a full history UI with clearer validation messages.
 

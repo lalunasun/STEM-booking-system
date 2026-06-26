@@ -1,0 +1,10 @@
+student_name,parent_username,comment,created_time
+parent_02_kid_2_age_7,parent_02,Imported legacy comment: strong focus in class and follows teacher instructions well.,5/1/2026 16:20
+parent_02_kid_1_age_6,parent_02,Imported legacy comment: needs a reminder to save project files before leaving.,5/8/2026 17:10
+parent_03_kid_1_age_7,parent_03,Imported legacy comment: parent asked to monitor confidence when presenting work.,5/15/2026 18:05
+parent_04_kid_2_age_9,parent_04,Imported legacy comment: ready for a slightly harder coding challenge next lesson.,5/22/2026 19:30
+Missing Demo Student,parent_02,This row should fail and appear in the import error summary.,5/29/2026 16:30
+parent_02_kid_2_age_7,parent_02,Imported legacy comment: strong focus in class and follows teacher instructions well2.,5/5/2026 16:20
+parent_02_kid_2_age_7,parent_02,Imported legacy comment: strong focus in class and follows teacher instructions well.3,5/2/2026 16:20
+parent_02_kid_2_age_7,parent_02,Imported legacy comment: strong focus in class and follows teacher instructions well.5,5/3/2026 16:20
+parent_02_kid_2_age_7,parent_02,Imported legacy comment: strong focus in class and follows teacher instructions well.6,5/4/2026 16:20

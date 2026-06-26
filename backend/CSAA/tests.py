@@ -1,9 +1,10 @@
 import datetime
 import json
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
-from CSAA.models import Child, CourseAdjustment, DailyStudentAdjustment, Lesson, Order, PermanentCourseChange, StudentComment, StudentLessonNote, Tag, Term, Thing, Time, User
+from CSAA.models import Child, CourseAdjustment, DailyStudentAdjustment, Lesson, Order, PermanentCourseChange, StudentComment, StudentLessonNote, Tag, Term, Thing, Time, TrialRequest, User
 from CSAA.serializers import AdminStudentSerializer, LessonDetailSerializer, LessonSerializer
 from CSAA.views.admin.course_adjustment import _recommend_makeup_options
 
@@ -182,6 +183,68 @@ class LessonDetailDateFilterTests(TestCase):
             detail_response.json()['data']['comments'][0]['created_by'],
             admin.nickname,
         )
+
+    def test_student_comments_can_be_imported_from_csv_text(self):
+        User.objects.create(
+            username='bulk_comment_admin',
+            nickname='Bulk Comment Admin',
+            password='unused',
+            role='0',
+            admin_token='bulk-comment-admin-token',
+        )
+        csv_text = (
+            'student_name,parent_username,comment,created_time\n'
+            'Current Student,date_filter_parent,"Focused well in the old robotics class",2026-05-18 16:30\n'
+            'Missing Student,date_filter_parent,"Should not import",2026-05-19 16:30\n'
+        )
+
+        response = self.client.post(
+            '/CSAA/admin/student/comment/import',
+            {'text': csv_text},
+            HTTP_ADMINTOKEN='bulk-comment-admin-token',
+        )
+
+        payload = response.json()
+        self.assertEqual(payload['code'], 0)
+        self.assertEqual(payload['data']['created_count'], 1)
+        self.assertEqual(payload['data']['error_count'], 1)
+        self.assertEqual(StudentComment.objects.count(), 1)
+
+        comment = StudentComment.objects.get()
+        self.assertEqual(comment.student, self.current_child)
+        self.assertEqual(comment.content, 'Focused well in the old robotics class')
+        self.assertEqual(comment.created_time.strftime('%Y-%m-%d %H:%M'), '2026-05-18 16:30')
+
+    def test_student_comments_can_be_imported_from_csv_file(self):
+        User.objects.create(
+            username='file_comment_admin',
+            nickname='File Comment Admin',
+            password='unused',
+            role='0',
+            admin_token='file-comment-admin-token',
+        )
+        csv_file = SimpleUploadedFile(
+            'comments.csv',
+            (
+                'student_id,comment,created_time\n'
+                f'{self.current_child.id},"Uploaded CSV comment",2026-05-20 17:45\n'
+            ).encode('utf-8-sig'),
+            content_type='text/csv',
+        )
+
+        response = self.client.post(
+            '/CSAA/admin/student/comment/import',
+            {'file': csv_file},
+            HTTP_ADMINTOKEN='file-comment-admin-token',
+        )
+
+        payload = response.json()
+        self.assertEqual(payload['code'], 0)
+        self.assertEqual(payload['data']['created_count'], 1)
+        self.assertEqual(StudentComment.objects.count(), 1)
+        comment = StudentComment.objects.get()
+        self.assertEqual(comment.student, self.current_child)
+        self.assertEqual(comment.content, 'Uploaded CSV comment')
 
     def test_daily_move_does_not_change_order_class(self):
         admin = User.objects.create(
@@ -486,6 +549,34 @@ class LessonDetailDateFilterTests(TestCase):
             [record['status'] for record in data['absence_records']],
             ['approved', 'pending'],
         )
+
+    def test_student_detail_lists_all_trial_package_categories(self):
+        coding_time = Time.objects.create(time='17:00-18:00')
+        math_time = Time.objects.create(time='18:00-19:00')
+        coding = Thing.objects.create(
+            title='Trial Coding', tag=self.thing.tag, time=coding_time, day='Tue', status='0'
+        )
+        math = Thing.objects.create(
+            title='Trial Math', tag=self.thing.tag, time=math_time, day='Wed', status='0'
+        )
+        package_order = Order.objects.create(
+            order_number='TRIALPACKAGE001', user=self.parent, child=self.current_child,
+            thing=self.thing, num=3, amount='98', status=6, remark='Trial Package',
+        )
+        TrialRequest.objects.create(
+            parent=self.parent, child=self.current_child, package_order=package_order,
+            robotics_class=self.thing, coding_class=coding, math_class=math, status='scheduled',
+        )
+
+        data = AdminStudentSerializer(self.current_child).data
+
+        self.assertEqual(len(data['trial_packages']), 1)
+        self.assertEqual(data['trial_packages'][0]['status'], 'scheduled')
+        self.assertEqual(
+            [course['category'] for course in data['trial_packages'][0]['courses']],
+            ['Robotics', 'Coding', 'Math'],
+        )
+        self.assertTrue(all(course['configured'] for course in data['trial_packages'][0]['courses']))
 
     def test_parent_adjustment_list_is_filtered_by_child(self):
         order = Order.objects.get(order_number='DATEFILTER001')

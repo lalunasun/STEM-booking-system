@@ -1,1 +1,0 @@
-import{_ as e}from"./_plugin-vue_export-helper-DlAUqK2U.js";import{o as r,c as t,r as n}from"./index-D-y7Cps7.js";const c={};function s(_,a,p,i,f,m){const o=n("router-view");return r(),t(o)}const l=e(c,[["render",s]]);export{l as default};

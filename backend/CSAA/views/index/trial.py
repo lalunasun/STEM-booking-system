@@ -62,29 +62,31 @@ def create(request):
     coding_id = data.get('coding_class')
     math_id = data.get('math_class')
 
-    if not parent_id or not child_id or not robotics_id or not coding_id:
-        return APIResponse(code=1, msg='Please select child, Robotics trial, and Coding trial')
+    if not parent_id or not child_id or not robotics_id or not coding_id or not math_id:
+        return APIResponse(
+            code=1,
+            msg='Please select one Robotics, one Coding, and one Math trial',
+        )
 
     try:
         parent = User.objects.get(pk=parent_id)
         child = Child.objects.get(pk=child_id, parent=parent)
         robotics_class = Thing.objects.get(pk=robotics_id)
         coding_class = Thing.objects.get(pk=coding_id)
-        math_class = Thing.objects.get(pk=math_id) if math_id else None
+        math_class = Thing.objects.get(pk=math_id)
     except (User.DoesNotExist, Child.DoesNotExist, Thing.DoesNotExist):
         return APIResponse(code=1, msg='Trial request data is invalid')
 
-    for thing, category in ((robotics_class, 'Robotics'), (coding_class, 'Coding')):
+    for thing, category in (
+        (robotics_class, 'Robotics'),
+        (coding_class, 'Coding'),
+        (math_class, 'Math'),
+    ):
         ok, msg = _validate_available_slot(thing, category)
         if not ok:
             return APIResponse(code=1, msg=msg)
 
-    if math_class:
-        ok, msg = _validate_available_slot(math_class, 'Math')
-        if not ok:
-            return APIResponse(code=1, msg=msg)
-
-    selected_things = [thing for thing in [robotics_class, coding_class, math_class] if thing]
+    selected_things = [robotics_class, coding_class, math_class]
     conflict = selected_slot_conflict(selected_things)
     if conflict:
         return APIResponse(code=1, msg=conflict)

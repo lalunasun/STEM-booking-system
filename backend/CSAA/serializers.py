@@ -737,6 +737,7 @@ class AdminStudentSerializer(serializers.ModelSerializer):
     active_terms = serializers.SerializerMethodField()
     course_history = serializers.SerializerMethodField()
     absence_records = serializers.SerializerMethodField()
+    trial_packages = serializers.SerializerMethodField()
 
     class Meta:
         model = Child
@@ -815,6 +816,72 @@ class AdminStudentSerializer(serializers.ModelSerializer):
             })
 
         return courses
+
+    def get_trial_packages(self, obj):
+        if self.context.get('summary_only'):
+            return []
+
+        requests = TrialRequest.objects.filter(child=obj).select_related(
+            'package_order',
+            'robotics_class',
+            'robotics_class__time',
+            'robotics_class__tag',
+            'coding_class',
+            'coding_class__time',
+            'coding_class__tag',
+            'math_class',
+            'math_class__time',
+            'math_class__tag',
+        ).order_by('-created_time', '-id')
+
+        day_index = {'Mon': 0, 'Tue': 1, 'Wed': 2, 'Thu': 3, 'Fri': 4, 'Sat': 5, 'Sun': 6}
+
+        def slot(category, thing, package_order):
+            if not thing:
+                return {
+                    'category': category,
+                    'configured': False,
+                    'class_name': None,
+                    'day': None,
+                    'time': None,
+                    'room': None,
+                    'scheduled_date': None,
+                }
+
+            scheduled_date = None
+            if package_order and package_order.order_time and thing.day in day_index:
+                base_date = package_order.order_time.date()
+                scheduled_date = base_date + datetime.timedelta(
+                    days=(day_index[thing.day] - base_date.weekday()) % 7
+                )
+
+            return {
+                'category': category,
+                'configured': True,
+                'class_name': thing.title,
+                'day': thing.day,
+                'time': thing.time.time if thing.time else None,
+                'room': thing.tag.title if thing.tag else None,
+                'scheduled_date': scheduled_date.strftime('%Y-%m-%d') if scheduled_date else None,
+            }
+
+        return [
+            {
+                'trial_request_id': request.id,
+                'status': request.status,
+                'order_id': request.package_order_id,
+                'created_time': (
+                    request.created_time.strftime('%Y-%m-%d %H:%M:%S')
+                    if request.created_time else None
+                ),
+                'courses': [
+                    slot('Robotics', request.robotics_class, request.package_order),
+                    slot('Coding', request.coding_class, request.package_order),
+                    slot('Math', request.math_class, request.package_order),
+                ],
+            }
+            for request in requests
+        ]
 
     def get_absence_records(self, obj):
         if self.context.get('summary_only') and hasattr(obj, 'prefetched_absences'):
