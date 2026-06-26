@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view, authentication_classes
 from CSAA import utils
 from CSAA.auth.authentication import AdminTokenAuthtication
 from CSAA.handler import APIResponse
-from CSAA.models import Classification, Thing, Tag, Lesson, Order, CourseAdjustment, TrialRequest
+from CSAA.models import Classification, Thing, Tag, Lesson, Order, CourseAdjustment, TrialRequest, DailyStudentAdjustment
 from CSAA.serializers import ThingSerializer, UpdateThingSerializer, LessonSerializer, LessonDetailSerializer, DailyLessonSerializer
 
 
@@ -115,6 +115,36 @@ def list_api(request):
                     'status': 'trial',
                 })
 
+        adjusted_out_by_lesson = defaultdict(set)
+        moved_in_by_lesson = defaultdict(list)
+        sick_leave_by_lesson = defaultdict(list)
+        daily_adjustments = DailyStudentAdjustment.objects.filter(
+            lesson_date=class_date,
+            status='active',
+        ).select_related(
+            'student',
+            'source_order__term',
+            'source_lesson',
+            'target_lesson',
+        )
+        for adjustment in daily_adjustments:
+            adjusted_out_by_lesson[adjustment.source_lesson_id].add(adjustment.student_id)
+            term = adjustment.source_order.term if adjustment.source_order else None
+            item = {
+                'adjustment_id': adjustment.id,
+                'student_id': adjustment.student_id,
+                'name': adjustment.student.name,
+                'date': class_date.strftime('%Y-%m-%d'),
+                'term_id': term.id if term else None,
+                'term_title': term.title if term else None,
+                'reason': adjustment.reason,
+                'lesson_count_delta': adjustment.lesson_count_delta,
+            }
+            if adjustment.adjustment_type == 'move' and adjustment.target_lesson_id:
+                moved_in_by_lesson[adjustment.target_lesson_id].append(item)
+            elif adjustment.adjustment_type == 'sick_leave':
+                sick_leave_by_lesson[adjustment.source_lesson_id].append(item)
+
         serializer = DailyLessonSerializer(
             lessons,
             many=True,
@@ -123,6 +153,9 @@ def list_api(request):
                 'cancels_by_thing': cancels_by_thing,
                 'makeups_by_thing': makeups_by_thing,
                 'trials_by_thing': trials_by_thing,
+                'adjusted_out_by_lesson': adjusted_out_by_lesson,
+                'moved_in_by_lesson': moved_in_by_lesson,
+                'sick_leave_by_lesson': sick_leave_by_lesson,
             },
         )
         return APIResponse(code=0, msg='查询成功', data=serializer.data)

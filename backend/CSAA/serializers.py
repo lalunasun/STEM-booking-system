@@ -577,6 +577,8 @@ class DailyLessonSerializer(serializers.ModelSerializer):
     canceled_students = serializers.SerializerMethodField()
     scheduled_reschedule_students = serializers.SerializerMethodField()
     scheduled_trial_students = serializers.SerializerMethodField()
+    moved_students = serializers.SerializerMethodField()
+    sick_leave_students = serializers.SerializerMethodField()
 
     class Meta:
         model = Lesson
@@ -595,10 +597,13 @@ class DailyLessonSerializer(serializers.ModelSerializer):
             'canceled_students',
             'scheduled_reschedule_students',
             'scheduled_trial_students',
+            'moved_students',
+            'sick_leave_students',
         ]
 
     def get_scheduled_students(self, obj):
         orders = self.context['orders_by_thing'].get(obj.thing_id, [])
+        adjusted_student_ids = self.context['adjusted_out_by_lesson'].get(obj.id, set())
         return [
             {
                 'order_id': order.id,
@@ -611,6 +616,7 @@ class DailyLessonSerializer(serializers.ModelSerializer):
                 'status': order.status,
             }
             for order in orders
+            if order.child_id not in adjusted_student_ids
         ]
 
     def get_canceled_students(self, obj):
@@ -645,6 +651,12 @@ class DailyLessonSerializer(serializers.ModelSerializer):
 
     def get_scheduled_trial_students(self, obj):
         return self.context['trials_by_thing'].get(obj.thing_id, [])
+
+    def get_moved_students(self, obj):
+        return self.context['moved_in_by_lesson'].get(obj.id, [])
+
+    def get_sick_leave_students(self, obj):
+        return self.context['sick_leave_by_lesson'].get(obj.id, [])
 
 
 class StudentLessonNoteSerializer(serializers.ModelSerializer):
@@ -737,6 +749,8 @@ class AdminStudentSerializer(serializers.ModelSerializer):
         return obj.parent.nickname or obj.parent.username
 
     def _active_orders(self, obj):
+        if hasattr(obj, 'prefetched_active_orders'):
+            return obj.prefetched_active_orders
         return Order.objects.filter(
             child=obj,
             status__in=[2, 6],
@@ -775,6 +789,8 @@ class AdminStudentSerializer(serializers.ModelSerializer):
         return terms
 
     def get_course_history(self, obj):
+        if self.context.get('summary_only'):
+            return []
         courses = []
         today = datetime.date.today()
 
@@ -801,6 +817,11 @@ class AdminStudentSerializer(serializers.ModelSerializer):
         return courses
 
     def get_absence_records(self, obj):
+        if self.context.get('summary_only') and hasattr(obj, 'prefetched_absences'):
+            return [
+                {'adjustment_id': adjustment.id}
+                for adjustment in obj.prefetched_absences
+            ]
         adjustments = CourseAdjustment.objects.filter(
             student=obj,
             request_type='cancel_class',

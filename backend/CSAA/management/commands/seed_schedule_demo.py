@@ -29,12 +29,26 @@ class Command(BaseCommand):
         "tue_creator": ("Creator", "Tue", "16:00-17:00"),
         "tue_wedo": ("Wedo", "Tue", "17:00-18:00"),
         "wed_creator": ("Creator", "Wed", "16:00-17:00"),
+        "thu_creator_16": ("Creator", "Thu", "16:00-17:00"),
+        "thu_wedo_16": ("Wedo", "Thu", "16:00-17:00"),
+        "thu_spike_16": ("Spike", "Thu", "16:00-17:00"),
+        "thu_scratch_jr_16": ("Scratch JR", "Thu", "16:00-17:00"),
         "thu_scratch": ("Scratch", "Thu", "17:00-18:00"),
+        "thu_roblox_17": ("Roblox", "Thu", "17:00-18:00"),
+        "thu_python_18": ("Python", "Thu", "18:00-19:00"),
+        "thu_java_19": ("Java", "Thu", "19:00-20:00"),
+        "fri_creator_16": ("Creator", "Fri", "16:00-17:00"),
+        "fri_wedo_17": ("Wedo", "Fri", "17:00-18:00"),
+        "fri_spike_18": ("Spike", "Fri", "18:00-19:00"),
+        "fri_scratch_jr_19": ("Scratch JR", "Fri", "19:00-20:00"),
         "fri_python": ("Python", "Fri", "18:00-19:00"),
         "sat_creator": ("Creator", "Sat", "9:00-10:00"),
         "sat_wedo": ("Wedo", "Sat", "10:00-11:00"),
+        "sat_python": ("Python", "Sat", "9:00-10:00"),
         "sun_creator": ("Creator", "Sun", "9:00-10:00"),
         "sun_wedo": ("Wedo", "Sun", "10:00-11:00"),
+        "sun_roblox": ("Roblox", "Sun", "13:00-14:00"),
+        "sun_java": ("Java", "Sun", "14:00-15:00"),
     }
 
     students = [
@@ -46,6 +60,22 @@ class Command(BaseCommand):
         ("schedule_demo_parent_06", "Fiona Demo", 12),
         ("schedule_demo_parent_07", "Grace Demo", 13),
         ("schedule_demo_parent_08", "Henry Demo", 14),
+        ("schedule_demo_parent_09", "Ivy Demo", 8),
+        ("schedule_demo_parent_10", "Jack Demo", 9),
+        ("schedule_demo_parent_11", "Kara Demo", 10),
+        ("schedule_demo_parent_12", "Leo Demo", 11),
+        ("schedule_demo_parent_13", "Mia Demo", 7),
+        ("schedule_demo_parent_14", "Nina Demo", 8),
+        ("schedule_demo_parent_15", "Owen Demo", 9),
+        ("schedule_demo_parent_16", "Piper Demo", 10),
+        ("schedule_demo_parent_17", "Quinn Demo", 11),
+        ("schedule_demo_parent_18", "Ruby Demo", 12),
+        ("schedule_demo_parent_19", "Sam Demo", 13),
+        ("schedule_demo_parent_20", "Tina Demo", 14),
+        ("schedule_demo_parent_21", "Uma Demo", 8),
+        ("schedule_demo_parent_22", "Victor Demo", 9),
+        ("schedule_demo_parent_23", "Wendy Demo", 10),
+        ("schedule_demo_parent_24", "Xavier Demo", 11),
     ]
 
     def _course(self, title, day, time):
@@ -287,6 +317,22 @@ class Command(BaseCommand):
             ("SD260621010", 1, "sat_wedo"),
             ("SD260621011", 2, "sun_creator"),
             ("SD260621012", 3, "sun_wedo"),
+            ("SD260621013", 8, "thu_creator_16"),
+            ("SD260621014", 9, "thu_wedo_16"),
+            ("SD260621015", 10, "thu_spike_16"),
+            ("SD260621016", 11, "thu_scratch_jr_16"),
+            ("SD260621017", 12, "thu_scratch"),
+            ("SD260621018", 13, "thu_scratch"),
+            ("SD260621019", 14, "thu_roblox_17"),
+            ("SD260621020", 15, "thu_python_18"),
+            ("SD260621021", 16, "thu_java_19"),
+            ("SD260621022", 17, "fri_creator_16"),
+            ("SD260621023", 18, "fri_wedo_17"),
+            ("SD260621024", 19, "fri_spike_18"),
+            ("SD260621025", 20, "fri_scratch_jr_19"),
+            ("SD260621026", 21, "sat_python"),
+            ("SD260621027", 22, "sun_roblox"),
+            ("SD260621028", 23, "sun_java"),
         ]
 
         orders = {}
@@ -383,8 +429,8 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                "Schedule demo ready: 1 term, 8 parents, 8 students, "
-                "12 orders, weekend classes, 1 absence, 1 makeup, "
+                "Schedule demo ready: 1 term, 24 parents, 24 students, "
+                "28 orders, weekend classes, 1 absence, 1 makeup, "
                 "and 1 trial package."
             )
         )

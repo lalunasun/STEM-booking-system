@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div class="page-view">
+    <div v-if="!route.query.id" class="page-view">
       <div class="table-operations">
         <a-space>
           <a-button type="primary" @click="handleAdd">New</a-button>
@@ -111,8 +111,9 @@
       title="Student Detail"
       width="820px"
       :footer="null"
-      @cancel="detail.visible = false"
+      @cancel="closeDetail"
     >
+      <a-spin :spinning="detail.loading">
       <div class="detail-view">
         <div class="detail-row">
           <span class="detail-label">Student name</span>
@@ -194,15 +195,39 @@
             </span>
           </div>
         </div>
+        <div class="detail-row detail-row-block">
+          <span class="detail-label">Internal comments</span>
+          <div class="comment-history">
+            <div
+              v-for="comment in detail.record.comments"
+              :key="comment.id"
+              class="comment-history-item"
+            >
+              <div class="comment-meta">
+                <strong>{{ comment.created_by || 'Administrator' }}</strong>
+                <span>{{ comment.created_time }}</span>
+              </div>
+              <p>{{ comment.content }}</p>
+            </div>
+            <span v-if="!detail.record.comments || detail.record.comments.length === 0">
+              No comments
+            </span>
+          </div>
+        </div>
       </div>
+      </a-spin>
     </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { FormInstance, message } from 'ant-design-vue';
-import { createApi, deleteApi, listApi, updateApi } from '/@/api/admin/student';
+import { createApi, deleteApi, detailApi, listApi, updateApi } from '/@/api/admin/student';
 import { listApi as listUserApi } from '/@/api/admin/user';
+import { useRoute, useRouter } from 'vue-router';
+
+const route = useRoute();
+const router = useRouter();
 
 const columns = reactive([
   {
@@ -285,15 +310,30 @@ const modal = reactive({
 
 const detail = reactive({
   visible: false,
+  loading: false,
   record: {} as any,
 });
 
 const myform = ref<FormInstance>();
 
 onMounted(() => {
-  getDataList();
-  getParentDataList();
+  loadRouteState();
 });
+
+watch(
+  () => route.query.id,
+  () => loadRouteState(),
+);
+
+const loadRouteState = () => {
+  const studentId = Number(route.query.id);
+  if (studentId > 0) {
+    loadStudentDetail(studentId);
+    return;
+  }
+  detail.visible = false;
+  getDataList();
+};
 
 const formatList = (value: string[] | undefined) => {
   if (!value || value.length === 0) {
@@ -359,11 +399,15 @@ const getParentDataList = () => {
     });
 };
 
-const onSearchChange = (e: Event) => {
-  data.keyword = e?.target?.value;
+const onSearchChange = (e: any) => {
+  data.keyword = e?.target?.value || '';
 };
 
-const onSearch = () => {
+const onSearch = (value?: string) => {
+  if (typeof value === 'string') {
+    data.keyword = value.trim();
+  }
+  data.page = 1;
   getDataList();
 };
 
@@ -381,6 +425,9 @@ const resetForm = () => {
 };
 
 const handleAdd = () => {
+  if (!modal.parentData.length) {
+    getParentDataList();
+  }
   resetForm();
   modal.visible = true;
   modal.editFlag = false;
@@ -388,6 +435,9 @@ const handleAdd = () => {
 };
 
 const handleEdit = (record: any) => {
+  if (!modal.parentData.length) {
+    getParentDataList();
+  }
   resetForm();
   modal.visible = true;
   modal.editFlag = true;
@@ -397,9 +447,35 @@ const handleEdit = (record: any) => {
   }
 };
 
-const handleView = (record: any) => {
-  detail.record = record;
+const loadStudentDetail = async (studentId: number) => {
   detail.visible = true;
+  detail.loading = true;
+  try {
+    const res = await detailApi({ id: studentId });
+    detail.record = res.data || {};
+  } catch (err: any) {
+    message.error(err.msg || 'Failed to load student detail');
+    detail.visible = false;
+  } finally {
+    detail.loading = false;
+  }
+};
+
+const handleView = (record: any) => {
+  router.push({
+    name: 'student',
+    query: { id: record.id },
+  });
+};
+
+const closeDetail = () => {
+  detail.visible = false;
+  const returnTo = String(route.query.returnTo || '');
+  if (returnTo.startsWith('/admin/schedule')) {
+    router.push(returnTo);
+    return;
+  }
+  router.push({ name: 'student' });
 };
 
 const confirmDelete = (record: any) => {
@@ -588,6 +664,34 @@ const hideModal = () => {
 .absence-reason {
   color: #7c2d12;
   margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+
+.comment-history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.comment-history-item {
+  border-left: 3px solid #84adff;
+  background: #f8fafc;
+  padding: 9px 11px;
+}
+
+.comment-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.comment-history-item p {
+  margin: 5px 0 0;
+  color: #1e293b;
+  line-height: 20px;
   white-space: pre-wrap;
 }
 </style>

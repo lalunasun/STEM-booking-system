@@ -248,6 +248,138 @@ class StudentLessonNote(models.Model):
         ]
 
 
+class StudentComment(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    student = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='admin_comments')
+    content = models.TextField(max_length=2000)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='created_student_comments',
+    )
+    created_time = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "b_student_comment"
+        indexes = [
+            models.Index(
+                fields=['student', '-created_time'],
+                name='b_student_c_student_d9bd8c_idx',
+            ),
+        ]
+
+
+class DailyStudentAdjustment(models.Model):
+    ADJUSTMENT_TYPE_CHOICES = (
+        ('move', 'Move'),
+        ('sick_leave', 'Sick Leave'),
+    )
+    STATUS_CHOICES = (
+        ('active', 'Active'),
+        ('reverted', 'Reverted'),
+    )
+
+    id = models.BigAutoField(primary_key=True)
+    student = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='daily_adjustments')
+    lesson_date = models.DateField()
+    adjustment_type = models.CharField(max_length=20, choices=ADJUSTMENT_TYPE_CHOICES)
+    source_lesson = models.ForeignKey(
+        Lesson,
+        on_delete=models.CASCADE,
+        related_name='daily_adjustments_out',
+    )
+    target_lesson = models.ForeignKey(
+        Lesson,
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+        related_name='daily_adjustments_in',
+    )
+    source_order = models.ForeignKey(
+        Order,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='daily_adjustments',
+    )
+    lesson_count_delta = models.IntegerField(default=0)
+    reason = models.CharField(max_length=300, blank=True, default='')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='created_daily_adjustments',
+    )
+    reverted_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='reverted_daily_adjustments',
+    )
+    created_time = models.DateTimeField(auto_now_add=True)
+    reverted_time = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        db_table = "b_daily_student_adjustment"
+        indexes = [
+            models.Index(
+                fields=['lesson_date', 'status'],
+                name='b_daily_stu_lesson__4246d1_idx',
+            ),
+            models.Index(
+                fields=['student', 'lesson_date'],
+                name='b_daily_stu_student_7f6588_idx',
+            ),
+        ]
+
+
+class PermanentCourseChange(models.Model):
+    STATUS_CHOICES = (
+        ('active', 'Active'),
+        ('reverted', 'Reverted'),
+    )
+
+    id = models.BigAutoField(primary_key=True)
+    student = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='permanent_course_changes')
+    effective_date = models.DateField()
+    source_order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='permanent_changes_out')
+    target_order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='permanent_changes_in')
+    source_lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='permanent_changes_out')
+    target_lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='permanent_changes_in')
+    original_source_return_time = models.DateTimeField()
+    transferred_lesson_count = models.PositiveIntegerField(default=0)
+    reason = models.CharField(max_length=500, blank=True, default='')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='created_permanent_course_changes',
+    )
+    reverted_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='reverted_permanent_course_changes',
+    )
+    created_time = models.DateTimeField(auto_now_add=True)
+    reverted_time = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        db_table = 'b_permanent_course_change'
+        indexes = [
+            models.Index(fields=['student', 'status'], name='b_perm_chg_student_status_idx'),
+            models.Index(fields=['effective_date', 'status'], name='b_perm_chg_date_status_idx'),
+        ]
+
+
 class CourseAdjustment(models.Model):
     REQUEST_TYPE_CHOICES = (
         ('cancel_class', 'Cancel Class'),

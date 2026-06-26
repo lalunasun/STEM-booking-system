@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-25
+
+- Updated the requirements/design documents for the latest Schedule redesign and course adjustment rules:
+  - Daily room-based Schedule operations view.
+  - Announcement, teacher, room color, date rail, and capacity display rules.
+  - Student note, internal comment, and future performance record separation.
+  - One-day manual adjustment rules, including sick leave and lesson deduction behavior.
+  - Permanent course change rules using effective date, order split, validation, and revert.
+  - Class detail date-filtering and student classification consistency.
+  - Parent-side synchronization expectations for child, order, class, leave, and reschedule information.
+  - Demo data and future user manual outline.
+
 ## 2026-05-15
 
 - Added a separate parent mobile web app entry:

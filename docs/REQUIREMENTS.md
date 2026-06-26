@@ -1,7 +1,7 @@
 # CSAA Booking System Requirements
 
-Version: 0.2
-Last updated: 2026-05-15
+Version: 0.3
+Last updated: 2026-06-25
 
 ## 1. Project Goal
 
@@ -815,6 +815,7 @@ Completed or partially completed:
 - Parent mobile flow has not formally started; the web flow is being used to validate business rules first.
 - Trial package Math remains a placeholder and must be completed after Math classes exist.
 - AWS/public demo deployment is still early and needs process persistence, static asset handling, database backups, and access control before production use.
+- Permanent course change now has a basic workflow, but the candidate list and revert action are still closer to demo/operations validation and should become a full history UI with clearer validation messages.
 
 ## 19. Suggested Next Steps
 
@@ -885,3 +886,192 @@ This section captures recently confirmed requirements that may still be refined 
 - Every selectable slot must show a concrete date, not only weekday.
 - Trial choices cannot have internal time conflicts.
 - Trial students enter the main schedule after admin scheduling and show in the `Trial Students` tab.
+
+## 21. Recent Confirmed Requirements (2026-06-25)
+
+This section captures the design rules added around the new Schedule view, student profile, one-day adjustments, and permanent course changes. A separate user manual should later turn these rules into admin and parent-facing operating steps.
+
+### 21.1 Daily Schedule Operations View
+
+The Schedule page now focuses on one operating day instead of a traditional full-week grid.
+
+Current rules:
+
+- The default view shows one selected day's course operations.
+- The left date rail shows the current week's available dates for quick switching.
+- The top-right Week control remains available for fast week/date navigation.
+- Monday is closed and should not appear as a regular teaching day.
+- Tuesday to Friday show 16:00-20:00 teaching slots.
+- Saturday and Sunday show 09:00-18:00 teaching slots.
+- 12:00-13:00 is lunch/break time and should not be used for classes.
+- A date may appear in the date rail even when there are no classes, but the body should clearly show no classes.
+- Each column represents one room.
+- Each row represents one time slot.
+- Each cell shows the classes, teacher, and students for that date, room, and time.
+- Empty time slots can be hidden to reduce page height.
+
+Display rules:
+
+- Announcement is shown in one compact row visible to all teachers.
+- Room headers show room, teacher, and seat information in one line, for example `Room1 · TeacherA · 4 seats`.
+- Each room uses one stable color so teachers can quickly identify their room.
+- Class title and teacher name should be compact, for example `Creator · TeacherA`.
+- Student names show one per line for scanning.
+- Student markers can include Trial, Rescheduled, Absent, and Note; colors/icons can be refined later.
+- Hovering a student should show term information and admin notes.
+- A full class should use an operations-friendly capacity label such as `At capacity` or `4/4 seats`, instead of only `Full`.
+
+Performance rules:
+
+- First load should not become slow because of full student detail, historical orders, or comments.
+- Schedule should load only the data needed for the selected operating day.
+- Full student profile, internal comments, and course history should load on demand after clicking a student.
+
+### 21.2 Teacher and Room Assignment
+
+Teacher data is currently preset for demo and operations discussions.
+
+Rules:
+
+- A teacher is assigned to a specific date, room, and time slot.
+- Teacher names may change later, so they should not be hard-coded into student or order history.
+- Teacher information first supports Schedule display and daily operations.
+- If teacher login is added later, teachers should only see, or at least prioritize, their assigned room/time.
+
+Open questions:
+
+- Whether teachers need independent accounts.
+- Whether teachers can write student performance records directly.
+- Whether teachers can see parent contact information.
+
+### 21.3 Student Note, Internal Comment, and Performance
+
+The system separates three kinds of records:
+
+- Schedule note: visible on the day schedule for temporary reminders or special handling.
+- Student internal comment: admin comment stored on the student profile long-term.
+- Performance record: future per-class performance record attached to the student and a concrete lesson date.
+
+Confirmed rules:
+
+- Note only appears on Dashboard/Schedule and is not the same as formal performance.
+- Comment belongs in Student detail as long-term internal information.
+- Performance will later appear in Student detail and be queryable by student and lesson date.
+- Clicking a student name on Schedule should open the student detail, not only show the day's data.
+- Closing student detail should return to the original Schedule date and view state.
+- Student search should support the real display name, such as `Ivy Demo`, without failing because of internal username or casing.
+
+Performance requirements:
+
+- Student list loads summary data only.
+- Course history, leave/makeup records, and internal comments load when opening student detail.
+- Future performance records may grow quickly and must support paging/filtering by student, class, term, and date.
+
+### 21.4 Manual Adjustment: One-Day Change
+
+Admins can enter Manual Adjustment mode on the Schedule page for one selected date.
+
+Rules:
+
+- A one-day adjustment affects only the selected concrete date.
+- It does not modify the original order or the student's long-term class.
+- Moving a student must be saved before it becomes effective.
+- Unsaved changes should support undo/revert.
+- Saved changes record source class, target class, date, admin, and note.
+- Temporary sick leave/absence can be marked separately.
+- Admin chooses whether sick leave deducts one lesson; if it does, remaining lessons must be updated.
+- A canceled/absent student must not appear in both Normal Students and Absent Students.
+- Students who do not belong to the selected date must not appear in that day's class detail.
+
+Capacity and conflict rules:
+
+- Target room/time must pass capacity checks.
+- A moved student cannot conflict with their own existing class on that day.
+- Trial, Rescheduled, and Absent states should continue to classify correctly in class detail.
+- Schedule and class detail must remain consistent after a one-day adjustment.
+
+### 21.5 Manual Adjustment: Permanent Course Change
+
+When a student needs to move to a different recurring class in the middle of a term, admin uses `All future classes`.
+
+Business rules:
+
+- A permanent change starts from an effective date.
+- It affects only classes on or after the effective date.
+- History before the effective date remains on the original order and class.
+- The original order is not overwritten; the system splits history into an old order segment and a new order segment.
+- The source order end date is shortened to the day before the effective date.
+- The target order inherits the same student, parent, term, payment information, and remaining lessons.
+- The target order joins the new class and becomes the student's future recurring class.
+- The system records a Permanent Course Change for query and revert.
+- Admin can revert the latest permanent change; revert restores the source order/class and cancels the target order.
+
+Validation rules:
+
+- Target class cannot be the same as the source class.
+- Target class must still have at least one class date on or after the effective date.
+- Target class must have capacity.
+- Target time cannot conflict with the student's other active classes.
+- If the student does not have a new term, changes default to the current term range only.
+- Cross-term exceptions require admin confirmation and an admin note.
+
+Current implementation limits:
+
+- Candidate classes may be listed first, with strict capacity/conflict validation on save.
+- Revert is currently suitable for demo/operations validation; later it should become a full permanent-change history view.
+
+### 21.6 Class Detail and Student Classification Consistency
+
+Class detail must be filtered by concrete date, not only by the class's long-term roster.
+
+Rules:
+
+- Normal Students shows only students who should attend normally on that date.
+- Rescheduled Students shows only makeup/rescheduled students for that date.
+- Trial Students shows only trial students for that date.
+- Absent Students shows only canceled, leave, or sick students for that date.
+- One student can belong to only one main classification for the same class/date.
+- The status shown on Schedule must match the status shown after opening class detail.
+- Tab count badges must match the actual list content.
+
+### 21.7 Parent-Side Synchronization
+
+Parent-facing pages need to progressively sync student course and reschedule information.
+
+Rules:
+
+- Parent order cards must show child information, especially for multi-child families.
+- Parent side should have a dedicated Choose Classes entry.
+- Purchased class records should show child, current class, next/recent class, and whether leave/reschedule information exists.
+- Reschedule, leave, and makeup results should sync to the parent side.
+- The mobile home should not show too many unrelated classes; course selection should open from the bottom navigation.
+- Multi-child families need child switching, and orders/classes/reschedules should filter by selected child.
+
+### 21.8 Demo Data and Testing
+
+Demo data should remain rich enough for reporting and validation.
+
+Rules:
+
+- Demo data should include multiple parents, students, multi-child families, courses, rooms, and terms.
+- It should include normal, trial, absent/canceled, makeup/rescheduled, full-room, and empty-room examples.
+- The current Schedule date should contain enough students to test room color, capacity, note, student detail, one-day adjustment, and permanent change.
+- Demo login information should remain stable before presentations.
+- Test data must preserve the core traceable relationship: student + class + time + term.
+
+### 21.9 Future User Manual Plan
+
+A separate user manual should be created instead of continuing to expand this design document.
+
+Suggested manual structure:
+
+1. Admin login and base settings.
+2. Create Room, Time, Term, and Class.
+3. Manage parents, students, and orders.
+4. Daily Schedule viewing.
+5. One-day manual adjustment.
+6. Permanent course change.
+7. Leave, cancellation, and makeup handling.
+8. Student detail, comment, and future performance records.
+9. Parent-side common operations.
+10. Demo accounts and presentation checklist.

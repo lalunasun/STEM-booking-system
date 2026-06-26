@@ -1,8 +1,9 @@
 import datetime
+import json
 
 from django.test import TestCase
 
-from CSAA.models import Child, CourseAdjustment, Lesson, Order, StudentLessonNote, Tag, Term, Thing, Time, User
+from CSAA.models import Child, CourseAdjustment, DailyStudentAdjustment, Lesson, Order, PermanentCourseChange, StudentComment, StudentLessonNote, Tag, Term, Thing, Time, User
 from CSAA.serializers import AdminStudentSerializer, LessonDetailSerializer, LessonSerializer
 from CSAA.views.admin.course_adjustment import _recommend_makeup_options
 
@@ -144,6 +145,177 @@ class LessonDetailDateFilterTests(TestCase):
         )
         self.assertEqual(list_response.json()['data'][0]['student'], self.current_child.id)
         self.assertEqual(list_response.json()['data'][0]['lesson'], self.lesson.id)
+
+    def test_student_comment_is_saved_and_returned_in_student_detail(self):
+        admin = User.objects.create(
+            username='comment_admin',
+            nickname='Comment Admin',
+            password='unused',
+            role='0',
+            admin_token='comment-admin-token',
+        )
+
+        create_response = self.client.post(
+            '/CSAA/admin/student/comment/create',
+            {
+                'student_id': self.current_child.id,
+                'content': 'Participates well and needs more keyboard practice.',
+            },
+            HTTP_ADMINTOKEN='comment-admin-token',
+        )
+
+        self.assertEqual(create_response.json()['code'], 0)
+        self.assertEqual(StudentComment.objects.count(), 1)
+
+        detail_response = self.client.get(
+            '/CSAA/admin/student/detail',
+            {'id': self.current_child.id},
+            HTTP_ADMINTOKEN='comment-admin-token',
+        )
+        self.assertEqual(detail_response.json()['code'], 0)
+        self.assertEqual(detail_response.json()['data']['parent_username'], 'date_filter_parent')
+        self.assertEqual(
+            detail_response.json()['data']['comments'][0]['content'],
+            'Participates well and needs more keyboard practice.',
+        )
+        self.assertEqual(
+            detail_response.json()['data']['comments'][0]['created_by'],
+            admin.nickname,
+        )
+
+    def test_daily_move_does_not_change_order_class(self):
+        admin = User.objects.create(
+            username='move_admin',
+            password='unused',
+            role='0',
+            admin_token='move-admin-token',
+        )
+        target_room = Tag.objects.create(title='Move Target Room', seat=4)
+        target_thing = Thing.objects.create(
+            title='Move Target Class',
+            tag=target_room,
+            time=self.thing.time,
+            day='Sun',
+            status='0',
+        )
+        target_lesson = Lesson.objects.create(thing=target_thing)
+        order = Order.objects.get(order_number='DATEFILTER001')
+
+        response = self.client.post(
+            '/CSAA/admin/dailyAdjustment/saveBatch',
+            {
+                'lesson_date': '2026-06-28',
+                'actions': json.dumps([{
+                    'type': 'move',
+                    'student_id': self.current_child.id,
+                    'source_lesson_id': self.lesson.id,
+                    'target_lesson_id': target_lesson.id,
+                }]),
+            },
+            HTTP_ADMINTOKEN='move-admin-token',
+        )
+
+        self.assertEqual(response.json()['code'], 0)
+        order.refresh_from_db()
+        self.assertEqual(order.thing_id, self.thing.id)
+        self.assertTrue(DailyStudentAdjustment.objects.filter(
+            student=self.current_child,
+            target_lesson=target_lesson,
+            status='active',
+        ).exists())
+
+    def test_sick_leave_lesson_count_is_restored_on_revert(self):
+        admin = User.objects.create(
+            username='leave_admin',
+            password='unused',
+            role='0',
+            admin_token='leave-admin-token',
+        )
+        order = Order.objects.get(order_number='DATEFILTER001')
+        order.num = 10
+        order.save(update_fields=['num'])
+
+        response = self.client.post(
+            '/CSAA/admin/dailyAdjustment/saveBatch',
+            {
+                'lesson_date': '2026-06-28',
+                'actions': json.dumps([{
+                    'type': 'sick_leave',
+                    'student_id': self.current_child.id,
+                    'source_lesson_id': self.lesson.id,
+                    'deduct_lesson': True,
+                    'reason': 'Flu',
+                }]),
+            },
+            HTTP_ADMINTOKEN='leave-admin-token',
+        )
+        self.assertEqual(response.json()['code'], 0)
+        record_id = response.json()['data'][0]['id']
+        order.refresh_from_db()
+        self.assertEqual(order.num, 9)
+
+        revert_response = self.client.post(
+            '/CSAA/admin/dailyAdjustment/revert',
+            {'id': record_id},
+            HTTP_ADMINTOKEN='leave-admin-token',
+        )
+        self.assertEqual(revert_response.json()['code'], 0)
+        order.refresh_from_db()
+        self.assertEqual(order.num, 10)
+
+    def test_permanent_course_change_splits_enrollment_and_can_revert(self):
+        admin = User.objects.create(
+            username='permanent_admin',
+            password='unused',
+            role='0',
+            admin_token='permanent-admin-token',
+        )
+        target_room = Tag.objects.create(title='Permanent Target Room', seat=4)
+        target_time = Time.objects.create(time='18:00-19:00')
+        target_thing = Thing.objects.create(
+            title='Permanent Target Class',
+            tag=target_room,
+            time=target_time,
+            day='Wed',
+            status='0',
+        )
+        target_lesson = Lesson.objects.create(thing=target_thing)
+        source_order = Order.objects.get(order_number='DATEFILTER001')
+        source_order.num = 7
+        source_order.save(update_fields=['num'])
+
+        response = self.client.post(
+            '/CSAA/admin/permanentCourseChange/create',
+            {
+                'student_id': self.current_child.id,
+                'source_lesson_id': self.lesson.id,
+                'target_lesson_id': target_lesson.id,
+                'effective_date': '2026-07-01',
+                'reason': 'Permanent schedule change',
+            },
+            HTTP_ADMINTOKEN='permanent-admin-token',
+        )
+
+        self.assertEqual(response.json()['code'], 0)
+        source_order.refresh_from_db()
+        record = PermanentCourseChange.objects.get()
+        self.assertEqual(source_order.return_time.date(), datetime.date(2026, 6, 30))
+        self.assertEqual(source_order.num, 0)
+        self.assertEqual(record.target_order.thing_id, target_thing.id)
+        self.assertEqual(record.target_order.num, 7)
+        self.assertEqual(record.target_order.expect_time.date(), datetime.date(2026, 7, 1))
+
+        revert_response = self.client.post(
+            '/CSAA/admin/permanentCourseChange/revert',
+            {'id': record.id},
+            HTTP_ADMINTOKEN='permanent-admin-token',
+        )
+        self.assertEqual(revert_response.json()['code'], 0)
+        source_order.refresh_from_db()
+        record.target_order.refresh_from_db()
+        self.assertEqual(source_order.return_time.date(), datetime.date(2026, 8, 31))
+        self.assertEqual(source_order.num, 7)
+        self.assertEqual(record.target_order.status, 7)
 
     def test_lesson_detail_separates_absent_student_for_selected_date(self):
         current_order = Order.objects.get(order_number='DATEFILTER001')

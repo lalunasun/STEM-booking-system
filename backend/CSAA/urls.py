@@ -16,6 +16,13 @@ urlpatterns = [
     path('admin/lesson/list', views.admin.lesson.list_api),  # 课程列表
     path('admin/lesson/detail', views.admin.lesson.detail),  # 课程详情
     path('admin/studentLessonNote', views.admin.student_lesson_note.list_or_save),
+    path('admin/dailyAdjustment/list', views.admin.daily_adjustment.list_api),
+    path('admin/dailyAdjustment/saveBatch', views.admin.daily_adjustment.save_batch),
+    path('admin/dailyAdjustment/revert', views.admin.daily_adjustment.revert),
+    path('admin/permanentCourseChange/options', views.admin.permanent_course_change.options),
+    path('admin/permanentCourseChange/list', views.admin.permanent_course_change.list_api),
+    path('admin/permanentCourseChange/create', views.admin.permanent_course_change.create),
+    path('admin/permanentCourseChange/revert', views.admin.permanent_course_change.revert),
     path('admin/lesson/create', views.admin.lesson.create),  # 新建课程
     path('admin/lesson/update', views.admin.lesson.update),  # 更新课程
     path('admin/lesson/delete', views.admin.lesson.delete),  # 删除课程
@@ -68,6 +75,8 @@ urlpatterns = [
     path('admin/user/info', views.admin.user.info),  # 用户信息
     path('admin/adminLogin', views.admin.user.admin_login),  # 管理员登录
     path('admin/student/list', views.admin.student.list_api),  # 学生列表
+    path('admin/student/detail', views.admin.student.detail),
+    path('admin/student/comment/create', views.admin.student.create_comment),
     path('admin/student/create', views.admin.student.create),  # 创建学生
     path('admin/student/update', views.admin.student.update),  # 修改学生
     path('admin/student/delete', views.admin.student.delete),  # 删除学生

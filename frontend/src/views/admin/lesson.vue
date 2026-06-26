@@ -55,7 +55,7 @@
               <div v-for="child in norData" class="item flex-view">
                 <span style="font-weight: bolder;">name:&nbsp;&nbsp;</span>
                  <div class="right-box">
-                  <span>{{ child.name }}&nbsp;&nbsp;&nbsp;&nbsp;</span>
+                  <button class="student-link" type="button" @click="openStudent(child)">{{ child.name }}</button>
                  </div>
                  <span style="font-weight: bolder;">parent:&nbsp;&nbsp;</span>
                  <div class="right-box">
@@ -69,6 +69,7 @@
                  <div class="right-box">
                   <span>{{ child.term_info?.term_name || '--' }}</span>
                  </div>
+                 <a-button size="small" @click="openComment(child)">Write comment</a-button>
             </div>
             </div>
 
@@ -77,7 +78,7 @@
               <div v-for="child in reData" class="item flex-view">
                 <span style="font-weight: bolder;">name:&nbsp;&nbsp;</span>
                  <div class="right-box">
-                  <span>{{ child.name }}&nbsp;&nbsp;&nbsp;&nbsp;</span>
+                  <button class="student-link" type="button" @click="openStudent(child)">{{ child.name }}</button>
                  </div>
                  <span style="font-weight: bolder;">parent:&nbsp;&nbsp;</span>
                  <div class="right-box">
@@ -88,6 +89,7 @@
                   <span>{{ child.phone }}</span>
                  </div>
                  <span v-if="child.makeup_date" class="student-tag reschedule-tag">makeup {{ child.makeup_date }}</span>
+                 <a-button size="small" @click="openComment(child)">Write comment</a-button>
             </div>
             </div>
 
@@ -96,7 +98,7 @@
               <div v-for="child in tryData" class="item flex-view">
                 <span style="font-weight: bolder;">name:&nbsp;&nbsp;</span>
                  <div class="right-box">
-                  <span>{{ child.name }}&nbsp;&nbsp;&nbsp;&nbsp;</span>
+                  <button class="student-link" type="button" @click="openStudent(child)">{{ child.name }}</button>
                  </div>
                  <span style="font-weight: bolder;">parent:&nbsp;&nbsp;</span>
                  <div class="right-box">
@@ -107,6 +109,7 @@
                   <span>{{ child.phone }}</span>
                  </div>
                  <span v-if="child.trial_date" class="student-tag trial-tag">trial {{ child.trial_date }}</span>
+                 <a-button size="small" @click="openComment(child)">Write comment</a-button>
             </div>
             </div>
 
@@ -115,7 +118,7 @@
               <div v-for="child in absData" class="item flex-view">
                 <span style="font-weight: bolder;">name:&nbsp;&nbsp;</span>
                  <div class="right-box">
-                  <span>{{ child.name }}&nbsp;&nbsp;&nbsp;&nbsp;</span>
+                  <button class="student-link" type="button" @click="openStudent(child)">{{ child.name }}</button>
                  </div>
                  <span style="font-weight: bolder;">parent:&nbsp;&nbsp;</span>
                  <div class="right-box">
@@ -126,6 +129,7 @@
                   <span>{{ child.phone }}</span>
                  </div>
                  <span v-if="child.cancel_date" class="student-tag cancel-tag">cancel {{ child.cancel_date }}</span>
+                 <a-button size="small" @click="openComment(child)">Write comment</a-button>
             </div>
             </div>
           </div>
@@ -137,6 +141,23 @@
       </div>
     </div>
 
+    <a-modal
+      v-model:visible="commentModal.visible"
+      title="Write student comment"
+      ok-text="Save comment"
+      cancel-text="Cancel"
+      :confirm-loading="commentModal.saving"
+      @ok="saveComment"
+    >
+      <div class="comment-student">{{ commentModal.studentName }}</div>
+      <a-textarea
+        v-model:value="commentModal.content"
+        :rows="5"
+        :maxlength="2000"
+        show-count
+        placeholder="Add an internal comment about this student"
+      />
+    </a-modal>
 
   </div>
 </template>
@@ -149,11 +170,13 @@ import {
 import {
   detailApi as detailStuApi
 } from '/@/api/admin/lesson'
+import { createCommentApi } from '/@/api/admin/student'
 
 import { BASE_URL } from "/@/store/constants";
-import { useRoute } from "vue-router/dist/vue-router";
+import { useRoute, useRouter } from "vue-router";
 
 const route = useRoute()
+const router = useRouter()
 
 let thingId = ref('')
 let lessonId = ref('')
@@ -168,6 +191,13 @@ let tryData = ref([])
 let absData = ref([])
 let students_num = ref(0)
 let classDate = ref('')
+const commentModal = reactive({
+  visible: false,
+  saving: false,
+  studentId: 0,
+  studentName: '',
+  content: '',
+})
 
 const attendanceCount = computed(() => {
   if (!classDate.value) {
@@ -255,6 +285,44 @@ const getTabBadgeCount = (index) => {
   return 0
 }
 
+const openStudent = (child) => {
+  router.push({
+    name: 'student',
+    query: {
+      id: child.id,
+      returnTo: `/admin/schedule${classDate.value ? `?date=${classDate.value}` : ''}`,
+    },
+  })
+}
+
+const openComment = (child) => {
+  commentModal.studentId = Number(child.id)
+  commentModal.studentName = child.name || ''
+  commentModal.content = ''
+  commentModal.visible = true
+}
+
+const saveComment = async () => {
+  const content = commentModal.content.trim()
+  if (!content) {
+    message.warning('Please enter a comment')
+    return
+  }
+  commentModal.saving = true
+  try {
+    await createCommentApi({
+      student_id: commentModal.studentId,
+      content,
+    })
+    commentModal.visible = false
+    message.success('Student comment saved')
+  } catch (error) {
+    message.error(error?.msg || 'Failed to save student comment')
+  } finally {
+    commentModal.saving = false
+  }
+}
+
 // 课程信息
 const getThingDetail = () => {
   detailApi({ id: thingId.value }).then(res => {
@@ -296,6 +364,26 @@ const getStuDetail = () => {
 <style scoped lang="less">
 .hide {
   display: none;
+}
+
+.student-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #175cd3;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.student-link:hover {
+  text-decoration: underline;
+}
+
+.comment-student {
+  margin-bottom: 10px;
+  color: #152844;
+  font-weight: 700;
 }
 
 .detail-content {
