@@ -1,14 +1,14 @@
 from django.utils.dateparse import parse_date
 from rest_framework.decorators import api_view, authentication_classes
 
-from CSAA.auth.authentication import AdminTokenAuthtication
+from CSAA.auth.authentication import AdminOrTeacherTokenAuthtication
 from CSAA.handler import APIResponse
 from CSAA.models import Child, Lesson, StudentLessonNote, User
 from CSAA.serializers import StudentLessonNoteSerializer
 
 
 @api_view(['GET', 'POST'])
-@authentication_classes([AdminTokenAuthtication])
+@authentication_classes([AdminOrTeacherTokenAuthtication])
 def list_or_save(request):
     if request.method == 'GET':
         lesson_date = parse_date(request.GET.get('date', ''))
@@ -40,7 +40,9 @@ def list_or_save(request):
     admin = None
     admin_id = request.data.get('admin_user_id')
     if admin_id:
-        admin = User.objects.filter(id=admin_id, role='0').first()
+        admin = User.objects.filter(id=admin_id, role__in=['0', '2']).first()
+    if not admin:
+        admin = getattr(request, 'user', None)
 
     record, _ = StudentLessonNote.objects.update_or_create(
         student=student,

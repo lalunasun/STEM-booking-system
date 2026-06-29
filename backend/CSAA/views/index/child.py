@@ -4,7 +4,14 @@ from CSAA import utils
 from CSAA.auth.authentication import AdminTokenAuthtication, TokenAuthtication
 from CSAA.handler import APIResponse
 from CSAA.models import Child, User
-from CSAA.serializers import ChildSerializer
+from CSAA.serializers import AdminStudentSerializer, ChildSerializer
+
+
+def _token_user(request):
+    token = request.META.get("HTTP_TOKEN", "")
+    if not token:
+        return None
+    return User.objects.filter(token=token).first()
 
 
 # child列表
@@ -13,7 +20,7 @@ def list_api(request):
     if request.method == 'GET':
         user = User.objects.get(id=request.GET.get('parent', -1))
         childs = Child.objects.filter(parent=user)
-        serializer = ChildSerializer(childs, many=True)
+        serializer = AdminStudentSerializer(childs, many=True)
         return APIResponse(code=0, msg='查询成功', data=serializer.data)
 
 
@@ -22,9 +29,11 @@ def list_api(request):
 @authentication_classes([TokenAuthtication])
 def create(request):
     data = request.data.copy()
-    print(data)
+    user = _token_user(request)
+    if not user or str(data.get('parent')) != str(user.id):
+        return APIResponse(code=1, msg='Cannot add a child to another parent account')
+
     serializer = ChildSerializer(data=data)
-    print(serializer)
     if serializer.is_valid():
         serializer.save()
         return APIResponse(code=0, msg='创建成功', data=serializer.data)
@@ -36,15 +45,20 @@ def create(request):
 
 # 修改child
 @api_view(['POST'])
-@authentication_classes([AdminTokenAuthtication])
+@authentication_classes([TokenAuthtication])
 def update(request):
     try:
         pk = request.GET.get('id', -1)
-        childs = Child.objects.get(pk=pk)
+        user = _token_user(request)
+        if not user:
+            return APIResponse(code=1, msg='User authentication failed')
+        childs = Child.objects.get(pk=pk, parent=user)
     except Child.DoesNotExist:
         return APIResponse(code=1, msg='child不存在')
 
-    serializer = ChildSerializer(childs, data=request.data)
+    data = request.data.copy()
+    data['parent'] = childs.parent_id
+    serializer = ChildSerializer(childs, data=data)
     if serializer.is_valid():
         serializer.save()
         return APIResponse(code=0, msg='更新成功', data=serializer.data)

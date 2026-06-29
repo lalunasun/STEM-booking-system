@@ -7,4 +7,5 @@ export interface UserState {
   admin_user_id: any;
   admin_user_name: any;
   admin_user_token: any;
+  admin_user_role: any;
 }

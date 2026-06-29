@@ -3,9 +3,9 @@
     <div v-if="!route.query.id" class="page-view">
       <div class="table-operations">
         <a-space>
-          <a-button type="primary" @click="handleAdd">New</a-button>
-          <a-button @click="openImportComments">Import Comments</a-button>
-          <a-button danger @click="handleBatchDelete">Mass Delete</a-button>
+          <a-button v-if="canManageStudents" type="primary" @click="handleAdd">New</a-button>
+          <a-button v-if="canManageStudents" @click="openImportComments">Import Comments</a-button>
+          <a-button v-if="canManageStudents" danger @click="handleBatchDelete">Mass Delete</a-button>
           <a-input-search addon-before="Student" enter-button @search="onSearch" @change="onSearchChange" />
         </a-space>
       </div>
@@ -17,7 +17,7 @@
         :columns="columns"
         :data-source="data.studentList"
         :scroll="{ x: 1200 }"
-        :row-selection="rowSelection"
+        :row-selection="canManageStudents ? rowSelection : null"
         :pagination="{
           size: 'default',
           current: data.page,
@@ -58,12 +58,14 @@
           <template v-if="column.key === 'operation'">
             <span>
               <a @click="handleView(record)">View Detail</a>
-              <a-divider type="vertical" />
-              <a @click="handleEdit(record)">Edit</a>
-              <a-divider type="vertical" />
-              <a-popconfirm title="Sure to delete?" ok-text="Yes" cancel-text="No" @confirm="confirmDelete(record)">
+              <template v-if="canManageStudents">
+                <a-divider type="vertical" />
+                <a @click="handleEdit(record)">Edit</a>
+                <a-divider type="vertical" />
+                <a-popconfirm title="Sure to delete?" ok-text="Yes" cancel-text="No" @confirm="confirmDelete(record)">
                 <a href="#" style="color: red;">Delete</a>
-              </a-popconfirm>
+                </a-popconfirm>
+              </template>
             </span>
           </template>
         </template>
@@ -307,10 +309,12 @@
 import { FormInstance, message } from 'ant-design-vue';
 import { createApi, deleteApi, detailApi, importCommentsApi, listApi, updateApi } from '/@/api/admin/student';
 import { listApi as listUserApi } from '/@/api/admin/user';
+import { ADMIN_USER_ROLE } from '/@/store/constants';
 import { useRoute, useRouter } from 'vue-router';
 
 const route = useRoute();
 const router = useRouter();
+const canManageStudents = computed(() => localStorage.getItem(ADMIN_USER_ROLE) !== '2');
 
 const columns = reactive([
   {
@@ -505,6 +509,9 @@ const getDataList = () => {
 };
 
 const getParentDataList = () => {
+  if (!canManageStudents.value) {
+    return;
+  }
   listUserApi({})
     .then((res) => {
       modal.parentData = res.data
@@ -545,6 +552,9 @@ const resetForm = () => {
 };
 
 const handleAdd = () => {
+  if (!canManageStudents.value) {
+    return;
+  }
   if (!modal.parentData.length) {
     getParentDataList();
   }
@@ -555,6 +565,9 @@ const handleAdd = () => {
 };
 
 const handleEdit = (record: any) => {
+  if (!canManageStudents.value) {
+    return;
+  }
   if (!modal.parentData.length) {
     getParentDataList();
   }
@@ -583,6 +596,9 @@ const loadStudentDetail = async (studentId: number) => {
 };
 
 const openImportComments = () => {
+  if (!canManageStudents.value) {
+    return;
+  }
   importModal.visible = true;
   importModal.result = null;
 };
@@ -609,6 +625,9 @@ const removeImportFile = () => {
 };
 
 const submitImportComments = async () => {
+  if (!canManageStudents.value) {
+    return;
+  }
   const text = importModal.text.trim();
   if (!importModal.file && !text) {
     message.warning('Please select a CSV file or paste CSV content');
@@ -651,7 +670,7 @@ const handleView = (record: any) => {
 const closeDetail = () => {
   detail.visible = false;
   const returnTo = String(route.query.returnTo || '');
-  if (returnTo.startsWith('/admin/schedule')) {
+  if (returnTo.startsWith('/admin/schedule') || returnTo.startsWith('/admin/classroom')) {
     router.push(returnTo);
     return;
   }
@@ -659,6 +678,9 @@ const closeDetail = () => {
 };
 
 const confirmDelete = (record: any) => {
+  if (!canManageStudents.value) {
+    return;
+  }
   deleteApi({ ids: record.id })
     .then(() => {
       getDataList();
@@ -669,6 +691,9 @@ const confirmDelete = (record: any) => {
 };
 
 const handleBatchDelete = () => {
+  if (!canManageStudents.value) {
+    return;
+  }
   if (data.selectedRowKeys.length <= 0) {
     message.warn('Select items to delete');
     return;
@@ -686,6 +711,9 @@ const handleBatchDelete = () => {
 };
 
 const handleOk = () => {
+  if (!canManageStudents.value) {
+    return;
+  }
   myform.value
     ?.validate()
     .then(() => {

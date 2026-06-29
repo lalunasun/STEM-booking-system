@@ -1,7 +1,7 @@
 import {createRouter, createWebHistory} from 'vue-router';
 import root from './root';
 
-import { ADMIN_USER_TOKEN, USER_TOKEN } from '/@/store/constants'
+import { ADMIN_USER_ROLE, ADMIN_USER_TOKEN, USER_TOKEN } from '/@/store/constants'
 
 // 路由权限白名单
 const allowList = ['adminLogin', 'login', 'register', 'portal', 'mobile', 'search', 'detail', '403', '404']
@@ -9,6 +9,7 @@ const allowList = ['adminLogin', 'login', 'register', 'portal', 'mobile', 'searc
 const loginRoutePath = '/index/login'
 // 后台登录地址
 const adminLoginRoutePath = '/adminLogin'
+const teacherAdminRoutes = ['admin', 'schedule', 'classroom', 'lesson', 'student']
 
 
 const router = createRouter({
@@ -25,6 +26,11 @@ router.beforeEach(async (to, from, next) => {
       if (to.path === adminLoginRoutePath) {
         next({ path: '/' })
       } else {
+        const adminRole = localStorage.getItem(ADMIN_USER_ROLE)
+        if (adminRole === '2' && !teacherAdminRoutes.includes(to.name as string)) {
+          next({ name: 'schedule' })
+          return
+        }
         next()
       }
     } else {

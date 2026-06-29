@@ -25,7 +25,7 @@
             @change="selectWeek"
           />
           <a-button
-            v-if="!adjustmentMode"
+            v-if="!adjustmentMode && canManageSchedule"
             type="primary"
             @click="enterAdjustmentMode"
           >
@@ -82,7 +82,30 @@
       <section class="announcement" aria-label="Staff announcement">
         <div class="announcement-icon">A</div>
         <strong>Staff announcement:</strong>
-        <p>{{ staffAnnouncement }}</p>
+        <template v-if="editingAnnouncement">
+          <a-textarea
+            v-model:value="announcementDraft"
+            class="announcement-input"
+            :maxlength="500"
+            :auto-size="{ minRows: 1, maxRows: 3 }"
+            placeholder="Staff announcement"
+          />
+          <a-button
+            type="primary"
+            size="small"
+            :loading="savingAnnouncement"
+            @click="saveAnnouncement"
+          >
+            <save-outlined /> Save
+          </a-button>
+          <a-button size="small" @click="cancelAnnouncementEdit">Cancel</a-button>
+        </template>
+        <template v-else>
+          <p>{{ staffAnnouncement }}</p>
+          <a-button v-if="canManageSchedule" size="small" type="link" @click="startAnnouncementEdit">
+            <edit-outlined /> Edit
+          </a-button>
+        </template>
       </section>
 
       <div class="schedule-workspace">
@@ -118,7 +141,13 @@
             No classes scheduled on {{ selectedDate.format('dddd') }}.
           </div>
 
-          <div v-else class="schedule-scroll">
+          <div
+            v-else
+            ref="scheduleScrollRef"
+            class="schedule-scroll"
+            @dragover.prevent="handleScheduleDragOver"
+            @dragleave="stopAutoScroll"
+          >
             <div class="daily-board" :style="boardGridStyle">
               <div class="time-header">Time</div>
               <div
@@ -128,7 +157,29 @@
                 :style="getRoomColorStyle(room.id)"
               >
                 <strong>{{ room.title }}</strong>
-                <span>{{ getTeacherPreset(room.id) }}</span>
+                <span v-if="editingTeacherRoomId !== room.id" class="teacher-name">
+                  {{ getTeacherPreset(room.id) }}
+                  <button
+                    v-if="canManageSchedule"
+                    type="button"
+                    class="teacher-edit-btn"
+                    :title="`Edit ${room.title} teacher`"
+                    @click.stop="startTeacherEdit(room.id)"
+                  >
+                    <edit-outlined />
+                  </button>
+                </span>
+                <a-input
+                  v-else
+                  v-model:value="inlineTeacherDraft"
+                  class="teacher-inline-input"
+                  size="small"
+                  :maxlength="80"
+                  :disabled="savingInlineTeacherRoomId === room.id"
+                  @pressEnter="saveInlineTeacher(room.id)"
+                  @blur="saveInlineTeacher(room.id)"
+                  @keydown.esc="cancelTeacherEdit"
+                />
                 <small>{{ room.seat || 0 }} seats</small>
               </div>
 
@@ -142,6 +193,13 @@
                   :class="{ 'empty-cell': !getCellLessons(room.id, slot.id).length }"
                 >
                   <template v-if="getCellLessons(room.id, slot.id).length">
+                    <div
+                      class="slot-summary"
+                      :class="{ full: isCellFull(room.id, slot.id) }"
+                    >
+                      <span>Room slot</span>
+                      <strong>{{ getCellPresentStudentCount(room.id, slot.id) }}/{{ getCellCapacity(room.id, slot.id) }}</strong>
+                    </div>
                     <article
                       v-for="lesson in getCellLessons(room.id, slot.id)"
                       :key="lesson.id"
@@ -164,13 +222,6 @@
                       >
                         <span class="lesson-title-line">
                           <strong>{{ lesson.class_name || 'Untitled class' }}</strong>
-                          <small>{{ getTeacherPreset(room.id) }}</small>
-                        </span>
-                        <span
-                          class="capacity"
-                          :class="{ full: isLessonFull(lesson) }"
-                        >
-                          {{ getPresentStudentCount(lesson) }}/{{ getLessonCapacity(lesson) }}
                         </span>
                       </button>
 
@@ -194,7 +245,7 @@
                             title="Drag, or click then choose a target class"
                             @click.stop="selectStudentForMove(lesson, student)"
                             @dragstart.stop="startStudentDrag($event, lesson, student)"
-                            @dragend="draggedStudent = null"
+                            @dragend="endStudentDrag"
                           >
                             <HolderOutlined />
                           </span>
@@ -206,15 +257,33 @@
                           >
                             <span>{{ student.name }}</span>
                             <small v-if="student.badge">{{ student.badge }}</small>
+                            <small
+                              v-if="getCommentStatusLabel(lesson, student)"
+                              class="comment-status"
+                              :class="getCommentStatusClass(student)"
+                            >
+                              {{ getCommentStatusLabel(lesson, student) }}
+                            </small>
                           </button>
                           <button
-                            v-if="adjustmentMode && student.type === 'normal'"
+                            v-if="canManageSchedule && adjustmentMode && student.type === 'normal'"
                             type="button"
                             class="sick-button"
                             title="Mark sick leave"
                             @click="openSickLeave(lesson, student)"
                           >
                             <medicine-box-outlined />
+                          </button>
+                          <button
+                            v-if="canMarkAttendance(lesson, student)"
+                            type="button"
+                            class="attendance-button"
+                            :class="{ absent: student.absentMarked }"
+                            :disabled="savingAttendanceKey === getAttendanceKey(lesson, student)"
+                            :title="student.absentMarked ? 'Clear absent' : 'Mark absent'"
+                            @click="toggleAbsent(lesson, student)"
+                          >
+                            {{ student.absentMarked ? 'Present' : 'Mark absent' }}
                           </button>
                           <button
                             type="button"
@@ -338,7 +407,7 @@ import {
 import { message } from 'ant-design-vue';
 import enUS from 'ant-design-vue/es/locale/en_US';
 import dayjs, { Dayjs } from 'dayjs';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { listApi as listLessonsApi } from '/@/api/admin/lesson';
 import {
@@ -352,10 +421,17 @@ import {
   optionsApi as permanentOptionsApi,
   revertApi as revertPermanentApi,
 } from '/@/api/admin/permanent-course-change';
+import { markAbsentApi } from '/@/api/admin/student-attendance';
 import { listApi as listNotesApi, saveApi as saveNoteApi } from '/@/api/admin/student-lesson-note';
+import {
+  saveStaffAnnouncementApi,
+  saveTeacherAssignmentsApi,
+  staffAnnouncementApi,
+  teacherAssignmentsApi,
+} from '/@/api/admin/system-setting';
 import { listApi as listRoomsApi } from '/@/api/admin/tag';
 import { listApi as listTimesApi } from '/@/api/admin/time';
-import { ADMIN_USER_ID } from '/@/store/constants';
+import { ADMIN_USER_ID, ADMIN_USER_ROLE } from '/@/store/constants';
 
 interface RoomItem {
   id: number;
@@ -377,6 +453,8 @@ interface ScheduleStudent {
   expect_time: string;
   return_time: string;
   status: number;
+  comment_done?: boolean;
+  absent_marked?: boolean;
 }
 
 interface AdjustmentStudent {
@@ -388,6 +466,8 @@ interface AdjustmentStudent {
   term_title?: string;
   reason?: string;
   lesson_count_delta?: number;
+  comment_done?: boolean;
+  absent_marked?: boolean;
 }
 
 interface TrialStudent {
@@ -396,6 +476,8 @@ interface TrialStudent {
   order_id?: number;
   name: string;
   date: string;
+  comment_done?: boolean;
+  absent_marked?: boolean;
 }
 
 interface LessonItem {
@@ -424,6 +506,8 @@ interface DisplayStudent {
   type: 'normal' | 'canceled' | 'rescheduled' | 'trial' | 'moved' | 'sick';
   badge?: string;
   title?: string;
+  commentDone?: boolean;
+  absentMarked?: boolean;
 }
 
 interface DraftAction {
@@ -482,6 +566,9 @@ const savedAdjustments = ref<any[]>([]);
 const permanentChanges = ref<any[]>([]);
 const savingAdjustments = ref(false);
 const draggedStudent = ref<{ lesson: LessonItem; student: DisplayStudent } | null>(null);
+const scheduleScrollRef = ref<HTMLElement | null>(null);
+const autoScrollFrame = ref<number | null>(null);
+const autoScrollVector = reactive({ x: 0, y: 0 });
 const noteModal = reactive({
   visible: false,
   saving: false,
@@ -517,6 +604,15 @@ const permanentModal = reactive({
 const staffAnnouncement = ref(
   'Please review your classroom assignment and student changes before the first lesson.'
 );
+const announcementDraft = ref('');
+const editingAnnouncement = ref(false);
+const savingAnnouncement = ref(false);
+const teacherAssignments = ref<Record<string, string>>({});
+const editingTeacherRoomId = ref<number | null>(null);
+const inlineTeacherDraft = ref('');
+const savingInlineTeacherRoomId = ref<number | null>(null);
+const savingAttendanceKey = ref('');
+const canManageSchedule = computed(() => localStorage.getItem(ADMIN_USER_ROLE) !== '2');
 
 const visibleDates = computed(() => {
   const daysSinceSaturday = (selectedDate.value.day() + 1) % 7;
@@ -543,12 +639,21 @@ const displayedTimeSlots = computed(() => {
 });
 
 onMounted(async () => {
+  window.addEventListener('keydown', handleScheduleKeydown);
   loading.value = true;
   try {
-    const [roomResponse, timeResponse] = await Promise.all([
+    const [roomResponse, timeResponse, announcementResponse, teacherResponse] = await Promise.all([
       listRoomsApi({}),
       listTimesApi({}),
+      staffAnnouncementApi(),
+      teacherAssignmentsApi(),
     ]);
+    if (announcementResponse?.data?.value) {
+      staffAnnouncement.value = announcementResponse.data.value;
+    }
+    if (teacherResponse?.data?.value) {
+      teacherAssignments.value = teacherResponse.data.value;
+    }
     rooms.value = [...(roomResponse.data || [])].sort((a, b) =>
       String(a.title || '').localeCompare(String(b.title || ''), undefined, { numeric: true })
     );
@@ -562,6 +667,11 @@ onMounted(async () => {
   }
 });
 
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleScheduleKeydown);
+  stopAutoScroll();
+});
+
 watch(
   () => selectedDate.value.format('YYYY-MM-DD'),
   () => {
@@ -570,6 +680,86 @@ watch(
     }
   }
 );
+
+const startAnnouncementEdit = () => {
+  if (!canManageSchedule.value) {
+    return;
+  }
+  announcementDraft.value = staffAnnouncement.value;
+  editingAnnouncement.value = true;
+};
+
+const cancelAnnouncementEdit = () => {
+  announcementDraft.value = '';
+  editingAnnouncement.value = false;
+};
+
+const saveAnnouncement = async () => {
+  if (!canManageSchedule.value) {
+    return;
+  }
+  savingAnnouncement.value = true;
+  try {
+    const response = await saveStaffAnnouncementApi({ value: announcementDraft.value });
+    if (response.code !== 0) {
+      message.error(response.msg || 'Failed to save announcement');
+      return;
+    }
+    staffAnnouncement.value = response.data?.value || announcementDraft.value;
+    editingAnnouncement.value = false;
+    message.success('Announcement saved');
+  } catch (error: any) {
+    message.error(error?.msg || 'Failed to save announcement');
+  } finally {
+    savingAnnouncement.value = false;
+  }
+};
+
+const startTeacherEdit = (roomId: number) => {
+  if (!canManageSchedule.value) {
+    return;
+  }
+  editingTeacherRoomId.value = roomId;
+  inlineTeacherDraft.value = getTeacherPreset(roomId);
+};
+
+const cancelTeacherEdit = () => {
+  editingTeacherRoomId.value = null;
+  inlineTeacherDraft.value = '';
+};
+
+const saveInlineTeacher = async (roomId: number) => {
+  if (!canManageSchedule.value) {
+    return;
+  }
+  if (editingTeacherRoomId.value !== roomId || savingInlineTeacherRoomId.value === roomId) {
+    return;
+  }
+
+  const nextAssignments = {
+    ...teacherAssignments.value,
+    [String(roomId)]: inlineTeacherDraft.value.trim() || getTeacherFallback(roomId),
+  };
+
+  savingInlineTeacherRoomId.value = roomId;
+  try {
+    const response = await saveTeacherAssignmentsApi({
+      value: JSON.stringify(nextAssignments),
+    });
+    if (response.code !== 0) {
+      message.error(response.msg || 'Failed to save teacher');
+      return;
+    }
+    teacherAssignments.value = response.data?.value || {};
+    editingTeacherRoomId.value = null;
+    inlineTeacherDraft.value = '';
+    message.success('Teacher saved');
+  } catch (error: any) {
+    message.error(error?.msg || 'Failed to save teacher');
+  } finally {
+    savingInlineTeacherRoomId.value = null;
+  }
+};
 
 const loadSelectedDate = async () => {
   loading.value = true;
@@ -604,15 +794,27 @@ const getTimeMinutes = (value?: string) => {
 const selectedDayCode = computed(() => dayCodes[selectedDate.value.day()]);
 
 const getCellLessons = (roomId: number, timeId: number) => {
+  return getRawCellLessons(roomId, timeId)
+    .filter((lesson) => matchesStudentSearch(lesson))
+    .sort((a, b) => String(a.class_name || '').localeCompare(String(b.class_name || '')));
+};
+
+const getRawCellLessons = (roomId: number, timeId: number) => {
   return lessons.value
     .filter((lesson) => lesson.day === selectedDayCode.value)
     .filter((lesson) => Number(lesson.room_id) === Number(roomId))
     .filter((lesson) => {
       const slot = timeSlots.value.find((item) => Number(item.id) === Number(timeId));
       return slot && lesson.time === slot.time;
-    })
-    .filter((lesson) => matchesStudentSearch(lesson))
-    .sort((a, b) => String(a.class_name || '').localeCompare(String(b.class_name || '')));
+    });
+};
+
+const getLessonSlotLessons = (lesson: LessonItem) => {
+  return lessons.value.filter((item) =>
+    item.day === lesson.day &&
+    Number(item.room_id) === Number(lesson.room_id) &&
+    item.time === lesson.time
+  );
 };
 
 const isStudentActiveOnDate = (student: ScheduleStudent) => {
@@ -641,6 +843,8 @@ const getDisplayStudents = (lesson: LessonItem): DisplayStudent[] => {
       name: student.name,
       type: 'normal',
       title: student.term_title,
+      commentDone: !!student.comment_done,
+      absentMarked: !!student.absent_marked,
     }));
 
   const canceledStudents: DisplayStudent[] = canceled.map((student) => ({
@@ -661,6 +865,8 @@ const getDisplayStudents = (lesson: LessonItem): DisplayStudent[] => {
       type: 'rescheduled',
       badge: 'Makeup',
       title: student.term_title,
+      commentDone: !!student.comment_done,
+      absentMarked: !!student.absent_marked,
     }));
 
   const trialStudents: DisplayStudent[] = (lesson.scheduled_trial_students || [])
@@ -671,6 +877,8 @@ const getDisplayStudents = (lesson: LessonItem): DisplayStudent[] => {
       name: student.name,
       type: 'trial',
       badge: 'Trial',
+      commentDone: !!student.comment_done,
+      absentMarked: !!student.absent_marked,
     }));
 
   const movedStudents: DisplayStudent[] = (lesson.moved_students || []).map((student) => ({
@@ -680,6 +888,8 @@ const getDisplayStudents = (lesson: LessonItem): DisplayStudent[] => {
     type: 'moved',
     badge: 'Moved',
     title: student.term_title,
+    commentDone: !!student.comment_done,
+    absentMarked: !!student.absent_marked,
   }));
 
   const sickStudents: DisplayStudent[] = (lesson.sick_leave_students || []).map((student) => ({
@@ -751,20 +961,208 @@ const getLessonCapacity = (lesson: LessonItem) => {
   return Number.isFinite(capacity) && capacity > 0 ? capacity : 0;
 };
 
+const countsTowardRoomCapacity = (student: DisplayStudent) => {
+  return ['normal', 'rescheduled', 'moved'].includes(student.type);
+};
+
 const getPresentStudentCount = (lesson: LessonItem) => {
   return getDisplayStudents(lesson).filter(
-    (student) => !['canceled', 'sick'].includes(student.type)
+    countsTowardRoomCapacity
   ).length;
 };
 
 const isLessonFull = (lesson: LessonItem) => {
   const capacity = getLessonCapacity(lesson);
-  return capacity > 0 && getPresentStudentCount(lesson) >= capacity;
+  return capacity > 0 && getRoomSlotPresentStudentCount(lesson) >= capacity;
+};
+
+const getRoomSlotPresentStudentCount = (lesson: LessonItem) => {
+  return getLessonSlotLessons(lesson).reduce(
+    (total, slotLesson) => total + getPresentStudentCount(slotLesson),
+    0
+  );
+};
+
+const isSameRoomSlot = (left: LessonItem, right: LessonItem) => {
+  return Number(left.room_id) === Number(right.room_id) &&
+    left.day === right.day &&
+    left.time === right.time;
+};
+
+const getCellCapacity = (roomId: number, timeId: number) => {
+  const lessonsInCell = getRawCellLessons(roomId, timeId);
+  if (lessonsInCell.length) {
+    return getLessonCapacity(lessonsInCell[0]);
+  }
+  const room = rooms.value.find((item) => Number(item.id) === Number(roomId));
+  const capacity = Number(room?.seat);
+  return Number.isFinite(capacity) && capacity > 0 ? capacity : 0;
+};
+
+const getCellPresentStudentCount = (roomId: number, timeId: number) => {
+  return getRawCellLessons(roomId, timeId).reduce(
+    (total, lesson) => total + getPresentStudentCount(lesson),
+    0
+  );
+};
+
+const isCellFull = (roomId: number, timeId: number) => {
+  const capacity = getCellCapacity(roomId, timeId);
+  return capacity > 0 && getCellPresentStudentCount(roomId, timeId) >= capacity;
+};
+
+const getLessonEndMinutes = (lesson: LessonItem) => {
+  const parts = String(lesson.time || '').split('-');
+  return getTimeMinutes(parts[1] || parts[0]);
+};
+
+const isLessonEnded = (lesson: LessonItem) => {
+  const today = dayjs();
+  if (selectedDate.value.isBefore(today, 'day')) {
+    return true;
+  }
+  if (selectedDate.value.isAfter(today, 'day')) {
+    return false;
+  }
+  return today.hour() * 60 + today.minute() >= getLessonEndMinutes(lesson);
+};
+
+const needsLessonComment = (student: DisplayStudent) => {
+  return ['normal', 'rescheduled', 'trial', 'moved'].includes(student.type);
+};
+
+const getCommentStatusLabel = (lesson: LessonItem, student: DisplayStudent) => {
+  if (!isLessonEnded(lesson) || !needsLessonComment(student)) {
+    return '';
+  }
+  if (student.commentDone) {
+    return 'Done';
+  }
+  if (student.absentMarked) {
+    return 'Absent';
+  }
+  return 'Comment needed';
+};
+
+const getCommentStatusClass = (student: DisplayStudent) => {
+  if (student.commentDone) {
+    return 'comment-done';
+  }
+  if (student.absentMarked) {
+    return 'comment-absent';
+  }
+  return 'comment-needed';
+};
+
+const getAttendanceKey = (lesson: LessonItem, student: DisplayStudent) => {
+  return `${lesson.lesson_id || lesson.id}:${student.studentId}`;
+};
+
+const canMarkAttendance = (lesson: LessonItem, student: DisplayStudent) => {
+  return isLessonEnded(lesson) && needsLessonComment(student) && (!student.commentDone || student.absentMarked);
+};
+
+const toggleAbsent = async (lesson: LessonItem, student: DisplayStudent) => {
+  const key = getAttendanceKey(lesson, student);
+  savingAttendanceKey.value = key;
+  try {
+    const response = await markAbsentApi({
+      lesson_id: Number(lesson.lesson_id || lesson.id),
+      student_id: student.studentId,
+      lesson_date: selectedDate.value.format('YYYY-MM-DD'),
+      is_absent: !student.absentMarked,
+    });
+    if (response.code !== 0) {
+      message.error(response.msg || 'Failed to update attendance');
+      return;
+    }
+    message.success(response.data?.is_absent ? 'Marked absent' : 'Absent cleared');
+    await loadSelectedDate();
+  } catch (error: any) {
+    message.error(error?.msg || 'Failed to update attendance');
+  } finally {
+    savingAttendanceKey.value = '';
+  }
+};
+
+const getTeacherFallback = (roomId: number) => {
+  const roomIndex = Math.max(rooms.value.findIndex((room) => room.id === roomId), 0);
+  return teacherNames[roomIndex % teacherNames.length];
 };
 
 const getTeacherPreset = (roomId: number) => {
-  const roomIndex = Math.max(rooms.value.findIndex((room) => room.id === roomId), 0);
-  return teacherNames[roomIndex % teacherNames.length];
+  return teacherAssignments.value[String(roomId)] || getTeacherFallback(roomId);
+};
+
+const runAutoScroll = () => {
+  const scrollEl = scheduleScrollRef.value;
+  if (!scrollEl || !draggedStudent.value || (!autoScrollVector.x && !autoScrollVector.y)) {
+    autoScrollFrame.value = null;
+    return;
+  }
+  scrollEl.scrollLeft += autoScrollVector.x;
+  scrollEl.scrollTop += autoScrollVector.y;
+  autoScrollFrame.value = window.requestAnimationFrame(runAutoScroll);
+};
+
+const stopAutoScroll = () => {
+  autoScrollVector.x = 0;
+  autoScrollVector.y = 0;
+  if (autoScrollFrame.value !== null) {
+    window.cancelAnimationFrame(autoScrollFrame.value);
+    autoScrollFrame.value = null;
+  }
+};
+
+const startAutoScroll = () => {
+  if (autoScrollFrame.value === null && (autoScrollVector.x || autoScrollVector.y)) {
+    autoScrollFrame.value = window.requestAnimationFrame(runAutoScroll);
+  }
+};
+
+const edgeSpeed = (distance: number, edgeSize: number) => {
+  const intensity = Math.max(0, Math.min(1, (edgeSize - distance) / edgeSize));
+  return Math.ceil(4 + intensity * 18);
+};
+
+const handleScheduleDragOver = (event: DragEvent) => {
+  if (!draggedStudent.value || !scheduleScrollRef.value) {
+    stopAutoScroll();
+    return;
+  }
+
+  const edgeSize = 56;
+  const rect = scheduleScrollRef.value.getBoundingClientRect();
+  const leftDistance = event.clientX - rect.left;
+  const rightDistance = rect.right - event.clientX;
+  const topDistance = event.clientY - rect.top;
+  const bottomDistance = rect.bottom - event.clientY;
+
+  autoScrollVector.x = 0;
+  autoScrollVector.y = 0;
+  if (leftDistance >= 0 && leftDistance < edgeSize) {
+    autoScrollVector.x = -edgeSpeed(leftDistance, edgeSize);
+  } else if (rightDistance >= 0 && rightDistance < edgeSize) {
+    autoScrollVector.x = edgeSpeed(rightDistance, edgeSize);
+  }
+  if (topDistance >= 0 && topDistance < edgeSize) {
+    autoScrollVector.y = -edgeSpeed(topDistance, edgeSize);
+  } else if (bottomDistance >= 0 && bottomDistance < edgeSize) {
+    autoScrollVector.y = edgeSpeed(bottomDistance, edgeSize);
+  }
+
+  if (autoScrollVector.x || autoScrollVector.y) {
+    startAutoScroll();
+  } else {
+    stopAutoScroll();
+  }
+};
+
+const handleScheduleKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape' && draggedStudent.value) {
+    stopAutoScroll();
+    draggedStudent.value = null;
+  }
 };
 
 const noteKey = (lessonId: number, studentId: number) => `${lessonId}:${studentId}`;
@@ -814,6 +1212,10 @@ const loadSavedAdjustments = async () => {
 };
 
 const enterAdjustmentMode = () => {
+  if (!canManageSchedule.value) {
+    message.warning('Teacher accounts can view schedules and write comments only');
+    return;
+  }
   adjustmentMode.value = true;
   adjustmentScope.value = 'date';
   loadPermanentChanges();
@@ -828,7 +1230,7 @@ const exitAdjustmentMode = () => {
 };
 
 const canDragStudent = (student: DisplayStudent) => {
-  return adjustmentMode.value && student.type === 'normal';
+  return canManageSchedule.value && adjustmentMode.value && ['normal', 'moved'].includes(student.type);
 };
 
 const isSelectedStudent = (lesson: LessonItem, student: DisplayStudent) => {
@@ -843,6 +1245,9 @@ const isSelectedStudent = (lesson: LessonItem, student: DisplayStudent) => {
 };
 
 const selectStudentForMove = (lesson: LessonItem, student: DisplayStudent) => {
+  if (!canManageSchedule.value) {
+    return;
+  }
   if (!canDragStudent(student)) {
     return;
   }
@@ -872,7 +1277,10 @@ const canAcceptDrop = (targetLesson: LessonItem) => {
     return false;
   }
   const capacity = getLessonCapacity(targetLesson);
-  return capacity <= 0 || getPresentStudentCount(targetLesson) < capacity;
+  if (capacity <= 0 || isSameRoomSlot(dragged.lesson, targetLesson)) {
+    return true;
+  }
+  return getRoomSlotPresentStudentCount(targetLesson) < capacity;
 };
 
 const getDropTargetTitle = (targetLesson: LessonItem) => {
@@ -889,13 +1297,17 @@ const getDropTargetTitle = (targetLesson: LessonItem) => {
     return 'This student already has an unsaved adjustment';
   }
   const capacity = getLessonCapacity(targetLesson);
-  if (capacity > 0 && getPresentStudentCount(targetLesson) >= capacity) {
-    return 'This class is full';
+  if (capacity > 0 && !isSameRoomSlot(dragged.lesson, targetLesson) && getRoomSlotPresentStudentCount(targetLesson) >= capacity) {
+    return 'This room slot is full';
   }
   return 'Release to move the student here';
 };
 
 const startStudentDrag = (event: DragEvent, lesson: LessonItem, student: DisplayStudent) => {
+  if (!canManageSchedule.value) {
+    event.preventDefault();
+    return;
+  }
   if (!canDragStudent(student)) {
     return;
   }
@@ -911,7 +1323,16 @@ const startStudentDrag = (event: DragEvent, lesson: LessonItem, student: Display
   draggedStudent.value = { lesson, student };
 };
 
+const endStudentDrag = () => {
+  stopAutoScroll();
+  draggedStudent.value = null;
+};
+
 const dropStudent = (targetLesson: LessonItem) => {
+  stopAutoScroll();
+  if (!canManageSchedule.value) {
+    return;
+  }
   const dragged = draggedStudent.value;
   if (!adjustmentMode.value || !dragged) {
     return;
@@ -926,8 +1347,9 @@ const dropStudent = (targetLesson: LessonItem) => {
     message.warning('This student already has an unsaved adjustment');
     return;
   }
-  if (getPresentStudentCount(targetLesson) >= getLessonCapacity(targetLesson)) {
-    message.error('Target class is full');
+  const capacity = getLessonCapacity(targetLesson);
+  if (capacity > 0 && !isSameRoomSlot(dragged.lesson, targetLesson) && getRoomSlotPresentStudentCount(targetLesson) >= capacity) {
+    message.error('Target room slot is full');
     return;
   }
   draftActions.value.push({
@@ -944,6 +1366,9 @@ const dropStudent = (targetLesson: LessonItem) => {
 };
 
 const openSickLeave = (lesson: LessonItem, student: DisplayStudent) => {
+  if (!canManageSchedule.value) {
+    return;
+  }
   if (draftActions.value.some((action) => action.student_id === student.studentId)) {
     message.warning('This student already has an unsaved adjustment');
     return;
@@ -981,6 +1406,9 @@ const discardDrafts = () => {
 };
 
 const saveAdjustments = async () => {
+  if (!canManageSchedule.value) {
+    return;
+  }
   savingAdjustments.value = true;
   try {
     await saveBatchApi({
@@ -998,6 +1426,9 @@ const saveAdjustments = async () => {
 };
 
 const revertLastSaved = async () => {
+  if (!canManageSchedule.value) {
+    return;
+  }
   const record = savedAdjustments.value[savedAdjustments.value.length - 1];
   if (!record) {
     return;
@@ -1021,6 +1452,9 @@ const loadPermanentChanges = async () => {
 };
 
 const openPermanentChange = (lesson: LessonItem, student: DisplayStudent) => {
+  if (!canManageSchedule.value) {
+    return;
+  }
   permanentModal.studentId = student.studentId;
   permanentModal.studentName = student.name;
   permanentModal.sourceLessonId = Number(lesson.lesson_id || lesson.id);
@@ -1058,6 +1492,9 @@ const loadPermanentOptions = async () => {
 };
 
 const savePermanentChange = async () => {
+  if (!canManageSchedule.value) {
+    return;
+  }
   if (!permanentModal.targetLessonId) {
     message.warning('Select the new recurring class');
     return;
@@ -1082,6 +1519,9 @@ const savePermanentChange = async () => {
 };
 
 const revertLastPermanent = async () => {
+  if (!canManageSchedule.value) {
+    return;
+  }
   const record = permanentChanges.value[0];
   if (!record) {
     return;
@@ -1297,6 +1737,7 @@ const selectNextDay = () => {
 }
 
 .announcement p {
+  flex: 1;
   min-width: 0;
   margin: 0;
   color: #344054;
@@ -1304,6 +1745,16 @@ const selectNextDay = () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.announcement-input {
+  flex: 1;
+  min-width: 180px;
+  font-size: 13px;
+}
+
+.announcement :deep(.ant-btn-link) {
+  padding-inline: 4px;
 }
 
 .schedule-workspace {
@@ -1465,10 +1916,37 @@ const selectNextDay = () => {
   font-size: 13px;
 }
 
-.room-header span {
+.room-header .teacher-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--room-text);
   font-size: 11px;
   font-weight: 600;
+  min-width: 0;
+}
+
+.teacher-edit-btn {
+  width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--room-text);
+  cursor: pointer;
+  opacity: 0.72;
+  padding: 0;
+}
+
+.teacher-edit-btn:hover {
+  background: rgba(255, 255, 255, 0.7);
+  opacity: 1;
+}
+
+.teacher-inline-input {
+  width: 112px;
 }
 
 .room-header small {
@@ -1504,10 +1982,34 @@ const selectNextDay = () => {
   background: #fcfcfd;
 }
 
+.slot-summary {
+  margin-bottom: 7px;
+  padding: 4px 6px;
+  border: 1px solid #d0d5dd;
+  border-radius: 4px;
+  background: #f8fafc;
+  color: #475467;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.slot-summary strong {
+  color: #344054;
+  font-size: 12px;
+}
+
+.slot-summary.full strong {
+  color: #b42318;
+}
+
 .lesson-block {
   border: 1px solid var(--lesson-border);
-  border-radius: 6px;
-  background: var(--lesson-bg);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--lesson-bg) 72%, white);
   color: var(--lesson-text);
   overflow: hidden;
 }
@@ -1528,20 +2030,20 @@ const selectNextDay = () => {
 }
 
 .lesson-block + .lesson-block {
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .lesson-heading {
   width: 100%;
-  min-height: 46px;
-  padding: 7px 8px;
+  min-height: 28px;
+  padding: 5px 7px;
   border: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--lesson-border) 58%, transparent);
-  background: transparent;
+  background: color-mix(in srgb, var(--lesson-bg) 86%, white);
   color: inherit;
   cursor: pointer;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   text-align: left;
@@ -1553,8 +2055,8 @@ const selectNextDay = () => {
 }
 
 .lesson-heading strong {
-  font-size: 13px;
-  line-height: 17px;
+  font-size: 12px;
+  line-height: 16px;
 }
 
 .lesson-heading small {
@@ -1568,20 +2070,6 @@ const selectNextDay = () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.capacity {
-  flex: 0 0 auto;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.76);
-  padding: 2px 5px;
-  color: #344054;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.capacity.full {
-  color: #b42318;
 }
 
 .student-list {
@@ -1658,6 +2146,48 @@ const selectNextDay = () => {
   font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.student-main .comment-status {
+  border-radius: 999px;
+  padding: 2px 5px;
+  text-transform: none;
+}
+
+.comment-needed {
+  background: #fff4e5;
+  color: #b54708;
+}
+
+.comment-done {
+  background: #ecfdf3;
+  color: #027a48;
+}
+
+.comment-absent {
+  background: #fef3f2;
+  color: #b42318;
+}
+
+.attendance-button {
+  flex: 0 0 auto;
+  min-width: 58px;
+  height: 30px;
+  border: 0;
+  border-left: 1px solid rgba(152, 162, 179, 0.45);
+  background: rgba(255, 255, 255, 0.52);
+  color: #667085;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+.attendance-button:hover,
+.attendance-button.absent {
+  background: #fef3f2;
+  color: #b42318;
 }
 
 .note-button {

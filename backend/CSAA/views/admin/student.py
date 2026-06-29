@@ -5,17 +5,19 @@ from datetime import datetime
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Prefetch, Q
+from django.utils.dateparse import parse_date
 from django.utils import timezone
 from rest_framework.decorators import api_view, authentication_classes
 
 from CSAA import utils
-from CSAA.auth.authentication import AdminTokenAuthtication
+from CSAA.auth.authentication import AdminOrTeacherTokenAuthtication, AdminTokenAuthtication
 from CSAA.handler import APIResponse
-from CSAA.models import Child, CourseAdjustment, Order, StudentComment
+from CSAA.models import Child, CourseAdjustment, Lesson, Order, StudentAttendance, StudentComment
 from CSAA.serializers import AdminStudentSerializer
 
 
 @api_view(['GET'])
+@authentication_classes([AdminOrTeacherTokenAuthtication])
 def list_api(request):
     keyword = request.GET.get('keyword', '')
     students = Child.objects.select_related('parent').prefetch_related(
@@ -55,7 +57,7 @@ def list_api(request):
 
 
 @api_view(['GET'])
-@authentication_classes([AdminTokenAuthtication])
+@authentication_classes([AdminOrTeacherTokenAuthtication])
 def detail(request):
     try:
         student = Child.objects.select_related('parent').get(pk=request.GET.get('id'))
@@ -83,7 +85,7 @@ def detail(request):
 
 
 @api_view(['POST'])
-@authentication_classes([AdminTokenAuthtication])
+@authentication_classes([AdminOrTeacherTokenAuthtication])
 def create_comment(request):
     content = str(request.data.get('content', '')).strip()
     if not content:
@@ -96,11 +98,32 @@ def create_comment(request):
     except (Child.DoesNotExist, TypeError, ValueError):
         return APIResponse(code=1, msg='Student does not exist')
 
+    lesson = None
+    lesson_id = request.data.get('lesson_id')
+    if lesson_id:
+        lesson = Lesson.objects.filter(pk=lesson_id).first()
+        if not lesson:
+            return APIResponse(code=1, msg='Lesson does not exist')
+
+    lesson_date = None
+    if request.data.get('lesson_date'):
+        lesson_date = parse_date(str(request.data.get('lesson_date')))
+        if not lesson_date:
+            return APIResponse(code=1, msg='Lesson date is invalid')
+
     comment = StudentComment.objects.create(
         student=student,
+        lesson=lesson,
+        lesson_date=lesson_date,
         content=content,
         created_by=request.user,
     )
+    if lesson and lesson_date:
+        StudentAttendance.objects.filter(
+            student=student,
+            lesson=lesson,
+            lesson_date=lesson_date,
+        ).delete()
     return APIResponse(
         code=0,
         msg='Comment saved',

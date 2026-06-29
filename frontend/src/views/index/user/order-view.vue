@@ -30,10 +30,7 @@
                 @confirm="handleCancel(item)">
                 <a-button type="primary" size="small" style="margin-right: 24px;">Cancel</a-button>
               </a-popconfirm>
-              <a-popconfirm v-if="item.status === 1" title="Already pay the order?" ok-text="yes" cancel-text="no"
-                @confirm="handlePay(item)">
-                <a-button type="primary" size="small" style="margin-right: 24px;">Pay</a-button>
-              </a-popconfirm>
+              <span v-if="item.status === 1" class="payment-note">Awaiting admin confirmation</span>
               
 
               <span class="text">Order Status</span>
@@ -188,7 +185,7 @@
 <script setup>
 import { message } from "ant-design-vue";
 import { userOrderListApi } from '/@/api/index/order'
-import { cancelUserOrderApi, payUserOrderApi } from '/@/api/index/order'
+import { cancelUserOrderApi } from '/@/api/index/order'
 import { createCancelRequestApi } from '/@/api/index/course-adjustment'
 import { BASE_URL } from "/@/store/constants";
 import { useUserStore } from "/@/store";
@@ -489,18 +486,6 @@ const handleCancel = (item) => {
   })
 }
 
-// 支付订单
-const handlePay = (item) => {
-  payUserOrderApi({
-    id: item.id
-  }).then(res => {
-    message.success('支付成功')
-    getOrderList()
-  }).catch(err => {
-    message.error(err.msg || '支付失败')
-  })
-}
-
 </script>
 <style scoped lang="less">
 .flex-view {
@@ -565,6 +550,12 @@ const handlePay = (item) => {
       color: #ff7b31;
       font-weight: 600;
       margin-left: 10px;
+    }
+
+    .payment-note {
+      color: #667085;
+      font-size: 13px;
+      margin-right: 24px;
     }
   }
 

@@ -3,7 +3,7 @@ import {loginApi as adminLogin} from '/@/api/admin/user';
 import {userLoginApi} from '/@/api/index/user';
 import { setToken, clearToken } from '/@/utils/auth';
 import { UserState } from './types';
-import {USER_ID, USER_NAME, USER_TOKEN, ADMIN_USER_ID,ADMIN_USER_NAME,ADMIN_USER_TOKEN} from "/@/store/constants";
+import {USER_ID, USER_NAME, USER_TOKEN, ADMIN_USER_ID,ADMIN_USER_NAME,ADMIN_USER_TOKEN, ADMIN_USER_ROLE} from "/@/store/constants";
 
 export const useUserStore = defineStore('user', {
   state: (): UserState => ({
@@ -14,6 +14,7 @@ export const useUserStore = defineStore('user', {
     admin_user_id: undefined,
     admin_user_name: undefined,
     admin_user_token: undefined,
+    admin_user_role: undefined,
   }),
   getters: {},
   actions: {
@@ -61,12 +62,14 @@ export const useUserStore = defineStore('user', {
           state.admin_user_id = result.data.id
           state.admin_user_name = result.data.username
           state.admin_user_token = result.data.admin_token
+          state.admin_user_role = result.data.role
           console.log('state==>', state)
         })
 
         localStorage.setItem(ADMIN_USER_TOKEN, result.data.admin_token)
         localStorage.setItem(ADMIN_USER_NAME, result.data.username)
         localStorage.setItem(ADMIN_USER_ID, result.data.id)
+        localStorage.setItem(ADMIN_USER_ROLE, result.data.role || '0')
       }
 
       return result;
@@ -78,10 +81,12 @@ export const useUserStore = defineStore('user', {
         localStorage.removeItem(ADMIN_USER_ID)
         localStorage.removeItem(ADMIN_USER_NAME)
         localStorage.removeItem(ADMIN_USER_TOKEN)
+        localStorage.removeItem(ADMIN_USER_ROLE)
 
         state.admin_user_id = undefined
         state.admin_user_name = undefined
         state.admin_user_token = undefined
+        state.admin_user_role = undefined
       })
     },
   },

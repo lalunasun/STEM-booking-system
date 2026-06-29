@@ -5,7 +5,7 @@ from django.db.models import Q
 from rest_framework import serializers
 
 from CSAA.models import Thing, Classification, Tag, User, Comment, LoginLog, Order, OpLog, \
-    Ad, Notice, ErrorLog, Lesson, Time, Term, Child, CourseAdjustment, TrialRequest, StudentLessonNote
+    Ad, Notice, ErrorLog, Lesson, Time, Term, Child, CourseAdjustment, TrialRequest, StudentLessonNote, SystemSetting, DailyStudentAdjustment, StudentComment
 
 
 # 课程信息序列化
@@ -33,19 +33,32 @@ class ThingSerializer(serializers.ModelSerializer):
         return self._room_time_enrolled_count(obj)
 
     def _room_time_enrolled_count(self, obj):
+        cache = self.context.setdefault('room_time_enrolled_count', {})
+        cache_key = (
+            obj.tag_id or 'thing',
+            obj.day or '',
+            obj.time_id or obj.id,
+        )
+        if cache_key in cache:
+            return cache[cache_key]
+
         if not obj.tag or not obj.time or not obj.day:
-            return Order.objects.filter(
+            cache[cache_key] = Order.objects.filter(
                 thing=obj,
                 child__isnull=False,
                 status__in=[2, 6],
+                trial_package_requests__isnull=True,
             ).count()
+            return cache[cache_key]
 
         same_room_things = Thing.objects.filter(tag=obj.tag, day=obj.day, time=obj.time)
-        return Order.objects.filter(
+        cache[cache_key] = Order.objects.filter(
             thing__in=same_room_things,
             child__isnull=False,
             status__in=[2, 6],
+            trial_package_requests__isnull=True,
         ).count()
+        return cache[cache_key]
 
     def get_available_seats(self, obj):
         capacity = obj.tag.seat if obj.tag else None
@@ -105,19 +118,32 @@ class ListThingSerializer(serializers.ModelSerializer):
         exclude = ('wish', 'collect', 'description',)
 
     def _room_time_enrolled_count(self, obj):
+        cache = self.context.setdefault('list_room_time_enrolled_count', {})
+        cache_key = (
+            obj.tag_id or 'thing',
+            obj.day or '',
+            obj.time_id or obj.id,
+        )
+        if cache_key in cache:
+            return cache[cache_key]
+
         if not obj.tag or not obj.time or not obj.day:
-            return Order.objects.filter(
+            cache[cache_key] = Order.objects.filter(
                 thing=obj,
                 child__isnull=False,
                 status__in=[2, 6],
+                trial_package_requests__isnull=True,
             ).count()
+            return cache[cache_key]
 
         same_room_things = Thing.objects.filter(tag=obj.tag, day=obj.day, time=obj.time)
-        return Order.objects.filter(
+        cache[cache_key] = Order.objects.filter(
             thing__in=same_room_things,
             child__isnull=False,
             status__in=[2, 6],
+            trial_package_requests__isnull=True,
         ).count()
+        return cache[cache_key]
 
     def get_enrolled_count(self, obj):
         return self._room_time_enrolled_count(obj)
@@ -273,9 +299,6 @@ class OrderSerializer(serializers.ModelSerializer):
             'coding_class',
             'coding_class__time',
             'coding_class__tag',
-            'math_class',
-            'math_class__time',
-            'math_class__tag',
         ).first()
 
     def get_title(self, obj):
@@ -314,7 +337,6 @@ class OrderSerializer(serializers.ModelSerializer):
         slots = [
             self._slot_data(obj, 'Robotics', trial_request.robotics_class),
             self._slot_data(obj, 'Coding', trial_request.coding_class),
-            self._slot_data(obj, 'Math', trial_request.math_class),
         ]
         return slots
 
@@ -538,7 +560,7 @@ class LessonSerializer(serializers.ModelSerializer):
 
     def get_scheduled_trial_students(self, obj):
         trial_requests = TrialRequest.objects.filter(
-            Q(robotics_class=obj.thing) | Q(coding_class=obj.thing) | Q(math_class=obj.thing),
+            Q(robotics_class=obj.thing) | Q(coding_class=obj.thing),
             child__isnull=False,
             package_order__status__in=[2, 6],
             status__in=['approved', 'scheduled'],
@@ -547,7 +569,6 @@ class LessonSerializer(serializers.ModelSerializer):
             'package_order',
             'robotics_class',
             'coding_class',
-            'math_class',
         )
 
         students = []
@@ -614,6 +635,8 @@ class DailyLessonSerializer(serializers.ModelSerializer):
                 'expect_time': order.expect_time.strftime('%Y-%m-%d'),
                 'return_time': order.return_time.strftime('%Y-%m-%d'),
                 'status': order.status,
+                'comment_done': self._has_lesson_comment(obj, order.child_id),
+                'absent_marked': self._is_absent(obj, order.child_id),
             }
             for order in orders
             if order.child_id not in adjusted_student_ids
@@ -645,18 +668,44 @@ class DailyLessonSerializer(serializers.ModelSerializer):
                 'term_id': adjustment.original_term.id if adjustment.original_term else None,
                 'term_title': adjustment.original_term.title if adjustment.original_term else None,
                 'status': 'reschedule',
+                'comment_done': self._has_lesson_comment(obj, adjustment.student_id),
+                'absent_marked': self._is_absent(obj, adjustment.student_id),
             }
             for adjustment in adjustments
         ]
 
     def get_scheduled_trial_students(self, obj):
-        return self.context['trials_by_thing'].get(obj.thing_id, [])
+        return [
+            {
+                **student,
+                'comment_done': self._has_lesson_comment(obj, student.get('student_id')),
+                'absent_marked': self._is_absent(obj, student.get('student_id')),
+            }
+            for student in self.context['trials_by_thing'].get(obj.thing_id, [])
+        ]
 
     def get_moved_students(self, obj):
-        return self.context['moved_in_by_lesson'].get(obj.id, [])
+        return [
+            {
+                **student,
+                'comment_done': self._has_lesson_comment(obj, student.get('student_id')),
+                'absent_marked': self._is_absent(obj, student.get('student_id')),
+            }
+            for student in self.context['moved_in_by_lesson'].get(obj.id, [])
+        ]
 
     def get_sick_leave_students(self, obj):
         return self.context['sick_leave_by_lesson'].get(obj.id, [])
+
+    def _has_lesson_comment(self, obj, student_id):
+        if not student_id:
+            return False
+        return (obj.id, student_id) in self.context.get('lesson_comment_keys', set())
+
+    def _is_absent(self, obj, student_id):
+        if not student_id:
+            return False
+        return (obj.id, student_id) in self.context.get('absent_keys', set())
 
 
 class StudentLessonNoteSerializer(serializers.ModelSerializer):
@@ -699,6 +748,14 @@ class NoticeSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class SystemSettingSerializer(serializers.ModelSerializer):
+    updated_time = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S', required=False)
+
+    class Meta:
+        model = SystemSetting
+        fields = '__all__'
+
+
 class ChildSerializer(serializers.ModelSerializer):
     parent_name = serializers.ReadOnlyField(source="parent.nickname")
     phone = serializers.ReadOnlyField(source="parent.mobile")
@@ -737,6 +794,8 @@ class AdminStudentSerializer(serializers.ModelSerializer):
     active_terms = serializers.SerializerMethodField()
     course_history = serializers.SerializerMethodField()
     absence_records = serializers.SerializerMethodField()
+    schedule_changes = serializers.SerializerMethodField()
+    course_comments = serializers.SerializerMethodField()
     trial_packages = serializers.SerializerMethodField()
 
     class Meta:
@@ -829,9 +888,6 @@ class AdminStudentSerializer(serializers.ModelSerializer):
             'coding_class',
             'coding_class__time',
             'coding_class__tag',
-            'math_class',
-            'math_class__time',
-            'math_class__tag',
         ).order_by('-created_time', '-id')
 
         day_index = {'Mon': 0, 'Tue': 1, 'Wed': 2, 'Thu': 3, 'Fri': 4, 'Sat': 5, 'Sun': 6}
@@ -877,7 +933,6 @@ class AdminStudentSerializer(serializers.ModelSerializer):
                 'courses': [
                     slot('Robotics', request.robotics_class, request.package_order),
                     slot('Coding', request.coding_class, request.package_order),
-                    slot('Math', request.math_class, request.package_order),
                 ],
             }
             for request in requests
@@ -935,6 +990,109 @@ class AdminStudentSerializer(serializers.ModelSerializer):
             for adjustment in adjustments
         ]
 
+    def get_schedule_changes(self, obj):
+        if self.context.get('summary_only'):
+            return []
+
+        adjustments = CourseAdjustment.objects.filter(
+            student=obj,
+        ).select_related(
+            'original_order',
+            'original_class',
+            'original_class__time',
+            'original_class__tag',
+            'original_term',
+            'selected_target_class',
+            'selected_target_class__time',
+            'selected_target_class__tag',
+        ).order_by('-created_time', '-id')[:12]
+
+        def class_slot(thing, fallback_day=None, fallback_time=None, fallback_room=None):
+            return {
+                'class_name': thing.title if thing else None,
+                'day': fallback_day or (thing.day if thing else None),
+                'time': fallback_time or (thing.time.time if thing and thing.time else None),
+                'room': fallback_room or (thing.tag.title if thing and thing.tag else None),
+            }
+
+        records = []
+        for adjustment in adjustments:
+            source = class_slot(
+                adjustment.original_class,
+                adjustment.original_day,
+                adjustment.original_time,
+                None,
+            )
+            target = class_slot(
+                adjustment.selected_target_class,
+                adjustment.selected_target_day,
+                adjustment.selected_target_time,
+                adjustment.selected_target_room,
+            )
+            records.append({
+                'adjustment_id': adjustment.id,
+                'order_id': adjustment.original_order_id,
+                'request_type': adjustment.request_type,
+                'status': adjustment.status,
+                'term': adjustment.original_term.title if adjustment.original_term else None,
+                'lesson_date': (
+                    adjustment.original_lesson_date.strftime('%Y-%m-%d')
+                    if adjustment.original_lesson_date
+                    else None
+                ),
+                'target_date': (
+                    adjustment.selected_target_date.strftime('%Y-%m-%d')
+                    if adjustment.selected_target_date
+                    else None
+                ),
+                'source': source,
+                'target': target,
+                'reason': adjustment.request_reason or adjustment.parent_note or None,
+                'admin_note': adjustment.admin_note,
+                'created_time': (
+                    adjustment.created_time.strftime('%Y-%m-%d %H:%M:%S')
+                    if adjustment.created_time
+                    else None
+                ),
+            })
+        return records
+
+    def get_course_comments(self, obj):
+        if self.context.get('summary_only'):
+            return []
+
+        comments = StudentComment.objects.filter(
+            student=obj,
+        ).select_related(
+            'lesson',
+            'lesson__thing',
+            'created_by',
+        ).order_by('-created_time')[:10]
+
+        return [
+            {
+                'comment_id': comment.id,
+                'content': comment.content,
+                'class_name': (
+                    comment.lesson.thing.title
+                    if comment.lesson and comment.lesson.thing
+                    else None
+                ),
+                'lesson_date': (
+                    comment.lesson_date.strftime('%Y-%m-%d')
+                    if comment.lesson_date
+                    else None
+                ),
+                'created_by': (
+                    comment.created_by.nickname or comment.created_by.username
+                    if comment.created_by
+                    else None
+                ),
+                'created_time': comment.created_time.strftime('%Y-%m-%d %H:%M:%S'),
+            }
+            for comment in comments
+        ]
+
 
 class LessonDetailSerializer(serializers.ModelSerializer):
     students = serializers.SerializerMethodField()
@@ -987,6 +1145,13 @@ class LessonDetailSerializer(serializers.ModelSerializer):
             orders = orders.exclude(id__in=canceled_order_ids).exclude(
                 child_id__in=canceled_student_ids,
             )
+            adjusted_out_student_ids = DailyStudentAdjustment.objects.filter(
+                source_lesson=obj,
+                lesson_date=class_date,
+                status='active',
+                adjustment_type__in=['move', 'sick_leave'],
+            ).values_list('student_id', flat=True)
+            orders = orders.exclude(child_id__in=adjusted_out_student_ids)
         return orders.select_related('user', 'child', 'term').order_by('child__name', 'id')
 
     def _serialize_order_student(self, order):
@@ -1008,7 +1173,41 @@ class LessonDetailSerializer(serializers.ModelSerializer):
         }
 
     def get_students(self, obj):
-        return [self._serialize_order_student(order) for order in self._scheduled_orders(obj)]
+        students = [self._serialize_order_student(order) for order in self._scheduled_orders(obj)]
+        class_date = self.context.get('class_date')
+        if not class_date:
+            return students
+
+        moved_in = DailyStudentAdjustment.objects.filter(
+            target_lesson=obj,
+            lesson_date=class_date,
+            status='active',
+            adjustment_type='move',
+            student__isnull=False,
+        ).select_related('student', 'student__parent', 'source_order__term')
+
+        seen = {student['id'] for student in students}
+        for adjustment in moved_in:
+            child = adjustment.student
+            if child.id in seen:
+                continue
+            parent = child.parent
+            term = adjustment.source_order.term if adjustment.source_order else None
+            seen.add(child.id)
+            students.append({
+                'id': child.id,
+                'name': child.name,
+                'parent_name': (parent.nickname or parent.username) if parent else None,
+                'phone': parent.mobile if parent else None,
+                'term_info': {
+                    'term_id': term.id,
+                    'term_name': term.title,
+                } if term else None,
+                'adjustment_id': adjustment.id,
+                'adjustment_status': 'moved',
+            })
+
+        return sorted(students, key=lambda student: student.get('name') or '')
 
     def get_reschedule_students(self, obj):
         completed_makeups = CourseAdjustment.objects.filter(
@@ -1077,7 +1276,7 @@ class LessonDetailSerializer(serializers.ModelSerializer):
 
     def get_try_students(self, obj):
         trial_requests = TrialRequest.objects.filter(
-            Q(robotics_class=obj.thing) | Q(coding_class=obj.thing) | Q(math_class=obj.thing),
+            Q(robotics_class=obj.thing) | Q(coding_class=obj.thing),
             child__isnull=False,
             package_order__status__in=[2, 6],
             status__in=['approved', 'scheduled'],
@@ -1168,7 +1367,6 @@ class TrialRequestSerializer(serializers.ModelSerializer):
     parent_name = serializers.ReadOnlyField(source='parent.username')
     robotics_title = serializers.ReadOnlyField(source='robotics_class.title')
     coding_title = serializers.ReadOnlyField(source='coding_class.title')
-    math_title = serializers.ReadOnlyField(source='math_class.title')
 
     class Meta:
         model = TrialRequest

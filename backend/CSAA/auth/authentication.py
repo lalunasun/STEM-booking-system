@@ -23,7 +23,7 @@ DRF还提供了一些常用的身份验证类（如TokenAuthentication、Session
 class AdminTokenAuthtication(BaseAuthentication):
     def authenticate(self, request):
         adminToken = request.META.get("HTTP_ADMINTOKEN", "")
-        users = User.objects.filter(admin_token=adminToken, role='0')
+        users = User.objects.filter(admin_token=adminToken, role='0', status='0')
         """
         判定条件：
             1. 传了adminToken 
@@ -36,11 +36,20 @@ class AdminTokenAuthtication(BaseAuthentication):
 
 
 # 身份认证
+class AdminOrTeacherTokenAuthtication(BaseAuthentication):
+    def authenticate(self, request):
+        adminToken = request.META.get("HTTP_ADMINTOKEN", "")
+        users = User.objects.filter(admin_token=adminToken, role__in=['0', '2'], status='0')
+        if not adminToken or len(users) == 0:
+            raise exceptions.AuthenticationFailed("Staff authentication failed.")
+        return users[0], adminToken
+
+
 class TokenAuthtication(BaseAuthentication):
     def authenticate(self, request):
         token = request.META.get("HTTP_TOKEN", "")
         if token is not None:
-            print("检查token==>" + token)
+            print("check token==>" + token)
             users = User.objects.filter(token=token)
             """
             判定条件：
@@ -52,7 +61,7 @@ class TokenAuthtication(BaseAuthentication):
             if not token or len(users) == 0:
                 raise exceptions.AuthenticationFailed("用户身份验证失败！")
             else:
-                print('token验证通过')
+                print('token verified')
         else:
-            print("检查token==>token 为空")
+            print("check token==>empty")
             raise exceptions.AuthenticationFailed("用户身份验证失败！")

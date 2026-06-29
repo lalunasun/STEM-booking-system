@@ -312,6 +312,8 @@ const saveComment = async () => {
   try {
     await createCommentApi({
       student_id: commentModal.studentId,
+      lesson_id: lessonId.value || undefined,
+      lesson_date: classDate.value || undefined,
       content,
     })
     commentModal.visible = false

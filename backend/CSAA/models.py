@@ -43,6 +43,8 @@ class Child(models.Model):
                                        related_name='parent_child')
     name = models.CharField(max_length=30, blank=False, null=False)
     age = models.PositiveIntegerField(blank=True, null=True)
+    gender = models.CharField(max_length=20, blank=True, null=True)
+    remark = models.TextField(max_length=500, blank=True, null=True)
 
     class Meta:
         db_table = "b_child"
@@ -251,6 +253,14 @@ class StudentLessonNote(models.Model):
 class StudentComment(models.Model):
     id = models.BigAutoField(primary_key=True)
     student = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='admin_comments')
+    lesson = models.ForeignKey(
+        Lesson,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='student_comments',
+    )
+    lesson_date = models.DateField(blank=True, null=True)
     content = models.TextField(max_length=2000)
     created_by = models.ForeignKey(
         User,
@@ -267,6 +277,41 @@ class StudentComment(models.Model):
             models.Index(
                 fields=['student', '-created_time'],
                 name='b_student_c_student_d9bd8c_idx',
+            ),
+            models.Index(
+                fields=['lesson', 'lesson_date', 'student'],
+                name='b_student_c_lesson_086d8d_idx',
+            ),
+        ]
+
+
+class StudentAttendance(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    student = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='attendance_records')
+    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='attendance_records')
+    lesson_date = models.DateField()
+    is_absent = models.BooleanField(default=False)
+    marked_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='marked_student_attendance',
+    )
+    marked_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "b_student_attendance"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['student', 'lesson', 'lesson_date'],
+                name='unique_student_lesson_attendance',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['lesson', 'lesson_date', 'student'],
+                name='b_student_a_lesson_4ee607_idx',
             ),
         ]
 
@@ -458,6 +503,27 @@ class TrialRequest(models.Model):
 
     class Meta:
         db_table = "b_trial_request"
+
+
+class SystemSetting(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    key = models.CharField(max_length=100, unique=True)
+    value = models.TextField(blank=True, default='')
+    updated_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='updated_system_settings',
+    )
+    updated_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "b_system_setting"
+        indexes = [
+            models.Index(fields=['key'], name='b_system_setting_key_idx'),
+        ]
+
 
 # 广告信息表
 class Ad(models.Model):

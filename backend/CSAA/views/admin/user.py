@@ -31,10 +31,10 @@ def make_login_log(request):
 # 管理员登录
 @api_view(['POST'])  # 装饰器，只接受post请求
 def admin_login(request):
-    print("管理员登录！")
+    print("admin login")
     username = request.data['username']
     password = utils.md5value(request.data['password'])
-    users = User.objects.filter(username=username, password=password, role__in=['0'])
+    users = User.objects.filter(username=username, password=password, role__in=['0', '2'], status='0')
     if len(users) > 0:
         user = users[0]
         data = {

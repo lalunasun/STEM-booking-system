@@ -29,7 +29,7 @@
     <main class="content-right">
       <section class="booking-header">
         <div>
-          <h2>Choose a Class</h2>
+          <h2>Class Registration</h2>
           <p>Select a course first, then pick a day and time that works for your child.</p>
         </div>
       </section>
@@ -44,7 +44,7 @@
             @click="selectCourse(course.title)"
           >
             <div class="course-cover">
-              <img v-if="course.cover" :src="course.cover" :alt="course.title" />
+              <img v-if="course.cover" :src="course.cover" :alt="course.title" loading="lazy" decoding="async" />
               <div v-else class="course-cover-placeholder">{{ course.isTrialPackage ? 'Trial' : course.title }}</div>
             </div>
             <div class="course-info">
@@ -87,7 +87,7 @@
                       {{ slot.available_seats }} seats left
                     </span>
                     <span v-else>Seat TBD</span>
-                    <span class="slot-action">{{ slot.display_status === 'Open' ? 'Choose for Child' : 'View Details' }}</span>
+                    <span class="slot-action">{{ slot.display_status === 'Open' ? 'Enroll' : 'View Details' }}</span>
                   </div>
                 </button>
               </div>

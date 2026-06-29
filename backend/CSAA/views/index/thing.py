@@ -22,21 +22,21 @@ def list_api(request):
         elif sort == 'hot' or sort == 'recommend':
             order = '-pv'
 
+        base_query = Thing.objects.select_related('classification', 'tag', 'time').defer('wish')
+
         if keyword:
-            things = Thing.objects.filter(title__contains=keyword).order_by(order)
+            things = base_query.filter(title__contains=keyword).order_by(order)
 
         elif c and int(c) > -1:
             ids = [c]
-            things = Thing.objects.filter(classification_id__in=ids).order_by(order)
+            things = base_query.filter(classification_id__in=ids).order_by(order)
 
         elif tag:
-            tag = Tag.objects.get(id=tag)
-            # print(tag)
-            things = tag.thing_set.all().order_by(order)
+            things = base_query.filter(tag_id=tag).order_by(order)
 
         else:
             # 延迟加载
-            things = Thing.objects.all().defer('wish').order_by(order)
+            things = base_query.order_by(order)
 
 
         serializer = ListThingSerializer(things, many=True)

@@ -4,6 +4,7 @@ enum URL {
     list = '/CSAA/admin/order/list',
     create = '/CSAA/admin/order/create',
     update = '/CSAA/admin/order/update',
+    markPaid = '/CSAA/admin/order/markPaid',
     delete = '/CSAA/admin/order/delete',
     cancel = '/CSAA/admin/order/cancel_order',
     checkIn = '/CSAA/admin/order/checkIn_order',
@@ -32,6 +33,8 @@ const updateApi = async (params: any, data: any) =>
         data: data,
         headers: {'Content-Type': 'multipart/form-data;charset=utf-8'}
     });
+const markPaidApi = async (params: any) =>
+    post<any>({url: URL.markPaid, params: params, headers: {}});
 const deleteApi = async (params: any) =>
     post<any>({url: URL.delete, params: params, headers: {}});
 
@@ -48,4 +51,4 @@ const checkInApi = async (params: any) =>
 const cancelUserOrderApi = async (params: any) =>
     post<any>({url: URL.cancelUserOrder, params: params, headers: {}});
 
-export {listApi, userOrderListApi, createApi, updateApi, deleteApi, cancelApi,checkInApi, checkOutApi , cancelUserOrderApi};
+export {listApi, userOrderListApi, createApi, updateApi, markPaidApi, deleteApi, cancelApi,checkInApi, checkOutApi , cancelUserOrderApi};

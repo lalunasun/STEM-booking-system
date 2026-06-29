@@ -2,7 +2,6 @@ import datetime
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from django.db.models import Q
 
 from CSAA.models import (
     Child,
@@ -257,14 +256,7 @@ class Command(BaseCommand):
                 request_type="makeup_class",
                 status="completed",
             ).count()
-            trial_count = TrialRequest.objects.filter(
-                Q(robotics_class__in=same_slot)
-                | Q(coding_class__in=same_slot)
-                | Q(math_class__in=same_slot),
-                package_order__status__in=[2, 6],
-                status__in=["approved", "scheduled"],
-            ).count()
-            occupied = order_count.count() + makeup_count + trial_count
+            occupied = order_count.count() + makeup_count
             capacity = int(slot["tag__seat"])
             if occupied > capacity:
                 errors.append(
@@ -410,7 +402,7 @@ class Command(BaseCommand):
             defaults={
                 "robotics_class": courses["thu_scratch"],
                 "coding_class": courses["fri_python"],
-                "math_class": courses["tue_wedo"],
+                "math_class": None,
                 "status": "scheduled",
                 "parent_note": "Schedule demo trial package",
                 "admin_note": "Created by seed_schedule_demo",

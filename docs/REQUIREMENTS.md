@@ -944,6 +944,44 @@ Open questions:
 - Whether teachers can write student performance records directly.
 - Whether teachers can see parent contact information.
 
+### 21.2.1 Operating Surfaces and Role Permissions
+
+The expected real-world operating pattern is admin-on-desktop and teacher-on-iPad.
+
+Product direction:
+
+- The system should use one shared backend, one shared data model, and role-based permissions.
+- Admin users should continue to use the desktop admin dashboard for full operations.
+- Teacher users should have a tablet-friendly classroom workspace optimized for iPad use.
+- The teacher iPad workspace is a separate front-end surface or role-specific view, not a separate system.
+
+Admin desktop view:
+
+- Full setup access: rooms, time slots, terms, classes, users, students, and system settings.
+- Order operations: review new orders, confirm payment, edit pending orders, schedule paid orders, cancel/done orders.
+- Schedule operations: daily schedule review, drag/click manual adjustment, same-day moves, sick leave, permanent course changes, revert actions, and capacity management.
+- Student operations: full student profile, parent information, order/class history, internal comments, and future performance records.
+
+Teacher iPad classroom view:
+
+- Focuses on today's teaching operations rather than full administration.
+- Shows assigned rooms/time slots first, with class rosters grouped by class name inside each room/time slot.
+- Allows teachers to view student details needed for class, read schedule notes, see Trial/Makeup/Moved/Absent markers, mark attendance/absence, and write lesson comments.
+- Should use touch-friendly controls, larger tap targets, and a layout suitable for iPad landscape.
+- Should not require teachers to use the full desktop schedule grid for routine classroom work.
+
+Teacher permission limits:
+
+- Teachers must not access setup modules.
+- Teachers must not access order/payment confirmation.
+- Teachers must not move students, create permanent course changes, or change capacity/setup data.
+- Teachers may view schedule/student information and write comments/attendance records only.
+
+Design note:
+
+- The current admin Schedule remains desktop-first.
+- The future teacher iPad classroom view should reuse the same schedule, student, note, attendance, and comment APIs with teacher-safe permissions.
+
 ### 21.3 Student Note, Internal Comment, and Performance
 
 The system separates three kinds of records:

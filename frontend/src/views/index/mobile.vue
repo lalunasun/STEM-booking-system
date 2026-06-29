@@ -130,6 +130,27 @@
             </div>
             <p v-else class="muted">No schedule change messages for this child.</p>
           </section>
+
+          <section class="message-panel">
+            <div class="message-panel-head">
+              <div>
+                <div class="card-label">Teacher comments</div>
+                <h2>Class comments</h2>
+              </div>
+              <span>{{ selectedComments.length }}</span>
+            </div>
+            <div v-if="selectedComments.length > 0" class="comment-message-list">
+              <article
+                v-for="item in selectedComments.slice(0, 3)"
+                :key="`comment-${item.comment_id}`"
+              >
+                <strong>{{ item.class_name || 'Class comment' }}</strong>
+                <p>{{ item.content }}</p>
+                <small>{{ item.lesson_date || item.created_time || '' }}</small>
+              </article>
+            </div>
+            <p v-else class="muted">No class comments for this child yet.</p>
+          </section>
         </a-spin>
       </template>
 
@@ -185,7 +206,7 @@
             <div class="course-copy">
               <h3>{{ course.title }}</h3>
               <p>{{ course.isTrialPackage ? 'Robotics + Coding trial package' : `${course.slots.length} time slots` }}</p>
-              <em>{{ course.isTrialPackage ? '$98 / 3 lessons' : 'Tap to view times' }}</em>
+              <em>{{ course.isTrialPackage ? '$98 / 2 lessons' : 'Tap to view times' }}</em>
             </div>
           </button>
         </section>
@@ -246,7 +267,7 @@
       <section ref="trialRef" class="mobile-detail-card soft-card">
         <div class="card-label">Trial package</div>
         <h2>Try Robotics + Coding</h2>
-        <p>$98 / 3 lessons. Pick one Robotics time and one Coding time; Math is reserved for the next phase.</p>
+        <p>$98 / 2 lessons. Pick one Robotics time and one Coding time. Each trial lesson is 1.5 hours.</p>
         <button class="primary-action" @click="router.push({ name: 'trial' })">
           Start trial request
         </button>
@@ -644,6 +665,10 @@ const systemMessages = computed(() => selectedAdjustments.value.map((item) => ({
   time: item.updated_time || item.created_time || '',
 })));
 
+const selectedComments = computed(() => (
+  selectedChild.value?.course_comments || []
+));
+
 const actionItems = computed(() => {
   const items = [];
   selectedOrders.value.forEach((order) => {
@@ -651,7 +676,7 @@ const actionItems = computed(() => {
     if (status === 1) {
       items.push({
         key: `pay-${order.id}`,
-        label: 'Payment needed',
+        label: 'Awaiting admin confirmation',
         title: order.title || 'Order',
       });
     }
@@ -1458,10 +1483,22 @@ const scrollKids = () => {
   margin-top: 12px;
 }
 
+.comment-message-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .system-message-list article {
   padding: 11px 12px;
   border-left: 4px solid #1f7a8c;
   background: #f4fbff;
+}
+
+.comment-message-list article {
+  padding: 11px 12px;
+  border-left: 4px solid #2a9d8f;
+  background: #f5fffb;
 }
 
 .system-message-list article.message-success {
@@ -1481,23 +1518,29 @@ const scrollKids = () => {
 
 .system-message-list strong,
 .system-message-list p,
-.system-message-list small {
+.system-message-list small,
+.comment-message-list strong,
+.comment-message-list p,
+.comment-message-list small {
   display: block;
 }
 
-.system-message-list strong {
+.system-message-list strong,
+.comment-message-list strong {
   color: #17324d;
   font-size: 13px;
 }
 
-.system-message-list p {
+.system-message-list p,
+.comment-message-list p {
   margin: 3px 0 !important;
   color: #49677f;
   font-size: 12px;
   line-height: 17px;
 }
 
-.system-message-list small {
+.system-message-list small,
+.comment-message-list small {
   color: #8293a5;
   font-size: 10px;
 }

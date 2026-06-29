@@ -32,7 +32,7 @@
       <div class="list">
         <div class="mine-item flex-view" @click="clickMenu('portal')">
           <img :src="ChooseClassIcon">
-          <span>Choose Classes</span>
+          <span>Class Registration</span>
         </div>
       </div>
       <div class="title">Orders</div>
@@ -71,7 +71,7 @@
 import AvatarImg from '/@/assets/images/avatar.jpg'
 import MyOrderImg from '/@/assets/images/order-icon.svg'
 import CommentIconImg from '/@/assets/images/order-thing-icon.svg'
-import ChooseClassIcon from '/@/assets/images/search-icon.svg'
+import ChooseClassIcon from '/@/assets/images/add.svg'
 import AddressIconImage from '/@/assets/images/order-address-icon.svg'
 import PointIconImage from '/@/assets/images/order-point-icon.svg'
 import SettingIconImage from '/@/assets/images/setting-icon.svg'

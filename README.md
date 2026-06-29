@@ -51,6 +51,16 @@ Mobile shortcut:       http://127.0.0.1:8000/mobile
 
 The parent mobile web app is a separate parent-facing entry. It does not replace the existing web portal.
 
+### Operating Modes
+
+The long-term product direction uses one shared backend with role-based permissions, but separates the main working screens by real-world device and role.
+
+- Admin desktop view: administrators use a computer for full operations, including setup, orders, payment confirmation, scheduling, manual adjustments, permanent course changes, user/student management, and data maintenance.
+- Teacher iPad classroom view: teachers use a tablet-friendly classroom workspace for daily teaching tasks, including viewing today's classes, checking student lists, reading notes, marking attendance/absence, and writing comments.
+- Teacher accounts should not have setup, order, payment, drag-to-move, permanent adjustment, or data maintenance permissions.
+- The iPad teacher view should not force teachers to use the full admin schedule grid. It should prioritize today's date, assigned rooms/time slots, class rosters, student markers, notes, and comment entry.
+- The current admin Schedule remains desktop-first. The future teacher iPad view should reuse the same backend data and permissions rather than becoming a separate system.
+
 ### Current AWS Demo
 Demo access available upon request.
 
@@ -88,6 +98,17 @@ If you want to keep the same local test data on another computer, copy `backend/
 Username: test
 Password: test
 ```
+
+## Schedule Operation Tips
+
+Manual adjustment on the admin Schedule page supports both drag-and-drop and click-to-move.
+
+- Short move: drag the handle beside a student name and drop the student onto the target class.
+- Off-screen target: drag near the schedule panel edge to auto-scroll horizontally or vertically.
+- Long move: click the handle beside a student name to select the student, scroll to the target class, then click the target class heading.
+- Cancel selection: press `Esc` to clear the currently selected student.
+- Moved students can be moved again on the same date. The system updates the existing daily move record so the final move remains one clear adjustment.
+- Room capacity is checked by room/time slot, not by each class name inside the same room/time cell.
 
 ## Core Booking Flow
 

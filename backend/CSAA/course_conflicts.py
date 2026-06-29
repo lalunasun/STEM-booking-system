@@ -80,9 +80,6 @@ def student_slot_conflict(child, thing, exclude_order_id=None, exclude_trial_req
         'coding_class',
         'coding_class__time',
         'coding_class__tag',
-        'math_class',
-        'math_class__time',
-        'math_class__tag',
     )
     if exclude_trial_request_id:
         trial_requests = trial_requests.exclude(id=exclude_trial_request_id)
@@ -93,7 +90,6 @@ def student_slot_conflict(child, thing, exclude_order_id=None, exclude_trial_req
         for trial_thing in [
             trial_request.robotics_class,
             trial_request.coding_class,
-            trial_request.math_class,
         ]:
             if thing_slot_key(trial_thing) == key:
                 return (
@@ -161,9 +157,6 @@ def student_slot_conflict_on_date(
         'coding_class',
         'coding_class__time',
         'coding_class__tag',
-        'math_class',
-        'math_class__time',
-        'math_class__tag',
     )
     if exclude_trial_request_id:
         trial_requests = trial_requests.exclude(id=exclude_trial_request_id)
@@ -174,7 +167,6 @@ def student_slot_conflict_on_date(
         for trial_thing in [
             trial_request.robotics_class,
             trial_request.coding_class,
-            trial_request.math_class,
         ]:
             if thing_slot_key(trial_thing) == key:
                 return (

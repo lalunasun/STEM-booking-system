@@ -22,7 +22,7 @@ def _is_trial_course(thing):
 
 def _trial_amount(thing):
     try:
-        return str(Decimal(str(thing.price or '0')) * Decimal('3'))
+        return str(Decimal(str(thing.price or '0')) * Decimal('2'))
     except (InvalidOperation, TypeError, ValueError):
         return None
 
@@ -63,7 +63,7 @@ def create(request):
         return APIResponse(code=1, msg=conflict)
 
     if _is_trial_course(thing):
-        data['num'] = '3'
+        data['num'] = '2'
         amount = _trial_amount(thing)
         if amount is not None:
             data['amount'] = amount
@@ -133,28 +133,4 @@ def cancel_order(request):
 @api_view(['POST'])
 @authentication_classes([TokenAuthtication])
 def pay_order(request):
-    print("支付订单")
-    try:
-        # pk = request.GET.get('id', -1)
-        pk = request.GET.get('id', -1)
-        order = Order.objects.get(pk=pk)
-        thing = Thing.objects.get(id=order.thing_id)
-    except Order.DoesNotExist or Thing.DoesNotExist:
-        return APIResponse(code=1, msg='订单不存在')
-    data = {
-        'status': 2
-    }
-    # data1 = {
-    # 'status': 1
-    # }
-    serializer = OrderSerializer(order, data=data)
-    # serializer1 = ThingSerializer(thing, data=data1)
-
-    # if serializer.is_valid() and serializer1.is_valid():
-    if serializer.is_valid():
-        serializer.save()
-        # serializer1.save()
-        return APIResponse(code=0, msg='支付成功', data=serializer.data)
-    else:
-        print(serializer.errors)  # ,serializer1.errors)
-        return APIResponse(code=1, msg='支付失败')
+    return APIResponse(code=1, msg='Payment is confirmed by the administrator')

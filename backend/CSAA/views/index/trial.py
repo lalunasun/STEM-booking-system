@@ -18,10 +18,20 @@ def _category_is(thing, category):
 
 def _active_occupancy(thing):
     if not thing.tag or not thing.time or not thing.day:
-        return Order.objects.filter(thing=thing, child__isnull=False, status__in=[2, 6]).count()
+        return Order.objects.filter(
+            thing=thing,
+            child__isnull=False,
+            status__in=[2, 6],
+            trial_package_requests__isnull=True,
+        ).count()
 
     same_room_things = Thing.objects.filter(tag=thing.tag, day=thing.day, time=thing.time)
-    return Order.objects.filter(thing__in=same_room_things, child__isnull=False, status__in=[2, 6]).count()
+    return Order.objects.filter(
+        thing__in=same_room_things,
+        child__isnull=False,
+        status__in=[2, 6],
+        trial_package_requests__isnull=True,
+    ).count()
 
 
 def _validate_available_slot(thing, expected_category):
@@ -43,7 +53,7 @@ def _create_trial_package_order(parent, child, primary_thing):
         user=parent,
         thing=primary_thing,
         count=1,
-        num=3,
+        num=2,
         child=child,
         amount='98',
         status=1,
@@ -60,12 +70,11 @@ def create(request):
     child_id = data.get('child')
     robotics_id = data.get('robotics_class')
     coding_id = data.get('coding_class')
-    math_id = data.get('math_class')
 
-    if not parent_id or not child_id or not robotics_id or not coding_id or not math_id:
+    if not parent_id or not child_id or not robotics_id or not coding_id:
         return APIResponse(
             code=1,
-            msg='Please select one Robotics, one Coding, and one Math trial',
+            msg='Please select one Robotics and one Coding trial',
         )
 
     try:
@@ -73,20 +82,18 @@ def create(request):
         child = Child.objects.get(pk=child_id, parent=parent)
         robotics_class = Thing.objects.get(pk=robotics_id)
         coding_class = Thing.objects.get(pk=coding_id)
-        math_class = Thing.objects.get(pk=math_id)
     except (User.DoesNotExist, Child.DoesNotExist, Thing.DoesNotExist):
         return APIResponse(code=1, msg='Trial request data is invalid')
 
     for thing, category in (
         (robotics_class, 'Robotics'),
         (coding_class, 'Coding'),
-        (math_class, 'Math'),
     ):
         ok, msg = _validate_available_slot(thing, category)
         if not ok:
             return APIResponse(code=1, msg=msg)
 
-    selected_things = [robotics_class, coding_class, math_class]
+    selected_things = [robotics_class, coding_class]
     conflict = selected_slot_conflict(selected_things)
     if conflict:
         return APIResponse(code=1, msg=conflict)
@@ -103,7 +110,7 @@ def create(request):
         child=child,
         robotics_class=robotics_class,
         coding_class=coding_class,
-        math_class=math_class,
+        math_class=None,
         package_order=package_order,
         parent_note=data.get('parent_note') or '',
         status='pending',

@@ -28,22 +28,59 @@ def _active_order(student_id, lesson, lesson_date):
     ).select_related('child', 'thing', 'thing__time', 'thing__tag').first()
 
 
+def _active_move_into(student_id, lesson, lesson_date):
+    return DailyStudentAdjustment.objects.filter(
+        student_id=student_id,
+        target_lesson=lesson,
+        lesson_date=lesson_date,
+        status='active',
+        adjustment_type='move',
+    ).select_related(
+        'student',
+        'source_order',
+        'source_order__child',
+        'source_lesson__thing',
+        'target_lesson__thing',
+    ).first()
+
+
+def _same_room_slot(left, right):
+    if not left or not right:
+        return False
+    left_thing = left.thing
+    right_thing = right.thing
+    return (
+        left_thing.tag_id == right_thing.tag_id and
+        left_thing.day == right_thing.day and
+        left_thing.time_id == right_thing.time_id
+    )
+
+
 def _occupied_count(lesson, lesson_date):
+    same_room_things = Lesson.objects.filter(
+        thing__tag=lesson.thing.tag,
+        thing__day=lesson.thing.day,
+        thing__time=lesson.thing.time,
+        thing__status='0',
+    ).values_list('thing_id', flat=True)
+    same_room_lessons = Lesson.objects.filter(
+        thing_id__in=same_room_things,
+    ).values_list('id', flat=True)
     regular = Order.objects.filter(
-        thing=lesson.thing,
+        thing_id__in=same_room_things,
         status=6,
         child__isnull=False,
         expect_time__date__lte=lesson_date,
         return_time__date__gte=lesson_date,
     ).count()
     canceled = CourseAdjustment.objects.filter(
-        original_class=lesson.thing,
+        original_class_id__in=same_room_things,
         original_lesson_date=lesson_date,
         request_type='cancel_class',
         status='approved',
     ).count()
     makeup = CourseAdjustment.objects.filter(
-        selected_target_class=lesson.thing,
+        selected_target_class_id__in=same_room_things,
         selected_target_date=lesson_date,
         request_type='makeup_class',
         status='completed',
@@ -52,26 +89,21 @@ def _occupied_count(lesson, lesson_date):
         package_order__status__in=[2, 6],
         status__in=['approved', 'scheduled'],
     ).filter(
-        robotics_class=lesson.thing,
+        robotics_class_id__in=same_room_things,
     ).count()
     trials += TrialRequest.objects.filter(
         package_order__status__in=[2, 6],
         status__in=['approved', 'scheduled'],
-        coding_class=lesson.thing,
-    ).count()
-    trials += TrialRequest.objects.filter(
-        package_order__status__in=[2, 6],
-        status__in=['approved', 'scheduled'],
-        math_class=lesson.thing,
+        coding_class_id__in=same_room_things,
     ).count()
     move_out = DailyStudentAdjustment.objects.filter(
-        source_lesson=lesson,
+        source_lesson_id__in=same_room_lessons,
         lesson_date=lesson_date,
         status='active',
         adjustment_type__in=['move', 'sick_leave'],
     ).count()
     move_in = DailyStudentAdjustment.objects.filter(
-        target_lesson=lesson,
+        target_lesson_id__in=same_room_lessons,
         lesson_date=lesson_date,
         status='active',
         adjustment_type='move',
@@ -142,14 +174,24 @@ def save_batch(request):
         except Lesson.DoesNotExist:
             return APIResponse(code=1, msg='Source class does not exist')
 
+        existing_move_into_source = _active_move_into(student_id, source_lesson, lesson_date)
         source_order = _active_order(student_id, source_lesson, lesson_date)
+        if not source_order and existing_move_into_source:
+            source_order = existing_move_into_source.source_order
         if not source_order:
             return APIResponse(code=1, msg='Student is not scheduled in the source class on this date')
-        if DailyStudentAdjustment.objects.filter(
+        existing_adjustment = DailyStudentAdjustment.objects.select_for_update().filter(
             student_id=student_id,
             lesson_date=lesson_date,
             status='active',
-        ).exists():
+        ).first()
+        can_retarget_existing_move = (
+            adjustment_type == 'move' and
+            existing_adjustment and
+            existing_adjustment.adjustment_type == 'move' and
+            existing_adjustment.target_lesson_id == source_lesson.id
+        )
+        if existing_adjustment and not can_retarget_existing_move:
             return APIResponse(code=1, msg=f'{source_order.child.name} already has a daily adjustment')
 
         if adjustment_type == 'move':
@@ -167,7 +209,8 @@ def save_batch(request):
             if source_lesson.id == target_lesson.id:
                 return APIResponse(code=1, msg='Source and target classes are the same')
             capacity = int(target_lesson.thing.tag.seat or 0)
-            if capacity and _occupied_count(target_lesson, lesson_date) >= capacity:
+            is_same_current_slot = bool(existing_move_into_source and _same_room_slot(source_lesson, target_lesson))
+            if capacity and not is_same_current_slot and _occupied_count(target_lesson, lesson_date) >= capacity:
                 return APIResponse(code=1, msg=f'{target_lesson.thing.tag.title} is full')
             conflict = student_slot_conflict_on_date(
                 source_order.child,
@@ -177,21 +220,34 @@ def save_batch(request):
             )
             if conflict:
                 return APIResponse(code=1, msg=conflict)
-            record = DailyStudentAdjustment.objects.create(
-                student=source_order.child,
-                lesson_date=lesson_date,
-                adjustment_type='move',
-                source_lesson=source_lesson,
-                target_lesson=target_lesson,
-                source_order=source_order,
-                reason=reason,
-                created_by=request.user,
-            )
-            StudentLessonNote.objects.filter(
-                student=source_order.child,
-                lesson=source_lesson,
-                lesson_date=lesson_date,
-            ).update(lesson=target_lesson)
+            if can_retarget_existing_move:
+                record = existing_adjustment
+                old_target_lesson = record.target_lesson
+                record.target_lesson = target_lesson
+                record.reason = reason
+                record.created_by = request.user
+                record.save(update_fields=['target_lesson', 'reason', 'created_by'])
+                StudentLessonNote.objects.filter(
+                    student=source_order.child,
+                    lesson=old_target_lesson,
+                    lesson_date=lesson_date,
+                ).update(lesson=target_lesson)
+            else:
+                record = DailyStudentAdjustment.objects.create(
+                    student=source_order.child,
+                    lesson_date=lesson_date,
+                    adjustment_type='move',
+                    source_lesson=source_lesson,
+                    target_lesson=target_lesson,
+                    source_order=source_order,
+                    reason=reason,
+                    created_by=request.user,
+                )
+                StudentLessonNote.objects.filter(
+                    student=source_order.child,
+                    lesson=source_lesson,
+                    lesson_date=lesson_date,
+                ).update(lesson=target_lesson)
         elif adjustment_type == 'sick_leave':
             deduct_lesson = bool(action.get('deduct_lesson'))
             delta = 0

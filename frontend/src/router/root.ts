@@ -143,11 +143,12 @@ const constantRouterMap = [
   {
     path: '/admin',
     name: 'admin',
-    redirect: '/admin/thing',
+    redirect: '/admin/schedule',
     component: () => import('/@/views/admin/main.vue'),
     children: [
 
       { path: 'schedule', name: 'schedule', component: () => import('/@/views/admin/schedule.vue') },
+      { path: 'classroom', name: 'classroom', component: () => import('/@/views/admin/classroom.vue') },
       { path: 'lesson', name: 'lesson', component: () => import('/@/views/admin/lesson.vue') },
       { path: 'term', name: 'term', component: () => import('/@/views/admin/term.vue') },
       { path: 'time', name: 'time', component: () => import('/@/views/admin/time.vue') },

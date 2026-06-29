@@ -16,6 +16,7 @@ urlpatterns = [
     path('admin/lesson/list', views.admin.lesson.list_api),  # 课程列表
     path('admin/lesson/detail', views.admin.lesson.detail),  # 课程详情
     path('admin/studentLessonNote', views.admin.student_lesson_note.list_or_save),
+    path('admin/studentAttendance/markAbsent', views.admin.student_attendance.mark_absent),
     path('admin/dailyAdjustment/list', views.admin.daily_adjustment.list_api),
     path('admin/dailyAdjustment/saveBatch', views.admin.daily_adjustment.save_batch),
     path('admin/dailyAdjustment/revert', views.admin.daily_adjustment.revert),
@@ -23,6 +24,10 @@ urlpatterns = [
     path('admin/permanentCourseChange/list', views.admin.permanent_course_change.list_api),
     path('admin/permanentCourseChange/create', views.admin.permanent_course_change.create),
     path('admin/permanentCourseChange/revert', views.admin.permanent_course_change.revert),
+    path('admin/systemSetting/staffAnnouncement', views.admin.system_setting.staff_announcement),
+    path('admin/systemSetting/staffAnnouncement/save', views.admin.system_setting.save_staff_announcement),
+    path('admin/systemSetting/teacherAssignments', views.admin.system_setting.teacher_assignments),
+    path('admin/systemSetting/teacherAssignments/save', views.admin.system_setting.save_teacher_assignments),
     path('admin/lesson/create', views.admin.lesson.create),  # 新建课程
     path('admin/lesson/update', views.admin.lesson.update),  # 更新课程
     path('admin/lesson/delete', views.admin.lesson.delete),  # 删除课程
@@ -57,6 +62,7 @@ urlpatterns = [
     path('admin/order/list', views.admin.order.list_api),  # 订单列表
     path('admin/order/create', views.admin.order.create),  # 创建订单
     path('admin/order/update', views.admin.order.update),  # 修改订单
+    path('admin/order/markPaid', views.admin.order.mark_paid),
     path('admin/order/cancel_order', views.admin.order.cancel_order),  # 取消订单
     path('admin/order/delete', views.admin.order.delete),  # 删除订单
     path('admin/order/checkIn_order', views.admin.order.check_in_order),  # 订单入住
@@ -120,6 +126,7 @@ urlpatterns = [
     path('index/term/list', views.index.term.list_api),
     path('index/child/list', views.index.child.list_api),
     path('index/child/create', views.index.child.create),
+    path('index/child/update', views.index.child.update),
     path('index/courseAdjustment/list', views.index.course_adjustment.list_api),
     path('index/courseAdjustment/createCancel', views.index.course_adjustment.create_cancel_request),
     path('index/trial/create', views.index.trial.create),

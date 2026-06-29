@@ -4,8 +4,9 @@ import json
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
-from CSAA.models import Child, CourseAdjustment, DailyStudentAdjustment, Lesson, Order, PermanentCourseChange, StudentComment, StudentLessonNote, Tag, Term, Thing, Time, TrialRequest, User
+from CSAA.models import Child, Classification, CourseAdjustment, DailyStudentAdjustment, Lesson, Order, PermanentCourseChange, StudentAttendance, StudentComment, StudentLessonNote, Tag, Term, Thing, Time, TrialRequest, User
 from CSAA.serializers import AdminStudentSerializer, LessonDetailSerializer, LessonSerializer
+from CSAA.utils import md5value
 from CSAA.views.admin.course_adjustment import _recommend_makeup_options
 
 
@@ -146,6 +147,154 @@ class LessonDetailDateFilterTests(TestCase):
         )
         self.assertEqual(list_response.json()['data'][0]['student'], self.current_child.id)
         self.assertEqual(list_response.json()['data'][0]['lesson'], self.lesson.id)
+
+    def test_teacher_can_login_and_write_student_lesson_note(self):
+        teacher = User.objects.create(
+            username='teacher_login',
+            password=md5value('teacherpass'),
+            role='2',
+        )
+
+        login_response = self.client.post(
+            '/CSAA/admin/adminLogin',
+            {'username': 'teacher_login', 'password': 'teacherpass'},
+        )
+        self.assertEqual(login_response.json()['code'], 0)
+        self.assertEqual(login_response.json()['data']['role'], '2')
+
+        token = login_response.json()['data']['admin_token']
+        note_response = self.client.post(
+            '/CSAA/admin/studentLessonNote',
+            {
+                'student_id': self.current_child.id,
+                'lesson_id': self.lesson.id,
+                'lesson_date': '2026-06-28',
+                'note': 'Teacher note from class.',
+                'admin_user_id': teacher.id,
+            },
+            HTTP_ADMINTOKEN=token,
+        )
+        self.assertEqual(note_response.json()['code'], 0)
+        self.assertEqual(StudentLessonNote.objects.get().created_by, teacher)
+
+        comment_response = self.client.post(
+            '/CSAA/admin/student/comment/create',
+            {
+                'student_id': self.current_child.id,
+                'lesson_id': self.lesson.id,
+                'lesson_date': '2026-06-28',
+                'content': 'Teacher comment from lesson page.',
+            },
+            HTTP_ADMINTOKEN=token,
+        )
+        self.assertEqual(comment_response.json()['code'], 0)
+        comment = StudentComment.objects.get()
+        self.assertEqual(comment.created_by, teacher)
+        self.assertEqual(comment.lesson, self.lesson)
+        self.assertEqual(comment.lesson_date, datetime.date(2026, 6, 28))
+
+        schedule_response = self.client.get(
+            '/CSAA/admin/lesson/list',
+            {'date': '2026-06-28'},
+        )
+        students = schedule_response.json()['data'][0]['scheduled_students']
+        comment_flags = {student['name']: student['comment_done'] for student in students}
+        self.assertTrue(comment_flags['Current Student'])
+        self.assertFalse(comment_flags['Future Student'])
+
+        done_absent_response = self.client.post(
+            '/CSAA/admin/studentAttendance/markAbsent',
+            {
+                'student_id': self.current_child.id,
+                'lesson_id': self.lesson.id,
+                'lesson_date': '2026-06-28',
+                'is_absent': 'true',
+            },
+            HTTP_ADMINTOKEN=token,
+        )
+        self.assertEqual(done_absent_response.json()['code'], 1)
+
+        absent_response = self.client.post(
+            '/CSAA/admin/studentAttendance/markAbsent',
+            {
+                'student_id': self.future_child.id,
+                'lesson_id': self.lesson.id,
+                'lesson_date': '2026-06-28',
+                'is_absent': 'true',
+            },
+            HTTP_ADMINTOKEN=token,
+        )
+        self.assertEqual(absent_response.json()['code'], 0)
+        self.assertTrue(StudentAttendance.objects.filter(
+            student=self.future_child,
+            lesson=self.lesson,
+            lesson_date=datetime.date(2026, 6, 28),
+            is_absent=True,
+        ).exists())
+
+        schedule_response = self.client.get(
+            '/CSAA/admin/lesson/list',
+            {'date': '2026-06-28'},
+        )
+        students = schedule_response.json()['data'][0]['scheduled_students']
+        absent_flags = {student['name']: student['absent_marked'] for student in students}
+        self.assertFalse(absent_flags['Current Student'])
+        self.assertTrue(absent_flags['Future Student'])
+
+        clear_absent_response = self.client.post(
+            '/CSAA/admin/studentAttendance/markAbsent',
+            {
+                'student_id': self.future_child.id,
+                'lesson_id': self.lesson.id,
+                'lesson_date': '2026-06-28',
+                'is_absent': 'false',
+            },
+            HTTP_ADMINTOKEN=token,
+        )
+        self.assertEqual(clear_absent_response.json()['code'], 0)
+        self.assertFalse(StudentAttendance.objects.filter(
+            student=self.future_child,
+            lesson=self.lesson,
+            lesson_date=datetime.date(2026, 6, 28),
+        ).exists())
+
+        list_response = self.client.get(
+            '/CSAA/admin/student/list',
+            HTTP_ADMINTOKEN=token,
+        )
+        self.assertEqual(list_response.json()['code'], 0)
+        self.assertIn('Current Student', [item['name'] for item in list_response.json()['data']])
+
+        detail_response = self.client.get(
+            '/CSAA/admin/student/detail',
+            {'id': self.current_child.id},
+            HTTP_ADMINTOKEN=token,
+        )
+        self.assertEqual(detail_response.json()['code'], 0)
+        self.assertEqual(detail_response.json()['data']['name'], 'Current Student')
+
+    def test_teacher_token_cannot_call_admin_only_daily_adjustment(self):
+        teacher = User.objects.create(
+            username='teacher_limited',
+            password='unused',
+            role='2',
+            admin_token='teacher-limited-token',
+        )
+
+        response = self.client.post(
+            '/CSAA/admin/dailyAdjustment/saveBatch',
+            {'lesson_date': '2026-06-28', 'actions': json.dumps([])},
+            HTTP_ADMINTOKEN=teacher.admin_token,
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+        create_response = self.client.post(
+            '/CSAA/admin/student/create',
+            {'name': 'Blocked Student', 'parent': self.parent.id},
+            HTTP_ADMINTOKEN=teacher.admin_token,
+        )
+        self.assertEqual(create_response.status_code, 403)
 
     def test_student_comment_is_saved_and_returned_in_student_detail(self):
         admin = User.objects.create(
@@ -550,22 +699,18 @@ class LessonDetailDateFilterTests(TestCase):
             ['approved', 'pending'],
         )
 
-    def test_student_detail_lists_all_trial_package_categories(self):
+    def test_student_detail_lists_trial_package_robotics_and_coding(self):
         coding_time = Time.objects.create(time='17:00-18:00')
-        math_time = Time.objects.create(time='18:00-19:00')
         coding = Thing.objects.create(
             title='Trial Coding', tag=self.thing.tag, time=coding_time, day='Tue', status='0'
         )
-        math = Thing.objects.create(
-            title='Trial Math', tag=self.thing.tag, time=math_time, day='Wed', status='0'
-        )
         package_order = Order.objects.create(
             order_number='TRIALPACKAGE001', user=self.parent, child=self.current_child,
-            thing=self.thing, num=3, amount='98', status=6, remark='Trial Package',
+            thing=self.thing, num=2, amount='98', status=6, remark='Trial Package',
         )
         TrialRequest.objects.create(
             parent=self.parent, child=self.current_child, package_order=package_order,
-            robotics_class=self.thing, coding_class=coding, math_class=math, status='scheduled',
+            robotics_class=self.thing, coding_class=coding, status='scheduled',
         )
 
         data = AdminStudentSerializer(self.current_child).data
@@ -574,9 +719,48 @@ class LessonDetailDateFilterTests(TestCase):
         self.assertEqual(data['trial_packages'][0]['status'], 'scheduled')
         self.assertEqual(
             [course['category'] for course in data['trial_packages'][0]['courses']],
-            ['Robotics', 'Coding', 'Math'],
+            ['Robotics', 'Coding'],
         )
         self.assertTrue(all(course['configured'] for course in data['trial_packages'][0]['courses']))
+
+    def test_trial_request_requires_robotics_and_coding_only(self):
+        self.parent.token = 'trial-parent-token'
+        self.parent.save(update_fields=['token'])
+        trial_child = Child.objects.create(
+            parent=self.parent,
+            name='Trial Student',
+        )
+        robotics_category = Classification.objects.create(title='Robotics')
+        coding_category = Classification.objects.create(title='Coding')
+        coding_time = Time.objects.create(time='17:00-18:30')
+        self.thing.classification = robotics_category
+        self.thing.save(update_fields=['classification'])
+        coding = Thing.objects.create(
+            title='Trial Coding',
+            classification=coding_category,
+            tag=self.thing.tag,
+            time=coding_time,
+            day='Tue',
+            status='0',
+        )
+
+        response = self.client.post(
+            '/CSAA/index/trial/create',
+            {
+                'parent': self.parent.id,
+                'child': trial_child.id,
+                'robotics_class': self.thing.id,
+                'coding_class': coding.id,
+            },
+            HTTP_TOKEN='trial-parent-token',
+        )
+
+        self.assertEqual(response.json()['code'], 0)
+        trial_request = TrialRequest.objects.get(child=trial_child)
+        self.assertEqual(trial_request.robotics_class, self.thing)
+        self.assertEqual(trial_request.coding_class, coding)
+        self.assertIsNone(trial_request.math_class)
+        self.assertEqual(trial_request.package_order.num, 2)
 
     def test_parent_adjustment_list_is_filtered_by_child(self):
         order = Order.objects.get(order_number='DATEFILTER001')

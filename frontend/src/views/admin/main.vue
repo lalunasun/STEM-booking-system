@@ -6,7 +6,7 @@
         <span class="header-title">CSAA Manage System</span>
         <div class="empty"></div>
         <a class="preview-link" href="/index/portal" target="_blank" rel="noopener noreferrer">Link</a>
-        <span>Administrator[{{ userStore.admin_user_name }}]</span>
+        <span>{{ adminRoleLabel }}[{{ userStore.admin_user_name }}]</span>
         <a class="header-quit" @click="handleLogout">Log out</a>
       </div>
     </a-layout-header>
@@ -17,14 +17,18 @@
             <schedule-outlined />
             <span>Schedule</span>
           </a-menu-item>
-          <a-menu-item key="order">
+          <a-menu-item key="classroom">
+            <tablet-outlined />
+            <span>Classroom</span>
+          </a-menu-item>
+          <a-menu-item v-if="isAdminRole" key="order">
             <dollar-outlined/>
             <span class="menu-label">
               Order
-              <span v-if="newOrderCount > 0" class="menu-dot" :title="`${newOrderCount} paid order(s) waiting for scheduling`"></span>
+              <span v-if="newOrderCount > 0" class="menu-dot" :title="`${newOrderCount} order(s) waiting for admin action`"></span>
             </span>
           </a-menu-item>
-          <a-menu-item key="courseAdjustment">
+          <a-menu-item v-if="isAdminRole" key="courseAdjustment">
             <schedule-outlined/>
             <span>Course Adjustments</span>
           </a-menu-item>
@@ -32,7 +36,7 @@
             <comment-outlined/>
             <span>Comment(St2)</span>
           </a-menu-item>
-          <a-menu-item key="user">
+          <a-menu-item v-if="isAdminRole" key="user">
             <user-outlined/>
             <span>User</span>
           </a-menu-item>
@@ -40,7 +44,7 @@
             <team-outlined/>
             <span>Student</span>
           </a-menu-item>
-          <a-sub-menu key="setup">
+          <a-sub-menu v-if="isAdminRole" key="setup">
             <template #icon>
               <setting-outlined/>
             </template>
@@ -122,10 +126,11 @@ import {
   DatabaseOutlined,
   SettingOutlined,
   ClockCircleOutlined,
-  CalendarOutlined
+  CalendarOutlined,
+  TabletOutlined
 } from '@ant-design/icons-vue';
 
-import {ref, watch, onUnmounted} from 'vue';
+import {computed, ref, watch, onMounted, onUnmounted} from 'vue';
 import {useUserStore} from "/@/store";
 import { listApi as listOrderApi } from '/@/api/admin/order';
 
@@ -135,12 +140,20 @@ const selectedKeys = ref<any[]>([])
 const collapsed = ref<boolean>(false)
 const newOrderCount = ref(0)
 const ORDER_BADGE_REFRESH_EVENT = 'admin-order-badge-refresh'
+const teacherAllowedRoutes = new Set(['schedule', 'classroom', 'lesson', 'student'])
+const isTeacherRole = computed(() => userStore.admin_user_role === '2')
+const isAdminRole = computed(() => !isTeacherRole.value)
+const adminRoleLabel = computed(() => isTeacherRole.value ? 'Teacher' : 'Administrator')
 
 const router = useRouter()
 const route = useRoute()
 
 const handleClick = ({item, key, keyPath}) => {
   console.log('点击路由===>', key)
+  if (isTeacherRole.value && !teacherAllowedRoutes.has(String(key))) {
+    router.push({ name: 'schedule' })
+    return
+  }
   router.push({
     name: key,
   })
@@ -168,12 +181,16 @@ watch(
 )
 
 const loadMenuBadges = () => {
+  if (!isAdminRole.value) {
+    newOrderCount.value = 0
+    return
+  }
   listOrderApi({})
     .then((res) => {
       const orders = res.data || []
-      // Red dot means: paid orders waiting for admin scheduling only.
+      // Red dot means: orders waiting for admin payment review or scheduling.
       // Once an order is scheduled, its status becomes 6 and the dot disappears.
-      newOrderCount.value = orders.filter((order) => Number(order.status) === 2).length
+      newOrderCount.value = orders.filter((order) => [1, 2].includes(Number(order.status))).length
     })
     .catch((err) => {
       console.log(err)

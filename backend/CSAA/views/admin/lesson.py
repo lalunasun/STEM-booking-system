@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view, authentication_classes
 from CSAA import utils
 from CSAA.auth.authentication import AdminTokenAuthtication
 from CSAA.handler import APIResponse
-from CSAA.models import Classification, Thing, Tag, Lesson, Order, CourseAdjustment, TrialRequest, DailyStudentAdjustment
+from CSAA.models import Classification, Thing, Tag, Lesson, Order, CourseAdjustment, TrialRequest, DailyStudentAdjustment, StudentComment, StudentAttendance
 from CSAA.serializers import ThingSerializer, UpdateThingSerializer, LessonSerializer, LessonDetailSerializer, DailyLessonSerializer
 
 
@@ -44,6 +44,7 @@ def list_api(request):
             return APIResponse(code=0, msg='查询成功', data=serializer.data)
 
         lessons = list(lessons)
+        lesson_ids = [lesson.id for lesson in lessons]
         thing_ids = [lesson.thing_id for lesson in lessons]
 
         orders_by_thing = defaultdict(list)
@@ -82,9 +83,7 @@ def list_api(request):
 
         trials_by_thing = defaultdict(list)
         trials = TrialRequest.objects.filter(
-            Q(robotics_class_id__in=thing_ids)
-            | Q(coding_class_id__in=thing_ids)
-            | Q(math_class_id__in=thing_ids),
+            Q(robotics_class_id__in=thing_ids) | Q(coding_class_id__in=thing_ids),
             child__isnull=False,
             package_order__status__in=[2, 6],
             status__in=['approved', 'scheduled'],
@@ -93,12 +92,11 @@ def list_api(request):
             'package_order',
             'robotics_class',
             'coding_class',
-            'math_class',
         )
         day_index = {'Mon': 0, 'Tue': 1, 'Wed': 2, 'Thu': 3, 'Fri': 4, 'Sat': 5, 'Sun': 6}
         for trial in trials:
             base_date = trial.package_order.order_time.date()
-            for thing in [trial.robotics_class, trial.coding_class, trial.math_class]:
+            for thing in [trial.robotics_class, trial.coding_class]:
                 if not thing or thing.id not in thing_ids:
                     continue
                 trial_date = base_date + datetime.timedelta(
@@ -145,6 +143,21 @@ def list_api(request):
             elif adjustment.adjustment_type == 'sick_leave':
                 sick_leave_by_lesson[adjustment.source_lesson_id].append(item)
 
+        lesson_comment_keys = set(
+            StudentComment.objects.filter(
+                lesson_id__in=lesson_ids,
+                lesson_date=class_date,
+                student_id__isnull=False,
+            ).values_list('lesson_id', 'student_id')
+        )
+        absent_keys = set(
+            StudentAttendance.objects.filter(
+                lesson_id__in=lesson_ids,
+                lesson_date=class_date,
+                is_absent=True,
+            ).values_list('lesson_id', 'student_id')
+        )
+
         serializer = DailyLessonSerializer(
             lessons,
             many=True,
@@ -156,6 +169,8 @@ def list_api(request):
                 'adjusted_out_by_lesson': adjusted_out_by_lesson,
                 'moved_in_by_lesson': moved_in_by_lesson,
                 'sick_leave_by_lesson': sick_leave_by_lesson,
+                'lesson_comment_keys': lesson_comment_keys,
+                'absent_keys': absent_keys,
             },
         )
         return APIResponse(code=0, msg='查询成功', data=serializer.data)
