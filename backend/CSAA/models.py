@@ -30,6 +30,7 @@ class User(models.Model):
     score = models.IntegerField(default=0, blank=True, null=True)
     push_email = models.CharField(max_length=40, blank=True, null=True)
     push_switch = models.BooleanField(blank=True, null=True, default=False)
+    allow_class_pass = models.BooleanField(default=False)
     admin_token = models.CharField(max_length=32, blank=True, null=True)
     token = models.CharField(max_length=32, blank=True, null=True)
 
@@ -222,6 +223,99 @@ class Lesson(models.Model):
 
     class Meta:
         db_table = "b_lesson"
+
+
+class ClassPass(models.Model):
+    STATUS_CHOICES = (
+        ('active', 'Active'),
+        ('paused', 'Paused'),
+        ('expired', 'Expired'),
+        ('canceled', 'Canceled'),
+    )
+
+    id = models.BigAutoField(primary_key=True)
+    parent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='class_passes')
+    child = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='class_passes')
+    title = models.CharField(max_length=100, default='Class Pass')
+    total_sessions = models.PositiveIntegerField(default=0)
+    used_sessions = models.PositiveIntegerField(default=0)
+    valid_from = models.DateField(blank=True, null=True)
+    valid_until = models.DateField(blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    note = models.TextField(max_length=1000, blank=True, default='')
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='created_class_passes',
+    )
+    created_time = models.DateTimeField(auto_now_add=True)
+    updated_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "b_class_pass"
+        indexes = [
+            models.Index(fields=['parent', 'child', 'status'], name='b_class_pass_parent_child_idx'),
+        ]
+
+
+class ClassPassBooking(models.Model):
+    STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('completed', 'Completed'),
+        ('canceled', 'Canceled'),
+    )
+
+    id = models.BigAutoField(primary_key=True)
+    class_pass = models.ForeignKey(ClassPass, on_delete=models.CASCADE, related_name='bookings')
+    parent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='class_pass_bookings')
+    child = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='class_pass_bookings')
+    requested_class = models.ForeignKey(
+        Thing,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='requested_class_pass_bookings',
+    )
+    requested_date = models.DateField()
+    parent_note = models.TextField(max_length=1000, blank=True, default='')
+    target_lesson = models.ForeignKey(
+        Lesson,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='class_pass_bookings',
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    admin_note = models.TextField(max_length=1000, blank=True, default='')
+    reviewed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='reviewed_class_pass_bookings',
+    )
+    reviewed_time = models.DateTimeField(blank=True, null=True)
+    completed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='completed_class_pass_bookings',
+    )
+    completed_time = models.DateTimeField(blank=True, null=True)
+    created_time = models.DateTimeField(auto_now_add=True)
+    updated_time = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "b_class_pass_booking"
+        indexes = [
+            models.Index(fields=['parent', 'status'], name='b_class_booking_parent_idx'),
+            models.Index(fields=['target_lesson', 'requested_date', 'status'], name='b_class_booking_lesson_idx'),
+        ]
 
 
 class StudentLessonNote(models.Model):

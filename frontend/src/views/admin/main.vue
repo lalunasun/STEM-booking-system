@@ -28,6 +28,10 @@
               <span v-if="newOrderCount > 0" class="menu-dot" :title="`${newOrderCount} order(s) waiting for admin action`"></span>
             </span>
           </a-menu-item>
+          <a-menu-item v-if="isAdminRole" key="classPass">
+            <calendar-outlined/>
+            <span>Class Pass</span>
+          </a-menu-item>
           <a-menu-item v-if="isAdminRole" key="courseAdjustment">
             <schedule-outlined/>
             <span>Course Adjustments</span>

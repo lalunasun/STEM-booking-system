@@ -5,7 +5,7 @@ from django.db.models import Q
 from rest_framework import serializers
 
 from CSAA.models import Thing, Classification, Tag, User, Comment, LoginLog, Order, OpLog, \
-    Ad, Notice, ErrorLog, Lesson, Time, Term, Child, CourseAdjustment, TrialRequest, StudentLessonNote, SystemSetting, DailyStudentAdjustment, StudentComment
+    Ad, Notice, ErrorLog, Lesson, Time, Term, Child, CourseAdjustment, TrialRequest, StudentLessonNote, SystemSetting, DailyStudentAdjustment, StudentComment, ClassPass, ClassPassBooking
 
 
 # 课程信息序列化
@@ -342,6 +342,52 @@ class OrderSerializer(serializers.ModelSerializer):
 
 
 # lesson信息序列化
+class ClassPassSerializer(serializers.ModelSerializer):
+    parent_username = serializers.ReadOnlyField(source='parent.username')
+    parent_name = serializers.SerializerMethodField()
+    child_name = serializers.ReadOnlyField(source='child.name')
+    remaining_sessions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ClassPass
+        fields = '__all__'
+
+    def get_parent_name(self, obj):
+        if not obj.parent:
+            return None
+        return obj.parent.nickname or obj.parent.username
+
+    def get_remaining_sessions(self, obj):
+        return max(0, int(obj.total_sessions or 0) - int(obj.used_sessions or 0))
+
+
+class ClassPassBookingSerializer(serializers.ModelSerializer):
+    pass_title = serializers.ReadOnlyField(source='class_pass.title')
+    parent_username = serializers.ReadOnlyField(source='parent.username')
+    parent_name = serializers.SerializerMethodField()
+    child_name = serializers.ReadOnlyField(source='child.name')
+    requested_class_name = serializers.ReadOnlyField(source='requested_class.title')
+    requested_day = serializers.ReadOnlyField(source='requested_class.day')
+    requested_time = serializers.ReadOnlyField(source='requested_class.time.time')
+    requested_room = serializers.ReadOnlyField(source='requested_class.tag.title')
+    target_lesson_id = serializers.ReadOnlyField(source='target_lesson.id')
+    remaining_sessions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ClassPassBooking
+        fields = '__all__'
+
+    def get_parent_name(self, obj):
+        if not obj.parent:
+            return None
+        return obj.parent.nickname or obj.parent.username
+
+    def get_remaining_sessions(self, obj):
+        if not obj.class_pass:
+            return 0
+        return max(0, int(obj.class_pass.total_sessions or 0) - int(obj.class_pass.used_sessions or 0))
+
+
 class CourseAdjustmentSerializer(serializers.ModelSerializer):
     created_time = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S', required=False)
     updated_time = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S', required=False)
@@ -598,6 +644,7 @@ class DailyLessonSerializer(serializers.ModelSerializer):
     canceled_students = serializers.SerializerMethodField()
     scheduled_reschedule_students = serializers.SerializerMethodField()
     scheduled_trial_students = serializers.SerializerMethodField()
+    scheduled_class_pass_students = serializers.SerializerMethodField()
     moved_students = serializers.SerializerMethodField()
     sick_leave_students = serializers.SerializerMethodField()
 
@@ -618,6 +665,7 @@ class DailyLessonSerializer(serializers.ModelSerializer):
             'canceled_students',
             'scheduled_reschedule_students',
             'scheduled_trial_students',
+            'scheduled_class_pass_students',
             'moved_students',
             'sick_leave_students',
         ]
@@ -682,6 +730,16 @@ class DailyLessonSerializer(serializers.ModelSerializer):
                 'absent_marked': self._is_absent(obj, student.get('student_id')),
             }
             for student in self.context['trials_by_thing'].get(obj.thing_id, [])
+        ]
+
+    def get_scheduled_class_pass_students(self, obj):
+        return [
+            {
+                **student,
+                'comment_done': self._has_lesson_comment(obj, student.get('student_id')),
+                'absent_marked': self._is_absent(obj, student.get('student_id')),
+            }
+            for student in self.context.get('class_pass_bookings_by_lesson', {}).get(obj.id, [])
         ]
 
     def get_moved_students(self, obj):

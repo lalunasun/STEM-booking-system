@@ -14,10 +14,12 @@
       </a-tab-pane>
       <a-tab-pane key="6" tab="Done">
       </a-tab-pane>
+      <a-tab-pane key="7" tab="Class Pass">
+      </a-tab-pane>
     </a-tabs>
     <a-spin :spinning="loading" style="min-height: 200px;">
       <div class="list-content">
-        <div class="order-item-view" v-for="item in orderData" :key="item.id">
+        <div v-if="showOrders" class="order-item-view" v-for="item in orderData" :key="item.id">
           <div class="header flex-view">
             <div class="left">
               <span class="text">Order number</span>
@@ -93,7 +95,69 @@
             </div>
           </div>
         </div>
-        <template v-if="!orderData || orderData.length <= 0">
+        <div
+          v-if="showClassPasses"
+          v-for="item in classPassData"
+          :key="`class-pass-${item.id}`"
+          class="order-item-view pass-card-view"
+        >
+          <div class="header flex-view">
+            <div class="left">
+              <span class="text">Pass Card</span>
+              <span class="num mg-4">#CP{{ item.id }}</span>
+              <span class="time">{{ item.created_time }}</span>
+            </div>
+            <div class="right">
+              <span class="text">Status</span>
+              <span class="state">{{ item.status }}</span>
+            </div>
+          </div>
+          <div class="content flex-view">
+            <div class="left-list">
+              <div class="list-item flex-view">
+                <div class="pass-card-icon">CP</div>
+                <div class="detail flex-between flex-view">
+                  <div>
+                    <h2 class="name">{{ item.title || 'Class Pass' }}</h2>
+                    <div class="student-line">
+                      <span class="student-label">Student</span>
+                      <strong>{{ item.child_name || 'Not assigned' }}</strong>
+                      <span v-if="item.child" class="student-id">ID {{ item.child }}</span>
+                    </div>
+                    <p class="class-time">
+                      Valid {{ item.valid_from || '-' }} to {{ item.valid_until || '-' }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="right-info">
+              <div>
+                <label style="font-weight: bolder;">Sessions</label>
+                <span class="count">: {{ item.remaining_sessions }} / {{ item.total_sessions }}</span>
+              </div>
+              <p class="title">Notes</p>
+              <p class="text">{{ item.note || 'None' }}</p>
+            </div>
+          </div>
+          <div class="bottom flex-view">
+            <div class="left">
+              <span class="text">Used {{ item.used_sessions || 0 }} sessions</span>
+              <span
+                v-if="item.status === 'active' && Number(item.remaining_sessions || 0) > 0"
+                class="open"
+                @click="openClassPassRequest(item)"
+              >
+                Request a time
+              </span>
+            </div>
+            <div class="right flex-view">
+              <span class="text">Type</span>
+              <span class="money pass-card-money">Pass</span>
+            </div>
+          </div>
+        </div>
+        <template v-if="isEmpty">
           <a-empty style="width: 100%;margin-top: 200px;" />
         </template>
       </div>
@@ -179,6 +243,51 @@
         </div>
       </div>
     </a-modal>
+    <a-modal
+      v-model:visible="classPassModal.visible"
+      title="Request a class pass time"
+      ok-text="Submit"
+      cancel-text="Close"
+      :confirm-loading="classPassModal.submitting"
+      @ok="submitClassPassRequest"
+    >
+      <div class="cancel-form">
+        <p class="hint">
+          Admin will review your request before it appears on the schedule.
+        </p>
+        <label>Pass card</label>
+        <div class="pass-request-summary">
+          <strong>{{ classPassModal.pass?.title || 'Class Pass' }}</strong>
+          <span>
+            {{ classPassModal.pass?.child_name || 'Student' }} ·
+            {{ classPassModal.pass?.remaining_sessions || 0 }} sessions left
+          </span>
+        </div>
+
+        <label>Class time</label>
+        <select v-model="classPassModal.requestedClassId" class="date-input">
+          <option value="">Please select a class</option>
+          <option
+            v-for="course in classPassCourseOptions"
+            :key="course.id"
+            :value="course.id"
+          >
+            {{ course.title }} - {{ course.day || 'Day TBD' }} - {{ course.time_title || 'Time TBD' }} - {{ course.room_title || 'Room TBD' }}
+          </option>
+        </select>
+
+        <label>Requested date</label>
+        <input
+          v-model="classPassModal.requestedDate"
+          class="date-input"
+          type="date"
+          :min="todayValue"
+        />
+
+        <label>Message to admin</label>
+        <textarea v-model="classPassModal.parentNote" class="note-input" rows="4" placeholder="Optional note"></textarea>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -187,6 +296,8 @@ import { message } from "ant-design-vue";
 import { userOrderListApi } from '/@/api/index/order'
 import { cancelUserOrderApi } from '/@/api/index/order'
 import { createCancelRequestApi } from '/@/api/index/course-adjustment'
+import { bookingCreateApi, passListApi } from '/@/api/index/class-pass'
+import { listApi as listThingList } from '/@/api/index/thing'
 import { BASE_URL } from "/@/store/constants";
 import { useUserStore } from "/@/store";
 
@@ -196,6 +307,8 @@ const userStore = useUserStore();
 
 const loading = ref(false)
 const orderData = ref([])
+const classPassData = ref([])
+const courseData = ref([])
 const orderStatus = ref('')
 const cancelModal = reactive({
   visible: false,
@@ -209,9 +322,18 @@ const trialDetailModal = reactive({
   visible: false,
   order: null,
 })
+const classPassModal = reactive({
+  visible: false,
+  pass: null,
+  requestedClassId: '',
+  requestedDate: '',
+  parentNote: '',
+  submitting: false,
+})
 
 onMounted(() => {
   getOrderList()
+  getCourseList()
 })
 
 const onTabChange = (key) => {
@@ -234,8 +356,18 @@ const onTabChange = (key) => {
   if (key === '6') {
     orderStatus.value = '8'
   }
+  if (key === '7') {
+    orderStatus.value = 'classPass'
+  }
   getOrderList()
 }
+
+const showOrders = computed(() => orderStatus.value !== 'classPass')
+const showClassPasses = computed(() => orderStatus.value === '' || orderStatus.value === 'classPass')
+const isEmpty = computed(() => (
+  (!showOrders.value || !orderData.value || orderData.value.length <= 0)
+  && (!showClassPasses.value || !classPassData.value || classPassData.value.length <= 0)
+))
 
 const getOrderStatusLabel = (status) => {
   if (status === 1) {
@@ -282,6 +414,8 @@ const formatDateText = (date) => {
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
+
+const todayValue = computed(() => formatDateText(new Date()))
 
 const dateAtStartOfDay = (value) => {
   const date = parseDateText(value)
@@ -394,17 +528,42 @@ const cancelTrialSlots = computed(() => {
   return cancelModal.order.trial_slots.filter((slot) => slot.status !== 'not_configured' && slot.class_id)
 })
 
+const classPassCourseOptions = computed(() => (
+  (courseData.value || [])
+    .filter((item) => String(item.classification_title || '').trim().toLowerCase() !== 'trial')
+    .sort((a, b) => {
+      const titleCompare = String(a.title || '').localeCompare(String(b.title || ''))
+      if (titleCompare !== 0) return titleCompare
+      return String(a.time_title || '').localeCompare(String(b.time_title || ''))
+    })
+))
+
+const getCourseList = () => {
+  listThingList({}).then((res) => {
+    courseData.value = res.data || []
+  }).catch((err) => {
+    console.log(err)
+  })
+}
+
 const getOrderList = () => {
   loading.value = true
   let userId = userStore.user_id
-  userOrderListApi({ userId: userId, orderStatus: orderStatus.value }).then(res => {
-    res.data.forEach((item, index) => {
+  const orderRequest = showOrders.value
+    ? userOrderListApi({ userId: userId, orderStatus: orderStatus.value })
+    : Promise.resolve({ data: [] })
+  const passRequest = showClassPasses.value
+    ? passListApi({})
+    : Promise.resolve({ data: [] })
+  Promise.all([orderRequest, passRequest]).then(([orderRes, passRes]) => {
+    const rows = orderRes.data || []
+    rows.forEach((item, index) => {
       if (item.cover) {
         item.cover = BASE_URL + item.cover
       }
     })
-    orderData.value = res.data
-    console.log(orderData.value)
+    orderData.value = rows
+    classPassData.value = passRes.data || []
     loading.value = false
   }).catch(err => {
     console.log(err)
@@ -420,6 +579,43 @@ const handleDetail = (thingId) => {
 const openTrialDetail = (item) => {
   trialDetailModal.order = item
   trialDetailModal.visible = true
+}
+
+const openClassPassRequest = (item) => {
+  classPassModal.pass = item
+  classPassModal.requestedClassId = classPassCourseOptions.value[0]?.id || ''
+  classPassModal.requestedDate = ''
+  classPassModal.parentNote = ''
+  classPassModal.visible = true
+}
+
+const submitClassPassRequest = () => {
+  if (classPassModal.submitting) {
+    return
+  }
+  if (!classPassModal.pass || !classPassModal.requestedClassId || !classPassModal.requestedDate) {
+    message.error('Please select a class and requested date')
+    return
+  }
+  classPassModal.submitting = true
+  bookingCreateApi({
+    class_pass_id: classPassModal.pass.id,
+    requested_class_id: classPassModal.requestedClassId,
+    requested_date: classPassModal.requestedDate,
+    parent_note: classPassModal.parentNote,
+  }).then((res) => {
+    if (res.code !== 0) {
+      message.error(res.msg || 'Submit failed')
+      return
+    }
+    message.success(res.msg || 'Class pass request submitted')
+    classPassModal.visible = false
+    getOrderList()
+  }).catch((err) => {
+    message.error(err.msg || 'Submit failed')
+  }).finally(() => {
+    classPassModal.submitting = false
+  })
 }
 
 const openCancelClass = (item) => {
@@ -887,6 +1083,26 @@ const handleCancel = (item) => {
     color: #b42318;
     margin: 4px 0;
   }
+}
+
+.pass-card-view {
+  border-left: 4px solid #1f7a8c;
+}
+
+.pass-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 6px;
+  background: #e7f7f6;
+  color: #1f7a8c;
+  font-weight: 800;
+}
+
+.pass-card-money {
+  color: #1f7a8c !important;
 }
 
 @media (max-width: 640px) {

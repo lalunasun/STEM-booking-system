@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view, authentication_classes
 from CSAA import utils
 from CSAA.auth.authentication import AdminTokenAuthtication
 from CSAA.handler import APIResponse
-from CSAA.models import Classification, Thing, Tag, Lesson, Order, CourseAdjustment, TrialRequest, DailyStudentAdjustment, StudentComment, StudentAttendance
+from CSAA.models import Classification, Thing, Tag, Lesson, Order, CourseAdjustment, TrialRequest, DailyStudentAdjustment, StudentComment, StudentAttendance, ClassPassBooking
 from CSAA.serializers import ThingSerializer, UpdateThingSerializer, LessonSerializer, LessonDetailSerializer, DailyLessonSerializer
 
 
@@ -143,6 +143,23 @@ def list_api(request):
             elif adjustment.adjustment_type == 'sick_leave':
                 sick_leave_by_lesson[adjustment.source_lesson_id].append(item)
 
+        class_pass_bookings_by_lesson = defaultdict(list)
+        class_pass_bookings = ClassPassBooking.objects.filter(
+            target_lesson_id__in=lesson_ids,
+            requested_date=class_date,
+            status__in=['approved', 'completed'],
+        ).select_related('child', 'class_pass')
+        for booking in class_pass_bookings:
+            class_pass_bookings_by_lesson[booking.target_lesson_id].append({
+                'booking_id': booking.id,
+                'class_pass_id': booking.class_pass_id,
+                'student_id': booking.child_id,
+                'name': booking.child.name,
+                'date': class_date.strftime('%Y-%m-%d'),
+                'status': 'class_pass',
+                'pass_title': booking.class_pass.title if booking.class_pass else 'Class Pass',
+            })
+
         lesson_comment_keys = set(
             StudentComment.objects.filter(
                 lesson_id__in=lesson_ids,
@@ -169,6 +186,7 @@ def list_api(request):
                 'adjusted_out_by_lesson': adjusted_out_by_lesson,
                 'moved_in_by_lesson': moved_in_by_lesson,
                 'sick_leave_by_lesson': sick_leave_by_lesson,
+                'class_pass_bookings_by_lesson': class_pass_bookings_by_lesson,
                 'lesson_comment_keys': lesson_comment_keys,
                 'absent_keys': absent_keys,
             },

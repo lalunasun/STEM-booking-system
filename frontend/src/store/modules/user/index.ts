@@ -3,13 +3,14 @@ import {loginApi as adminLogin} from '/@/api/admin/user';
 import {userLoginApi} from '/@/api/index/user';
 import { setToken, clearToken } from '/@/utils/auth';
 import { UserState } from './types';
-import {USER_ID, USER_NAME, USER_TOKEN, ADMIN_USER_ID,ADMIN_USER_NAME,ADMIN_USER_TOKEN, ADMIN_USER_ROLE} from "/@/store/constants";
+import {USER_ID, USER_NAME, USER_TOKEN, USER_ALLOW_CLASS_PASS, ADMIN_USER_ID,ADMIN_USER_NAME,ADMIN_USER_TOKEN, ADMIN_USER_ROLE} from "/@/store/constants";
 
 export const useUserStore = defineStore('user', {
   state: (): UserState => ({
     user_id: undefined,
     user_name: undefined,
     user_token: undefined,
+    user_allow_class_pass: undefined,
 
     admin_user_id: undefined,
     admin_user_name: undefined,
@@ -28,12 +29,14 @@ export const useUserStore = defineStore('user', {
           state.user_id = result.data.id
           state.user_name = result.data.username
           state.user_token = result.data.token
+          state.user_allow_class_pass = !!result.data.allow_class_pass
           console.log('state==>', state)
         })
 
         localStorage.setItem(USER_TOKEN, result.data.token)
         localStorage.setItem(USER_NAME, result.data.username)
         localStorage.setItem(USER_ID, result.data.id)
+        localStorage.setItem(USER_ALLOW_CLASS_PASS, result.data.allow_class_pass ? '1' : '0')
       }
 
       return result;
@@ -45,10 +48,12 @@ export const useUserStore = defineStore('user', {
         localStorage.removeItem(USER_ID)
         localStorage.removeItem(USER_NAME)
         localStorage.removeItem(USER_TOKEN)
+        localStorage.removeItem(USER_ALLOW_CLASS_PASS)
 
         state.user_id = undefined
         state.user_name = undefined
         state.user_token = undefined
+        state.user_allow_class_pass = undefined
       })
     },
 

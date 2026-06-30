@@ -31,8 +31,14 @@
             <span>
               <span v-if="text === '0'">Admin</span>
               <span v-if="text === '1'">Parent</span>
+              <span v-if="text === '2'">Teacher</span>
 
             </span>
+          </template>
+          <template v-if="column.key === 'allow_class_pass'">
+            <a-tag :color="record.allow_class_pass ? 'green' : 'default'">
+              {{ record.allow_class_pass ? 'Enabled' : 'Off' }}
+            </a-tag>
           </template>
           <template v-if="column.key === 'operation'">
             <span>
@@ -91,6 +97,16 @@
                     <a-select-option key="0" value="0">Active</a-select-option>
                     <a-select-option key="1" value="1">Inactive</a-select-option>
                   </a-select>
+                </a-form-item>
+              </a-col>
+              <a-col span="24">
+                <a-form-item label="Class Pass">
+                  <a-switch
+                    v-model:checked="modal.form.allow_class_pass"
+                    checked-children="On"
+                    un-checked-children="Off"
+                  />
+                  <span class="field-help">Show class pass booking entry for this parent.</span>
                 </a-form-item>
               </a-col>
               <a-col span="24">
@@ -168,6 +184,13 @@
       align: 'center',
     },
     {
+      title: 'Class Pass',
+      dataIndex: 'allow_class_pass',
+      key: 'allow_class_pass',
+      align: 'center',
+      width: 120,
+    },
+    {
       title: 'Join Time',
       dataIndex: 'create_time',
       key: 'create_time',
@@ -219,6 +242,10 @@
         id: '1',
         title: 'Parent',
       },
+      {
+        id: '2',
+        title: 'Teacher',
+      },
     ],
     form: {
       id: undefined,
@@ -229,6 +256,7 @@
       nickname: undefined,
       email: undefined,
       mobile: undefined,
+      allow_class_pass: false,
     },
     rules: {
       username: [{ required: true, message: 'Required', trigger: 'change' }],
@@ -288,6 +316,7 @@
     for (const key in modal.form) {
       modal.form[key] = undefined;
     }
+    modal.form.allow_class_pass = false;
   };
   const handleEdit = (record: any) => {
     resetModal();
@@ -298,9 +327,11 @@
     for (const key in modal.form) {
       modal.form[key] = undefined;
     }
+    modal.form.allow_class_pass = false;
     for (const key in record) {
       modal.form[key] = record[key];
     }
+    modal.form.allow_class_pass = !!record.allow_class_pass;
   };
 
   const confirmDelete = (record: any) => {
@@ -361,6 +392,7 @@
         if (modal.form.email) {
           formData.append('email', modal.form.email);
         }
+        formData.append('allow_class_pass', modal.form.allow_class_pass ? 'true' : 'false');
         if (modal.editFlag) {
           updateApi({
             id: modal.form.id
@@ -421,5 +453,11 @@
 
   .table-operations > button {
     margin-right: 8px;
+  }
+
+  .field-help {
+    margin-left: 10px;
+    color: #6b7280;
+    font-size: 12px;
   }
 </style>

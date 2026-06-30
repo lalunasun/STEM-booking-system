@@ -177,6 +177,17 @@ interface TrialStudent {
   absent_marked?: boolean;
 }
 
+interface ClassPassStudent {
+  booking_id?: number;
+  class_pass_id?: number;
+  student_id: number;
+  name: string;
+  date?: string;
+  pass_title?: string;
+  comment_done?: boolean;
+  absent_marked?: boolean;
+}
+
 interface LessonItem {
   id: number;
   lesson_id?: number;
@@ -192,6 +203,7 @@ interface LessonItem {
   canceled_students?: AdjustmentStudent[];
   scheduled_reschedule_students?: AdjustmentStudent[];
   scheduled_trial_students?: TrialStudent[];
+  scheduled_class_pass_students?: ClassPassStudent[];
   moved_students?: AdjustmentStudent[];
   sick_leave_students?: AdjustmentStudent[];
 }
@@ -200,7 +212,7 @@ interface DisplayStudent {
   id?: number;
   studentId: number;
   name: string;
-  type: 'normal' | 'canceled' | 'rescheduled' | 'trial' | 'moved' | 'sick';
+  type: 'normal' | 'canceled' | 'rescheduled' | 'trial' | 'class_pass' | 'moved' | 'sick';
   badge?: string;
   title?: string;
   commentDone?: boolean;
@@ -411,6 +423,19 @@ const getDisplayStudents = (lesson: LessonItem): DisplayStudent[] => {
       absentMarked: !!student.absent_marked,
     }));
 
+  const classPassStudents: DisplayStudent[] = (lesson.scheduled_class_pass_students || [])
+    .filter((student) => isAdjustmentOnSelectedDate(student.date))
+    .map((student) => ({
+      id: student.booking_id,
+      studentId: student.student_id,
+      name: student.name,
+      type: 'class_pass',
+      badge: 'Class Pass',
+      title: student.pass_title,
+      commentDone: !!student.comment_done,
+      absentMarked: !!student.absent_marked,
+    }));
+
   const movedStudents: DisplayStudent[] = (lesson.moved_students || []).map((student) => ({
     id: student.adjustment_id,
     studentId: student.student_id,
@@ -444,6 +469,7 @@ const getDisplayStudents = (lesson: LessonItem): DisplayStudent[] => {
     ...normalStudents,
     ...rescheduledStudents,
     ...trialStudents,
+    ...classPassStudents,
     ...movedStudents,
     ...canceledStudents,
     ...sickStudents,

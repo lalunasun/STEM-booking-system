@@ -1,7 +1,7 @@
 // localStorage恢复到内存
 
 import {useUserStore} from "/@/store";
-import {USER_ID, USER_NAME, USER_TOKEN, ADMIN_USER_ID, ADMIN_USER_NAME, ADMIN_USER_TOKEN, ADMIN_USER_ROLE} from "/@/store/constants";
+import {USER_ID, USER_NAME, USER_TOKEN, USER_ALLOW_CLASS_PASS, ADMIN_USER_ID, ADMIN_USER_NAME, ADMIN_USER_TOKEN, ADMIN_USER_ROLE} from "/@/store/constants";
 
 export default function Initializer () {
   const userStore = useUserStore()
@@ -9,6 +9,7 @@ export default function Initializer () {
     state.user_id = localStorage.getItem(USER_ID)
     state.user_name = localStorage.getItem(USER_NAME)
     state.user_token = localStorage.getItem(USER_TOKEN)
+    state.user_allow_class_pass = localStorage.getItem(USER_ALLOW_CLASS_PASS) === '1'
 
     state.admin_user_id = localStorage.getItem(ADMIN_USER_ID)
     state.admin_user_name = localStorage.getItem(ADMIN_USER_NAME)

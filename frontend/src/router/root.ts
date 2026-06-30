@@ -153,6 +153,7 @@ const constantRouterMap = [
       { path: 'term', name: 'term', component: () => import('/@/views/admin/term.vue') },
       { path: 'time', name: 'time', component: () => import('/@/views/admin/time.vue') },
       { path: 'order', name: 'order', component: () => import('/@/views/admin/order.vue') },
+      { path: 'classPass', name: 'classPass', component: () => import('/@/views/admin/class-pass.vue') },
       { path: 'courseAdjustment', name: 'courseAdjustment', component: () => import('/@/views/admin/course-adjustment.vue') },
       { path: 'thing', name: 'thing', component: () => import('/@/views/admin/thing.vue') },
 

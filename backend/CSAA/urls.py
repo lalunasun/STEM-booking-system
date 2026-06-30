@@ -92,6 +92,12 @@ urlpatterns = [
     path('admin/courseAdjustment/recommendationOptions', views.admin.course_adjustment.recommendation_options_api),
     path('admin/courseAdjustment/addExtraRecommendation', views.admin.course_adjustment.add_extra_recommendation_api),
     path('admin/courseAdjustment/confirmMakeupSchedule', views.admin.course_adjustment.confirm_makeup_schedule_api),
+    path('admin/classPass/list', views.admin.class_pass.pass_list),
+    path('admin/classPass/create', views.admin.class_pass.pass_create),
+    path('admin/classPass/update', views.admin.class_pass.pass_update),
+    path('admin/classPass/booking/list', views.admin.class_pass.booking_list),
+    path('admin/classPass/booking/review', views.admin.class_pass.booking_review),
+    path('admin/classPass/booking/complete', views.admin.class_pass.booking_complete),
 
     # ----------------------------前台用户api-------------------------------------------
     path('index/classification/list', views.index.classification.list_api),  # 分类列表
@@ -130,5 +136,9 @@ urlpatterns = [
     path('index/courseAdjustment/list', views.index.course_adjustment.list_api),
     path('index/courseAdjustment/createCancel', views.index.course_adjustment.create_cancel_request),
     path('index/trial/create', views.index.trial.create),
+    path('index/classPass/list', views.index.class_pass.pass_list),
+    path('index/classPass/booking/list', views.index.class_pass.booking_list),
+    path('index/classPass/booking/create', views.index.class_pass.booking_create),
+    path('index/classPass/booking/cancel', views.index.class_pass.booking_cancel),
 
 ]

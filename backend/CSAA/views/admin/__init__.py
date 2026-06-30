@@ -21,3 +21,4 @@ from CSAA.views.admin.daily_adjustment import *
 from CSAA.views.admin.permanent_course_change import *
 from CSAA.views.admin.system_setting import *
 from CSAA.views.admin.student_attendance import *
+from CSAA.views.admin.class_pass import *

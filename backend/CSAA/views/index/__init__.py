@@ -11,3 +11,4 @@ from CSAA.views.index.term import *
 from CSAA.views.index.child import *
 from CSAA.views.index.course_adjustment import *
 from CSAA.views.index.trial import *
+from CSAA.views.index.class_pass import *

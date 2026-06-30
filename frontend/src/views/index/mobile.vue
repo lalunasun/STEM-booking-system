@@ -107,6 +107,23 @@
               </div>
               <p v-else class="muted">Nothing waiting right now.</p>
             </article>
+
+            <article v-if="canUseClassPass" class="status-card class-pass-card">
+              <div class="card-label">Class pass</div>
+              <h3>{{ selectedClassPasses.length > 0 ? 'Book with class pass' : 'No active pass' }}</h3>
+              <p v-if="selectedClassPasses.length > 0">
+                {{ selectedClassPasses[0].remaining_sessions }} sessions available for {{ selectedChild?.name || 'this child' }}.
+              </p>
+              <p v-else>Admin can issue a pass for selected parent accounts.</p>
+              <div v-if="selectedClassPassBookings.length > 0" class="class-pass-summary">
+                <span v-for="item in selectedClassPassBookings.slice(0, 2)" :key="`cp-${item.id}`">
+                  {{ item.requested_date }} · {{ item.requested_class_name }} · {{ item.status }}
+                </span>
+              </div>
+              <button class="mini-action" :disabled="selectedClassPasses.length <= 0" @click="openClassPassPanel">
+                Request a time
+              </button>
+            </article>
           </section>
 
           <section class="message-panel">
@@ -362,6 +379,68 @@
           </div>
         </section>
       </div>
+
+      <div v-if="classPassPanelOpen" class="mobile-sheet-backdrop" @click.self="closeClassPassPanel">
+        <section class="mobile-sheet">
+          <header class="mobile-sheet-head">
+            <div>
+              <div class="card-label">Class pass</div>
+              <h2>{{ selectedChild?.name || 'Student' }}</h2>
+            </div>
+            <button aria-label="Close class pass booking" @click="closeClassPassPanel">Ã—</button>
+          </header>
+
+          <template v-if="selectedClassPasses.length > 0">
+            <label class="sheet-field-label">Pass</label>
+            <div class="reschedule-order-list">
+              <button
+                v-for="item in selectedClassPasses"
+                :key="`pass-${item.id}`"
+                :class="{ active: String(classPassForm.class_pass_id) === String(item.id) }"
+                @click="classPassForm.class_pass_id = item.id"
+              >
+                <strong>{{ item.title || 'Class Pass' }}</strong>
+                <span>{{ item.remaining_sessions }} sessions left · valid until {{ item.valid_until || 'no end date' }}</span>
+              </button>
+            </div>
+
+            <label class="sheet-field-label">Class time</label>
+            <div class="reschedule-order-list class-pass-slot-list">
+              <button
+                v-for="slot in classPassSlots"
+                :key="`cp-slot-${slot.id}`"
+                :class="{ active: String(classPassForm.requested_class_id) === String(slot.id) }"
+                @click="classPassForm.requested_class_id = slot.id"
+              >
+                <strong>{{ slot.title || 'Class' }}</strong>
+                <span>{{ slot.day || 'Day TBD' }} | {{ slot.time_title || 'Time TBD' }} | {{ slot.room_title || 'Room TBD' }}</span>
+              </button>
+            </div>
+
+            <label class="sheet-field-label">Requested date</label>
+            <input v-model="classPassForm.requested_date" class="sheet-input" type="date" />
+
+            <label class="sheet-field-label">Message to admin</label>
+            <textarea v-model="classPassForm.parent_note" class="sheet-textarea" rows="3" placeholder="Optional note"></textarea>
+
+            <button class="primary-action full-action" :disabled="classPassForm.submitting" @click="submitClassPassBooking">
+              {{ classPassForm.submitting ? 'Submitting...' : 'Submit request' }}
+            </button>
+
+            <div v-if="selectedClassPassBookings.length > 0" class="adjustment-history sheet-history">
+              <div class="card-label">Class pass requests</div>
+              <article v-for="item in selectedClassPassBookings.slice(0, 5)" :key="`class-pass-booking-${item.id}`">
+                <div class="adjustment-title">
+                  <strong>{{ item.requested_class_name || 'Class' }}</strong>
+                  <span :class="`adjustment-status status-${item.status}`">{{ item.status }}</span>
+                </div>
+                <p>{{ item.requested_date }} · {{ item.requested_class_day || '' }} {{ item.requested_class_time || '' }}</p>
+              </article>
+            </div>
+          </template>
+          <p v-else class="muted">No active class pass is available for this child.</p>
+        </section>
+      </div>
     </main>
 
     <nav class="mobile-tabbar">
@@ -382,6 +461,11 @@ import { listApi as listThingList } from '/@/api/index/thing';
 import { listApi as listChildApi } from '/@/api/index/child';
 import { userOrderListApi } from '/@/api/index/order';
 import { createCancelRequestApi, listCourseAdjustmentsApi } from '/@/api/index/course-adjustment';
+import {
+  bookingCreateApi as createClassPassBookingApi,
+  bookingListApi as listClassPassBookingApi,
+  passListApi as listClassPassApi,
+} from '/@/api/index/class-pass';
 import { BASE_URL } from '/@/store/constants';
 import { useUserStore } from '/@/store';
 
@@ -397,11 +481,19 @@ const selectedOrder = ref(null);
 const profileMenuOpen = ref(false);
 const bookPanelOpen = ref(false);
 const reschedulePanelOpen = ref(false);
+const classPassPanelOpen = ref(false);
 const scheduleChange = reactive({
   orderId: '',
   order: null,
   lessonDate: '',
   parentNote: '',
+  submitting: false,
+});
+const classPassForm = reactive({
+  class_pass_id: '',
+  requested_class_id: '',
+  requested_date: '',
+  parent_note: '',
   submitting: false,
 });
 
@@ -445,6 +537,8 @@ const homeData = reactive({
   children: [],
   orders: [],
   adjustments: [],
+  classPasses: [],
+  classPassBookings: [],
 });
 
 const selectedCategoryKey = ref('-1');
@@ -497,15 +591,22 @@ const loadCategories = () => {
 
 const loadHomeData = () => {
   homeData.loading = true;
-  Promise.all([
+  const requests = [
     listChildApi({ parent: userStore.user_id }),
     userOrderListApi({ userId: userStore.user_id, orderStatus: '' }),
     listCourseAdjustmentsApi({ parent_id: userStore.user_id }),
-  ])
-    .then(([childrenRes, ordersRes, adjustmentsRes]) => {
+  ];
+  if (canUseClassPass.value) {
+    requests.push(listClassPassApi({}));
+    requests.push(listClassPassBookingApi({}));
+  }
+  Promise.all(requests)
+    .then(([childrenRes, ordersRes, adjustmentsRes, passesRes, bookingsRes]) => {
       homeData.children = childrenRes.data || [];
       homeData.orders = ordersRes.data || [];
       homeData.adjustments = adjustmentsRes.data || [];
+      homeData.classPasses = passesRes?.data || [];
+      homeData.classPassBookings = bookingsRes?.data || [];
       if (!selectedChildId.value && homeData.children.length > 0) {
         selectedChildId.value = homeData.children[0].id;
       }
@@ -668,6 +769,40 @@ const systemMessages = computed(() => selectedAdjustments.value.map((item) => ({
 const selectedComments = computed(() => (
   selectedChild.value?.course_comments || []
 ));
+
+const canUseClassPass = computed(() => (
+  userStore.user_allow_class_pass === true || userStore.user_allow_class_pass === '1'
+));
+
+const selectedClassPasses = computed(() => {
+  if (!selectedChildId.value) {
+    return [];
+  }
+  return (homeData.classPasses || []).filter((item) => (
+    String(item.child) === String(selectedChildId.value)
+    && item.status === 'active'
+    && Number(item.remaining_sessions || 0) > 0
+  ));
+});
+
+const selectedClassPassBookings = computed(() => {
+  if (!selectedChildId.value) {
+    return [];
+  }
+  return (homeData.classPassBookings || []).filter((item) => (
+    String(item.child) === String(selectedChildId.value)
+  ));
+});
+
+const classPassSlots = computed(() => pageData.things
+  .filter((item) => String(item.classification_title || '').trim().toLowerCase() !== 'trial')
+  .sort((a, b) => {
+    const titleCompare = String(a.title || '').localeCompare(String(b.title || ''));
+    if (titleCompare !== 0) return titleCompare;
+    const dayCompare = dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
+    if (dayCompare !== 0) return dayCompare;
+    return String(a.time_title || '').localeCompare(String(b.time_title || ''));
+  }));
 
 const actionItems = computed(() => {
   const items = [];
@@ -973,6 +1108,8 @@ const logoutMobile = async () => {
   homeData.children = [];
   homeData.orders = [];
   homeData.adjustments = [];
+  homeData.classPasses = [];
+  homeData.classPassBookings = [];
   message.success('Logged out');
   scrollHome();
 };
@@ -1014,6 +1151,62 @@ const closeReschedulePanel = () => {
   scheduleChange.orderId = '';
   scheduleChange.lessonDate = '';
   scheduleChange.parentNote = '';
+};
+
+const openClassPassPanel = () => {
+  if (!userStore.user_token) {
+    router.push({ name: 'login', query: { redirect: '/index/mobile' } });
+    return;
+  }
+  if (selectedClassPasses.value.length <= 0) {
+    message.info('No active class pass is available for this child.');
+    return;
+  }
+  classPassForm.class_pass_id = selectedClassPasses.value[0].id;
+  classPassForm.requested_class_id = classPassSlots.value[0]?.id || '';
+  classPassForm.requested_date = '';
+  classPassForm.parent_note = '';
+  classPassPanelOpen.value = true;
+};
+
+const closeClassPassPanel = () => {
+  classPassPanelOpen.value = false;
+  classPassForm.class_pass_id = '';
+  classPassForm.requested_class_id = '';
+  classPassForm.requested_date = '';
+  classPassForm.parent_note = '';
+};
+
+const submitClassPassBooking = () => {
+  if (classPassForm.submitting) {
+    return;
+  }
+  if (!classPassForm.class_pass_id || !classPassForm.requested_class_id || !classPassForm.requested_date) {
+    message.error('Please select a pass, class, and date');
+    return;
+  }
+  classPassForm.submitting = true;
+  createClassPassBookingApi({
+    class_pass_id: classPassForm.class_pass_id,
+    requested_class_id: classPassForm.requested_class_id,
+    requested_date: classPassForm.requested_date,
+    parent_note: classPassForm.parent_note,
+  })
+    .then((res) => {
+      if (res.code !== 0) {
+        message.error(res.msg || 'Submit failed');
+        return;
+      }
+      message.success(res.msg || 'Class pass request submitted');
+      closeClassPassPanel();
+      loadHomeData();
+    })
+    .catch((err) => {
+      message.error(err.msg || 'Submit failed');
+    })
+    .finally(() => {
+      classPassForm.submitting = false;
+    });
 };
 
 const submitMobileScheduleChange = () => {
@@ -1589,6 +1782,41 @@ const scrollKids = () => {
   background: #fff3e8;
 }
 
+.class-pass-card {
+  background: #f5fffb;
+  border-color: #b7f0df;
+}
+
+.class-pass-summary {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.class-pass-summary span {
+  color: #1f7a8c;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.mini-action {
+  height: 34px;
+  margin-top: 12px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 14px;
+  background: #1f7a8c;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.mini-action:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
 .muted {
   margin-top: 12px !important;
   color: #6b7f94;
@@ -2077,6 +2305,22 @@ const scrollKids = () => {
   background: #fff;
   color: #17324d;
   font: inherit;
+}
+
+.sheet-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid #cbdde5;
+  border-radius: 8px;
+  background: #fff;
+  color: #17324d;
+  font: inherit;
+}
+
+.class-pass-slot-list {
+  max-height: 240px;
+  overflow-y: auto;
 }
 
 .full-action {
