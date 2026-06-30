@@ -35,30 +35,63 @@
 
     <a-spin :spinning="loading">
       <div class="classroom-grid">
-        <aside class="time-slot-list">
-          <section v-for="group in timeSlotGroups" :key="group.time" class="time-slot-group">
-            <header class="time-slot-head">
-              <span>{{ group.time }}</span>
-              <small>{{ group.lessonRows.length }} class{{ group.lessonRows.length === 1 ? '' : 'es' }}</small>
-            </header>
-            <div v-if="group.lessonRows.length" class="time-slot-lessons">
-              <button
-                v-for="row in group.lessonRows"
-                :key="row.key"
-                type="button"
-                class="lesson-button"
-                :class="{ active: selectedLessonKey === row.key }"
-                :style="getRoomColorStyle(row.lesson.room_id)"
-                @click="selectLesson(row.lesson)"
-              >
-                <span class="lesson-name">{{ row.lesson.class_name || 'Untitled class' }}</span>
-                <span class="lesson-meta">
-                  {{ row.lesson.room_name || 'No room' }} - {{ row.activeCount }}/{{ row.capacity }}
-                </span>
-              </button>
-            </div>
-            <div v-else class="empty-time-slot">No class</div>
-          </section>
+        <aside class="room-browser">
+          <div class="room-tabs">
+            <button
+              v-for="room in roomPages"
+              :key="`tab-${room.key}`"
+              type="button"
+              :class="{ active: activeRoomKey === room.key }"
+              :style="getRoomColorStyle(room.roomId)"
+              @click="scrollToRoom(room.key)"
+            >
+              {{ room.roomName }}
+            </button>
+          </div>
+
+          <div ref="roomPager" class="room-page-strip" @scroll.passive="syncRoomFromScroll">
+            <section
+              v-for="room in roomPages"
+              :key="room.key"
+              class="room-page"
+              :data-room-key="room.key"
+              :style="getRoomColorStyle(room.roomId)"
+            >
+              <header class="room-page-head">
+                <div>
+                  <h2>{{ room.roomName }}</h2>
+                  <p>{{ room.lessonCount }} classes - {{ room.studentCount }} active students</p>
+                </div>
+              </header>
+
+              <div class="time-slot-list">
+                <section v-for="group in room.timeSlotGroups" :key="`${room.key}-${group.time}`" class="time-slot-group">
+                  <header class="time-slot-head">
+                    <span>{{ group.time }}</span>
+                    <small>{{ group.lessonRows.length }} class{{ group.lessonRows.length === 1 ? '' : 'es' }}</small>
+                  </header>
+                  <div v-if="group.lessonRows.length" class="time-slot-lessons">
+                    <button
+                      v-for="row in group.lessonRows"
+                      :key="row.key"
+                      type="button"
+                      class="lesson-button"
+                      :class="{ active: selectedLessonKey === row.key }"
+                      :style="getRoomColorStyle(row.lesson.room_id)"
+                      @click="selectLesson(row.lesson)"
+                    >
+                      <span class="lesson-name">{{ row.lesson.class_name || 'Untitled class' }}</span>
+                      <span class="lesson-meta">
+                        {{ row.activeCount }}/{{ row.capacity }} students
+                      </span>
+                    </button>
+                  </div>
+                  <div v-else class="empty-time-slot">No class</div>
+                </section>
+              </div>
+            </section>
+          </div>
+          <a-empty v-if="!roomPages.length" description="No classrooms on this date" />
         </aside>
 
         <main class="lesson-panel">
@@ -146,7 +179,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import dayjs, { Dayjs } from 'dayjs';
 import { message } from 'ant-design-vue';
@@ -248,6 +281,15 @@ interface TimeSlotGroup {
   lessonRows: ClassroomLessonRow[];
 }
 
+interface RoomPage {
+  key: string;
+  roomId?: number;
+  roomName: string;
+  lessonCount: number;
+  studentCount: number;
+  timeSlotGroups: TimeSlotGroup[];
+}
+
 const roomColorPalette = [
   { bg: '#edf5ff', border: '#78a9e6', text: '#184f90' },
   { bg: '#eef9f1', border: '#72b989', text: '#25633a' },
@@ -266,6 +308,8 @@ const lessons = ref<LessonItem[]>([]);
 const timeSlots = ref<TimeSlot[]>([]);
 const loading = ref(false);
 const selectedLessonKey = ref('');
+const activeRoomKey = ref('');
+const roomPager = ref<HTMLElement | null>(null);
 const studentNotes = ref<Record<string, string>>({});
 const showEmptyClasses = ref(true);
 
@@ -346,6 +390,47 @@ const timeSlotGroups = computed<TimeSlotGroup[]>(() => {
     }));
 });
 
+const roomPages = computed<RoomPage[]>(() => {
+  const rooms = new Map<string, { key: string; roomId?: number; roomName: string; rows: ClassroomLessonRow[] }>();
+  lessonRows.value.forEach((row) => {
+    const roomId = Number(row.lesson.room_id || 0) || undefined;
+    const key = roomId ? String(roomId) : `room-${row.lesson.room_name || 'none'}`;
+    if (!rooms.has(key)) {
+      rooms.set(key, {
+        key,
+        roomId,
+        roomName: row.lesson.room_name || 'No room',
+        rows: [],
+      });
+    }
+    rooms.get(key)?.rows.push(row);
+  });
+
+  return Array.from(rooms.values())
+    .sort((a, b) => a.roomName.localeCompare(b.roomName))
+    .map((room) => {
+      const timeLabels = new Set<string>();
+      timeSlots.value.forEach((slot) => timeLabels.add(normalizeTime(slot.time)));
+      room.rows.forEach((row) => timeLabels.add(normalizeTime(row.lesson.time)));
+      const visibleRoomRows = visibleLessonRows.value.filter((row) => roomKey(row.lesson) === room.key);
+      return {
+        key: room.key,
+        roomId: room.roomId,
+        roomName: room.roomName,
+        lessonCount: visibleRoomRows.length,
+        studentCount: visibleRoomRows.reduce((sum, row) => sum + row.activeCount, 0),
+        timeSlotGroups: Array.from(timeLabels)
+          .sort((a, b) => timeSortValue(a) - timeSortValue(b) || a.localeCompare(b))
+          .map((time) => ({
+            time,
+            lessonRows: visibleRoomRows
+              .filter((row) => normalizeTime(row.lesson.time) === time)
+              .sort((a, b) => String(a.lesson.class_name || '').localeCompare(String(b.lesson.class_name || ''))),
+          })),
+      };
+    });
+});
+
 const selectedLessonRow = computed(() =>
   visibleLessonRows.value.find((row) => row.key === selectedLessonKey.value) || visibleLessonRows.value[0]
 );
@@ -367,6 +452,13 @@ const visibleStudents = computed(() => {
 watch(selectedLessonRow, (row) => {
   if (row) {
     selectedLessonKey.value = row.key;
+    activeRoomKey.value = roomKey(row.lesson);
+  }
+});
+
+watch(roomPages, (pages) => {
+  if (!activeRoomKey.value && pages.length > 0) {
+    activeRoomKey.value = pages[0].key;
   }
 });
 
@@ -405,9 +497,37 @@ const buildNoteMap = (items: any[]) => {
 };
 
 const lessonKey = (lesson: LessonItem) => String(lesson.lesson_id || lesson.id);
+const roomKey = (lesson: LessonItem) => {
+  const roomId = Number(lesson.room_id || 0) || undefined;
+  return roomId ? String(roomId) : `room-${lesson.room_name || 'none'}`;
+};
 
 const selectLesson = (lesson: LessonItem) => {
   selectedLessonKey.value = lessonKey(lesson);
+  activeRoomKey.value = roomKey(lesson);
+};
+
+const scrollToRoom = async (key: string) => {
+  activeRoomKey.value = key;
+  await nextTick();
+  const target = roomPager.value?.querySelector(`[data-room-key="${key}"]`) as HTMLElement | null;
+  target?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+};
+
+const syncRoomFromScroll = () => {
+  const pager = roomPager.value;
+  if (!pager) return;
+  const pages = Array.from(pager.querySelectorAll<HTMLElement>('.room-page'));
+  let bestKey = activeRoomKey.value;
+  let bestDistance = Number.MAX_SAFE_INTEGER;
+  pages.forEach((page) => {
+    const distance = Math.abs(page.offsetLeft - pager.scrollLeft);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestKey = page.dataset.roomKey || bestKey;
+    }
+  });
+  activeRoomKey.value = bestKey;
 };
 
 const shiftDate = (days: number) => {
@@ -707,17 +827,90 @@ const openStudent = (student: DisplayStudent) => {
 
 .classroom-grid {
   display: grid;
-  grid-template-columns: minmax(245px, 30%) 1fr;
+  grid-template-columns: minmax(360px, 42%) 1fr;
   gap: 16px;
+}
+
+.room-browser {
+  min-width: 0;
+}
+
+.room-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+}
+
+.room-tabs button {
+  flex: 0 0 auto;
+  min-width: 96px;
+  min-height: 38px;
+  border: 1px solid var(--room-border);
+  border-radius: 8px;
+  background: var(--room-bg);
+  color: var(--room-text);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.room-tabs button.active {
+  background: #fff;
+  box-shadow: inset 0 -3px 0 var(--room-border);
+}
+
+.room-page-strip {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  padding-bottom: 8px;
+}
+
+.room-page {
+  flex: 0 0 100%;
+  min-width: 0;
+  scroll-snap-align: start;
+  border: 2px solid var(--room-border);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.room-page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--room-border);
+  background: var(--room-bg);
+  color: var(--room-text);
+}
+
+.room-page-head h2 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.room-page-head p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .time-slot-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  max-height: calc(100vh - 220px);
+  gap: 10px;
+  max-height: calc(100vh - 278px);
   overflow: auto;
-  padding-right: 4px;
+  padding: 10px;
 }
 
 .time-slot-group {
@@ -932,15 +1125,16 @@ const openStudent = (student: DisplayStudent) => {
     grid-template-columns: 1fr;
   }
 
-  .time-slot-list {
-    flex-direction: row;
-    max-height: none;
-    overflow-x: auto;
-    padding-bottom: 8px;
+  .room-page-strip {
+    max-width: calc(100vw - 32px);
   }
 
-  .time-slot-group {
-    flex: 0 0 260px;
+  .room-page {
+    flex-basis: 100%;
+  }
+
+  .time-slot-list {
+    max-height: 460px;
   }
 
   .lesson-button {
