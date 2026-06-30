@@ -34,8 +34,8 @@
     </div>
 
     <a-spin :spinning="loading">
-      <div class="classroom-grid">
-        <aside class="room-browser">
+      <div class="classroom-board">
+        <div class="room-browser">
           <div class="room-tabs">
             <button
               v-for="room in roomPages"
@@ -71,20 +71,60 @@
                     <small>{{ group.lessonRows.length }} class{{ group.lessonRows.length === 1 ? '' : 'es' }}</small>
                   </header>
                   <div v-if="group.lessonRows.length" class="time-slot-lessons">
-                    <button
+                    <article
                       v-for="row in group.lessonRows"
                       :key="row.key"
-                      type="button"
-                      class="lesson-button"
-                      :class="{ active: selectedLessonKey === row.key }"
+                      class="class-card"
                       :style="getRoomColorStyle(row.lesson.room_id)"
-                      @click="selectLesson(row.lesson)"
                     >
-                      <span class="lesson-name">{{ row.lesson.class_name || 'Untitled class' }}</span>
-                      <span class="lesson-meta">
-                        {{ row.activeCount }}/{{ row.capacity }} students
-                      </span>
-                    </button>
+                      <div class="class-card-head">
+                        <div>
+                          <strong>{{ row.lesson.class_name || 'Untitled class' }}</strong>
+                          <span>{{ row.lesson.time || group.time }} - {{ row.activeCount }}/{{ row.capacity }}</span>
+                        </div>
+                      </div>
+
+                      <div v-if="row.activeStudents.length" class="class-students">
+                        <div
+                          v-for="student in row.activeStudents"
+                          :key="`${row.key}-${student.type}-${student.studentId}-${student.id || 0}`"
+                          class="student-inline-card"
+                          :class="student.type"
+                        >
+                          <div class="student-inline-main">
+                            <div class="student-name-row">
+                              <button type="button" class="student-name" @click="openStudent(student)">
+                                {{ student.name }}
+                              </button>
+                              <a-tag v-if="student.badge" :color="studentTagColor(student.type)">{{ student.badge }}</a-tag>
+                              <a-tag v-if="student.absentMarked" color="red">Absent</a-tag>
+                              <a-tag v-else-if="student.commentDone" color="green">Done</a-tag>
+                              <a-tag v-else color="orange">Need comment</a-tag>
+                            </div>
+                            <div class="student-subline">
+                              <span v-if="student.title">{{ student.title }}</span>
+                              <span v-if="getStudentNote(row.lesson, student)" class="student-note">
+                                Note: {{ getStudentNote(row.lesson, student) }}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div class="student-inline-actions">
+                            <a-button
+                              size="small"
+                              :type="student.absentMarked ? 'default' : 'primary'"
+                              @click="toggleAbsent(student, row.lesson)"
+                            >
+                              {{ student.absentMarked ? 'Present' : 'Absent' }}
+                            </a-button>
+                            <a-button size="small" @click="openComment(student, row.lesson)">Comment</a-button>
+                            <a-button size="small" @click="openNote(student, row.lesson)">Note</a-button>
+                            <a-button size="small" @click="openStudent(student)">Profile</a-button>
+                          </div>
+                        </div>
+                      </div>
+                      <div v-else class="empty-student-list">No active students</div>
+                    </article>
                   </div>
                   <div v-else class="empty-time-slot">No class</div>
                 </section>
@@ -92,7 +132,7 @@
             </section>
           </div>
           <a-empty v-if="!roomPages.length" description="No classrooms on this date" />
-        </aside>
+        </div>
 
         <main class="lesson-panel">
           <template v-if="selectedLesson">
@@ -326,8 +366,10 @@ const noteModal = reactive({
 const commentModal = reactive({
   visible: false,
   saving: false,
+  lessonId: 0,
   studentId: 0,
   studentName: '',
+  className: '',
   content: '',
 });
 
@@ -693,13 +735,14 @@ const noteKey = (lessonId: number, studentId: number) => `${lessonId}-${studentI
 const getStudentNote = (lesson: LessonItem, student: DisplayStudent) =>
   studentNotes.value[noteKey(Number(lesson.lesson_id || lesson.id), student.studentId)] || '';
 
-const openNote = (student: DisplayStudent) => {
-  if (!selectedLesson.value) return;
-  noteModal.lessonId = Number(selectedLesson.value.lesson_id || selectedLesson.value.id);
+const openNote = (student: DisplayStudent, lesson = selectedLesson.value) => {
+  if (!lesson) return;
+  selectLesson(lesson);
+  noteModal.lessonId = Number(lesson.lesson_id || lesson.id);
   noteModal.studentId = student.studentId;
   noteModal.studentName = student.name;
-  noteModal.className = selectedLesson.value.class_name || 'Untitled class';
-  noteModal.note = getStudentNote(selectedLesson.value, student);
+  noteModal.className = lesson.class_name || 'Untitled class';
+  noteModal.note = getStudentNote(lesson, student);
   noteModal.visible = true;
 };
 
@@ -723,15 +766,19 @@ const saveStudentNote = async () => {
   }
 };
 
-const openComment = (student: DisplayStudent) => {
+const openComment = (student: DisplayStudent, lesson = selectedLesson.value) => {
+  if (!lesson) return;
+  selectLesson(lesson);
+  commentModal.lessonId = Number(lesson.lesson_id || lesson.id);
   commentModal.studentId = student.studentId;
   commentModal.studentName = student.name;
+  commentModal.className = lesson.class_name || 'Untitled class';
   commentModal.content = '';
   commentModal.visible = true;
 };
 
 const saveStudentComment = async () => {
-  if (!selectedLesson.value) return;
+  if (!commentModal.lessonId) return;
   const content = commentModal.content.trim();
   if (!content) {
     message.warning('Please enter a comment');
@@ -741,7 +788,7 @@ const saveStudentComment = async () => {
   try {
     await createCommentApi({
       student_id: commentModal.studentId,
-      lesson_id: Number(selectedLesson.value.lesson_id || selectedLesson.value.id),
+      lesson_id: commentModal.lessonId,
       lesson_date: selectedDate.value.format('YYYY-MM-DD'),
       content,
     });
@@ -755,11 +802,12 @@ const saveStudentComment = async () => {
   }
 };
 
-const toggleAbsent = async (student: DisplayStudent) => {
-  if (!selectedLesson.value) return;
+const toggleAbsent = async (student: DisplayStudent, lesson = selectedLesson.value) => {
+  if (!lesson) return;
+  selectLesson(lesson);
   try {
     await markAbsentApi({
-      lesson_id: Number(selectedLesson.value.lesson_id || selectedLesson.value.id),
+      lesson_id: Number(lesson.lesson_id || lesson.id),
       student_id: student.studentId,
       lesson_date: selectedDate.value.format('YYYY-MM-DD'),
       is_absent: !student.absentMarked,
@@ -825,10 +873,8 @@ const openStudent = (student: DisplayStudent) => {
   max-width: 420px;
 }
 
-.classroom-grid {
-  display: grid;
-  grid-template-columns: minmax(360px, 42%) 1fr;
-  gap: 16px;
+.classroom-board {
+  min-width: 0;
 }
 
 .room-browser {
@@ -863,7 +909,6 @@ const openStudent = (student: DisplayStudent) => {
 
 .room-page-strip {
   display: flex;
-  gap: 12px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   scroll-behavior: smooth;
@@ -908,7 +953,7 @@ const openStudent = (student: DisplayStudent) => {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: calc(100vh - 278px);
+  max-height: calc(100vh - 250px);
   overflow: auto;
   padding: 10px;
 }
@@ -950,45 +995,81 @@ const openStudent = (student: DisplayStudent) => {
   font-size: 13px;
 }
 
-.lesson-button {
-  width: 100%;
+.class-card {
   border: 2px solid var(--room-border);
   background: var(--room-bg);
   color: var(--room-text);
   border-radius: 8px;
-  padding: 14px;
-  text-align: left;
-  cursor: pointer;
+  overflow: hidden;
 }
 
-.lesson-button.active {
-  box-shadow: 0 0 0 3px rgba(40, 111, 255, 0.18);
-  background: #fff;
+.class-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--room-border);
 }
 
-.lesson-time,
-.lesson-name,
-.lesson-meta {
+.class-card-head strong,
+.class-card-head span {
   display: block;
 }
 
-.lesson-time {
-  font-size: 14px;
-  color: #536178;
+.class-card-head strong {
+  font-size: 20px;
+  line-height: 1.2;
 }
 
-.lesson-name {
-  margin-top: 4px;
-  font-size: 20px;
+.class-card-head span {
+  margin-top: 2px;
+  font-size: 13px;
   font-weight: 700;
 }
 
-.lesson-meta {
-  margin-top: 4px;
-  font-size: 14px;
+.class-students {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.student-inline-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  border: 1px solid rgba(91, 110, 135, 0.2);
+  border-left: 5px solid #7399d5;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 10px;
+}
+
+.student-inline-card.trial {
+  border-left-color: #8f62cc;
+}
+
+.student-inline-card.rescheduled,
+.student-inline-card.moved {
+  border-left-color: #2f80ed;
+}
+
+.student-inline-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(72px, 1fr));
+  gap: 6px;
+}
+
+.empty-student-list {
+  padding: 12px;
+  color: #637083;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.62);
 }
 
 .lesson-panel {
+  display: none;
   min-height: 560px;
   background: #fff;
   border: 1px solid #dbe2ec;
@@ -1121,10 +1202,6 @@ const openStudent = (student: DisplayStudent) => {
     max-width: none;
   }
 
-  .classroom-grid {
-    grid-template-columns: 1fr;
-  }
-
   .room-page-strip {
     max-width: calc(100vw - 32px);
   }
@@ -1137,8 +1214,12 @@ const openStudent = (student: DisplayStudent) => {
     max-height: 460px;
   }
 
-  .lesson-button {
-    min-width: 0;
+  .student-inline-card {
+    grid-template-columns: 1fr;
+  }
+
+  .student-inline-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>
