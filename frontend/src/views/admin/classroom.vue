@@ -35,21 +35,30 @@
 
     <a-spin :spinning="loading">
       <div class="classroom-grid">
-        <aside class="lesson-list">
-          <button
-            v-for="row in visibleLessonRows"
-            :key="row.key"
-            type="button"
-            class="lesson-button"
-            :class="{ active: selectedLessonKey === row.key }"
-            :style="getRoomColorStyle(row.lesson.room_id)"
-            @click="selectLesson(row.lesson)"
-          >
-            <span class="lesson-time">{{ row.lesson.time || '-' }}</span>
-            <span class="lesson-name">{{ row.lesson.class_name || 'Untitled class' }}</span>
-            <span class="lesson-meta">{{ row.lesson.room_name || 'No room' }} - {{ row.activeCount }}/{{ row.capacity }}</span>
-          </button>
-          <a-empty v-if="!visibleLessonRows.length" description="No classes on this date" />
+        <aside class="time-slot-list">
+          <section v-for="group in timeSlotGroups" :key="group.time" class="time-slot-group">
+            <header class="time-slot-head">
+              <span>{{ group.time }}</span>
+              <small>{{ group.lessonRows.length }} class{{ group.lessonRows.length === 1 ? '' : 'es' }}</small>
+            </header>
+            <div v-if="group.lessonRows.length" class="time-slot-lessons">
+              <button
+                v-for="row in group.lessonRows"
+                :key="row.key"
+                type="button"
+                class="lesson-button"
+                :class="{ active: selectedLessonKey === row.key }"
+                :style="getRoomColorStyle(row.lesson.room_id)"
+                @click="selectLesson(row.lesson)"
+              >
+                <span class="lesson-name">{{ row.lesson.class_name || 'Untitled class' }}</span>
+                <span class="lesson-meta">
+                  {{ row.lesson.room_name || 'No room' }} - {{ row.activeCount }}/{{ row.capacity }}
+                </span>
+              </button>
+            </div>
+            <div v-else class="empty-time-slot">No class</div>
+          </section>
         </aside>
 
         <main class="lesson-panel">
@@ -142,6 +151,7 @@ import { useRouter } from 'vue-router';
 import dayjs, { Dayjs } from 'dayjs';
 import { message } from 'ant-design-vue';
 import { listApi as listLessonsApi } from '/@/api/admin/lesson';
+import { listApi as listTimeApi } from '/@/api/admin/time';
 import { listApi as listNoteApi, saveApi as saveNoteApi } from '/@/api/admin/student-lesson-note';
 import { markAbsentApi } from '/@/api/admin/student-attendance';
 import { createCommentApi } from '/@/api/admin/student';
@@ -188,6 +198,11 @@ interface ClassPassStudent {
   absent_marked?: boolean;
 }
 
+interface TimeSlot {
+  id: number;
+  time: string;
+}
+
 interface LessonItem {
   id: number;
   lesson_id?: number;
@@ -228,6 +243,11 @@ interface ClassroomLessonRow {
   capacity: number;
 }
 
+interface TimeSlotGroup {
+  time: string;
+  lessonRows: ClassroomLessonRow[];
+}
+
 const roomColorPalette = [
   { bg: '#edf5ff', border: '#78a9e6', text: '#184f90' },
   { bg: '#eef9f1', border: '#72b989', text: '#25633a' },
@@ -243,10 +263,11 @@ const router = useRouter();
 const selectedDate = ref<Dayjs>(dayjs());
 const studentKeyword = ref('');
 const lessons = ref<LessonItem[]>([]);
+const timeSlots = ref<TimeSlot[]>([]);
 const loading = ref(false);
 const selectedLessonKey = ref('');
 const studentNotes = ref<Record<string, string>>({});
-const showEmptyClasses = ref(false);
+const showEmptyClasses = ref(true);
 
 const noteModal = reactive({
   visible: false,
@@ -287,6 +308,16 @@ const lessonRows = computed<ClassroomLessonRow[]>(() =>
     })
 );
 
+const normalizeTime = (value?: string) => String(value || '').trim() || 'Time TBD';
+
+const timeSortValue = (value?: string) => {
+  const match = normalizeTime(value).match(/^(\d{1,2})(?::(\d{2}))?/);
+  if (!match) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  return Number(match[1]) * 60 + Number(match[2] || 0);
+};
+
 const visibleLessonRows = computed(() => {
   const keyword = studentKeyword.value.trim().toLowerCase();
   return lessonRows.value
@@ -294,6 +325,25 @@ const visibleLessonRows = computed(() => {
     .filter((row) =>
       !keyword || row.students.some((student) => student.name.toLowerCase().includes(keyword))
     );
+});
+
+const timeSlotGroups = computed<TimeSlotGroup[]>(() => {
+  const timeLabels = new Set<string>();
+  timeSlots.value.forEach((slot) => timeLabels.add(normalizeTime(slot.time)));
+  lessonRows.value.forEach((row) => timeLabels.add(normalizeTime(row.lesson.time)));
+
+  return Array.from(timeLabels)
+    .sort((a, b) => timeSortValue(a) - timeSortValue(b) || a.localeCompare(b))
+    .map((time) => ({
+      time,
+      lessonRows: visibleLessonRows.value
+        .filter((row) => normalizeTime(row.lesson.time) === time)
+        .sort((a, b) =>
+          `${a.lesson.room_name || ''}-${a.lesson.class_name || ''}`.localeCompare(
+            `${b.lesson.room_name || ''}-${b.lesson.class_name || ''}`
+          )
+        ),
+    }));
 });
 
 const selectedLessonRow = computed(() =>
@@ -328,12 +378,14 @@ const loadClassroom = async () => {
   loading.value = true;
   try {
     const date = selectedDate.value.format('YYYY-MM-DD');
-    const [lessonRes, noteRes] = await Promise.all([
+    const [lessonRes, noteRes, timeRes] = await Promise.all([
       listLessonsApi({ date }),
       listNoteApi({ date }),
+      listTimeApi({}),
     ]);
     lessons.value = lessonRes.data || [];
     studentNotes.value = buildNoteMap(noteRes.data || []);
+    timeSlots.value = timeRes.data || [];
     if (!lessons.value.some((lesson) => lessonKey(lesson) === selectedLessonKey.value)) {
       selectedLessonKey.value = lessons.value[0] ? lessonKey(lessons.value[0]) : '';
     }
@@ -659,13 +711,50 @@ const openStudent = (student: DisplayStudent) => {
   gap: 16px;
 }
 
-.lesson-list {
+.time-slot-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   max-height: calc(100vh - 220px);
   overflow: auto;
   padding-right: 4px;
+}
+
+.time-slot-group {
+  border: 1px solid #dbe2ec;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.time-slot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  border-bottom: 1px solid #dbe2ec;
+  background: #f6f8fb;
+  color: #0b203b;
+  font-weight: 800;
+}
+
+.time-slot-head small {
+  color: #637083;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.time-slot-lessons {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+}
+
+.empty-time-slot {
+  padding: 12px;
+  color: #8a96a8;
+  font-size: 13px;
 }
 
 .lesson-button {
@@ -843,15 +932,19 @@ const openStudent = (student: DisplayStudent) => {
     grid-template-columns: 1fr;
   }
 
-  .lesson-list {
+  .time-slot-list {
     flex-direction: row;
     max-height: none;
     overflow-x: auto;
     padding-bottom: 8px;
   }
 
+  .time-slot-group {
+    flex: 0 0 260px;
+  }
+
   .lesson-button {
-    min-width: 230px;
+    min-width: 0;
   }
 }
 </style>
