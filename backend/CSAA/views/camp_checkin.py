@@ -1,6 +1,7 @@
 import datetime
 import csv
 import io
+from collections import defaultdict
 
 from django.http import HttpResponse
 from django.db import transaction
@@ -111,6 +112,65 @@ def _serialize_record(record):
     }
 
 
+def _empty_attendance_summary():
+    return {
+        'total_records': 0,
+        'signed_in_days': 0,
+        'signed_out_days': 0,
+        'late_arrivals': 0,
+        'late_pickups': 0,
+        'absent_days': 0,
+        'recent': [],
+    }
+
+
+def _build_attendance_summary(records, limit=5):
+    signed_in_statuses = {'signed_in', 'late', 'signed_out', 'early_pickup'}
+    signed_out_statuses = {'signed_out', 'early_pickup'}
+    ordered_records = sorted(records, key=lambda record: record.attendance_date, reverse=True)[:limit]
+
+    return {
+        'total_records': len(records),
+        'signed_in_days': sum(1 for record in records if record.sign_in_time or record.status in signed_in_statuses),
+        'signed_out_days': sum(1 for record in records if record.sign_out_time or record.status in signed_out_statuses),
+        'late_arrivals': sum(1 for record in records if record.status == 'late'),
+        'late_pickups': sum(1 for record in records if _serialize_record(record).get('late_pickup')),
+        'absent_days': sum(1 for record in records if record.status == 'absent'),
+        'recent': [
+            {
+                'date': record.attendance_date.isoformat(),
+                'status': record.status,
+                'sign_in_time': record.sign_in_time.isoformat() if record.sign_in_time else None,
+                'sign_out_time': record.sign_out_time.isoformat() if record.sign_out_time else None,
+                'late_pickup': _serialize_record(record).get('late_pickup'),
+                'late_pickup_minutes': _serialize_record(record).get('late_pickup_minutes'),
+            }
+            for record in ordered_records
+        ],
+    }
+
+
+def _attendance_summary_map(student_term_pairs):
+    pairs = {(student_id, term_id) for student_id, term_id in student_term_pairs if student_id}
+    if not pairs:
+        return {}
+
+    student_ids = {student_id for student_id, _term_id in pairs}
+    term_ids = {term_id for _student_id, term_id in pairs if term_id}
+    records = CampAttendance.objects.filter(student_id__in=student_ids)
+    if term_ids:
+        records = records.filter(term_id__in=term_ids)
+
+    grouped = defaultdict(list)
+    for record in records:
+        grouped[(record.student_id, record.term_id)].append(record)
+
+    return {
+        pair: _build_attendance_summary(grouped.get(pair, []))
+        for pair in pairs
+    }
+
+
 def _has_waiver(student_id, term_id):
     if not student_id or not term_id:
         return False
@@ -160,6 +220,10 @@ def _student_items(target_date):
     if enrollments:
         child_ids = [enrollment.student_id for enrollment in enrollments]
         records = _attendance_map(target_date, child_ids)
+        summaries = _attendance_summary_map(
+            (enrollment.student_id, enrollment.term_id)
+            for enrollment in enrollments
+        )
         items = []
         for enrollment in enrollments:
             student = enrollment.student
@@ -179,6 +243,7 @@ def _student_items(target_date):
                 'room_id': room.id if room else None,
                 'room_name': room.title if room else '',
                 'attendance': _serialize_record(records.get(student.id)),
+                'attendance_summary': summaries.get((student.id, enrollment.term_id), _empty_attendance_summary()),
                 'schedule_items': [{
                     'enrollment_id': enrollment.id,
                     'class_id': None,
@@ -195,6 +260,11 @@ def _student_items(target_date):
     orders = list(_scheduled_orders(target_date))
     child_ids = list({order.child_id for order in orders if order.child_id})
     records = _attendance_map(target_date, child_ids)
+    summaries = _attendance_summary_map(
+        (order.child_id, order.term_id)
+        for order in orders
+        if order.child_id
+    )
 
     grouped = {}
     for order in orders:
@@ -216,6 +286,7 @@ def _student_items(target_date):
             'room_id': order.thing.tag_id if order.thing else None,
             'room_name': order.thing.tag.title if order.thing and order.thing.tag else '',
             'attendance': _serialize_record(records.get(child.id)),
+            'attendance_summary': summaries.get((child.id, order.term_id), _empty_attendance_summary()),
             'schedule_items': [],
         })
         item['schedule_items'].append({

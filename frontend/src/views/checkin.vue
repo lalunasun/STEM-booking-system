@@ -111,6 +111,32 @@
               </span>
             </div>
 
+            <div v-if="student.attendance_summary" class="attendance-summary">
+              <div class="summary-header">
+                <strong>Attendance history</strong>
+                <span>{{ student.attendance_summary.total_records || 0 }} records</span>
+              </div>
+              <div class="summary-stats">
+                <span>In {{ student.attendance_summary.signed_in_days || 0 }}</span>
+                <span>Out {{ student.attendance_summary.signed_out_days || 0 }}</span>
+                <span>Late {{ student.attendance_summary.late_arrivals || 0 }}</span>
+                <span>Late pickup {{ student.attendance_summary.late_pickups || 0 }}</span>
+              </div>
+              <div v-if="student.attendance_summary.recent?.length" class="recent-list">
+                <span
+                  v-for="record in student.attendance_summary.recent"
+                  :key="`${student.student_id}-${record.date}`"
+                >
+                  {{ formatDate(record.date) }}:
+                  {{ statusText(record.status) }}
+                  <template v-if="record.sign_in_time"> · in {{ formatTime(record.sign_in_time) }}</template>
+                  <template v-if="record.sign_out_time"> · out {{ formatTime(record.sign_out_time) }}</template>
+                  <template v-if="record.late_pickup"> · late pickup {{ record.late_pickup_minutes }} min</template>
+                </span>
+              </div>
+              <p v-else class="no-history">No previous attendance records.</p>
+            </div>
+
             <div class="actions">
               <a-button
                 size="large"
@@ -355,6 +381,7 @@ const statusColor = (status: string) => ({
   absent: 'red',
 }[status] || 'default');
 
+const formatDate = (value: string) => dayjs(value).format('MMM D');
 const formatTime = (value: string) => dayjs(value).format('h:mm A');
 const normalizeRoom = (value: string) => String(value || '').replace(/\s+/g, '').toLowerCase();
 </script>
@@ -559,6 +586,54 @@ const normalizeRoom = (value: string) => String(value || '').replace(/\s+/g, '')
 
 .late-pickup {
   color: #b91c1c;
+}
+
+.attendance-summary {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid #dbe7f3;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #10233f;
+}
+
+.summary-header span {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.summary-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.summary-stats span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #eaf2ff;
+  color: #174ea6;
+  font-weight: 800;
+}
+
+.recent-list {
+  display: grid;
+  gap: 4px;
+  color: #475569;
+}
+
+.no-history {
+  margin: 0;
+  color: #64748b;
 }
 
 .waiver-copy {
