@@ -1,0 +1,793 @@
+{
+  "dataset": {
+    "name": "CSAA AI Student Learning Profile - 10 Student Test",
+    "version": "1.0",
+    "privacy": "Synthetic demo data only. No real student information.",
+    "purpose": "Small local test for Python analysis, AI comment summary, and support recommendations.",
+    "student_count": 10
+  },
+  "students": [
+    {
+      "student_id": "AI-001",
+      "student": {
+        "name": "Ava Chen",
+        "age": 8,
+        "gender": "F",
+        "parent_reference": "ai_parent_01"
+      },
+      "current_course": {
+        "name": "AI Test Robotics",
+        "category": "Robotics",
+        "term": "AI Project Test - Fall 2026",
+        "day": "Tue",
+        "time": "16:00-17:00",
+        "room": "AI Room 1"
+      },
+      "attendance_summary": {
+        "recorded_lessons": 4,
+        "attended": 4,
+        "absent": 0,
+        "attendance_rate": 1.0,
+        "completed_makeups": 0,
+        "pending_makeups": 0
+      },
+      "attendance_records": [
+        {
+          "date": "2026-09-08",
+          "course": "AI Test Robotics",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-15",
+          "course": "AI Test Robotics",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-22",
+          "course": "AI Test Robotics",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-29",
+          "course": "AI Test Robotics",
+          "status": "present"
+        }
+      ],
+      "makeup_records": [],
+      "teacher_comments": [
+        {
+          "date": "2026-09-08",
+          "course": "AI Test Robotics",
+          "comment": "Understands sequencing and follows the build instructions carefully."
+        },
+        {
+          "date": "2026-09-15",
+          "course": "AI Test Robotics",
+          "comment": "Can explain the loop used in today's robotics task."
+        },
+        {
+          "date": "2026-09-22",
+          "course": "AI Test Robotics",
+          "comment": "Next step: practice debugging independently before asking for help."
+        }
+      ],
+      "ai_input": {
+        "comment_text": "Understands sequencing and follows the build instructions carefully.\nCan explain the loop used in today's robotics task.\nNext step: practice debugging independently before asking for help.",
+        "review_required": true,
+        "suggested_tasks": [
+          "summarize_learning_progress",
+          "extract_strengths_and_needs_review_tags",
+          "identify_support_signal",
+          "recommend_next_teacher_action"
+        ]
+      }
+    },
+    {
+      "student_id": "AI-002",
+      "student": {
+        "name": "Noah Li",
+        "age": 9,
+        "gender": "M",
+        "parent_reference": "ai_parent_02"
+      },
+      "current_course": {
+        "name": "AI Test Robotics",
+        "category": "Robotics",
+        "term": "AI Project Test - Fall 2026",
+        "day": "Tue",
+        "time": "16:00-17:00",
+        "room": "AI Room 1"
+      },
+      "attendance_summary": {
+        "recorded_lessons": 4,
+        "attended": 3,
+        "absent": 1,
+        "attendance_rate": 0.75,
+        "completed_makeups": 1,
+        "pending_makeups": 0
+      },
+      "attendance_records": [
+        {
+          "date": "2026-09-08",
+          "course": "AI Test Robotics",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-15",
+          "course": "AI Test Robotics",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-22",
+          "course": "AI Test Robotics",
+          "status": "absent"
+        },
+        {
+          "date": "2026-09-29",
+          "course": "AI Test Robotics",
+          "status": "present"
+        }
+      ],
+      "makeup_records": [
+        {
+          "original_date": "2026-09-15",
+          "original_course": "AI Test Robotics",
+          "status": "completed",
+          "target_date": "2026-09-22",
+          "target_course": "AI Test Robotics"
+        }
+      ],
+      "teacher_comments": [
+        {
+          "date": "2026-09-08",
+          "course": "AI Test Robotics",
+          "comment": "Participates actively and collaborates well with a partner."
+        },
+        {
+          "date": "2026-09-15",
+          "course": "AI Test Robotics",
+          "comment": "Understands variables but sometimes changes more than one value at a time."
+        },
+        {
+          "date": "2026-09-22",
+          "course": "AI Test Robotics",
+          "comment": "Next step: test one change at a time and record the result."
+        }
+      ],
+      "ai_input": {
+        "comment_text": "Participates actively and collaborates well with a partner.\nUnderstands variables but sometimes changes more than one value at a time.\nNext step: test one change at a time and record the result.",
+        "review_required": true,
+        "suggested_tasks": [
+          "summarize_learning_progress",
+          "extract_strengths_and_needs_review_tags",
+          "identify_support_signal",
+          "recommend_next_teacher_action"
+        ]
+      }
+    },
+    {
+      "student_id": "AI-003",
+      "student": {
+        "name": "Emma Wang",
+        "age": 10,
+        "gender": "F",
+        "parent_reference": "ai_parent_03"
+      },
+      "current_course": {
+        "name": "AI Test Robotics",
+        "category": "Robotics",
+        "term": "AI Project Test - Fall 2026",
+        "day": "Tue",
+        "time": "16:00-17:00",
+        "room": "AI Room 1"
+      },
+      "attendance_summary": {
+        "recorded_lessons": 4,
+        "attended": 4,
+        "absent": 0,
+        "attendance_rate": 1.0,
+        "completed_makeups": 0,
+        "pending_makeups": 0
+      },
+      "attendance_records": [
+        {
+          "date": "2026-09-08",
+          "course": "AI Test Robotics",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-15",
+          "course": "AI Test Robotics",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-22",
+          "course": "AI Test Robotics",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-29",
+          "course": "AI Test Robotics",
+          "status": "present"
+        }
+      ],
+      "makeup_records": [],
+      "teacher_comments": [
+        {
+          "date": "2026-09-08",
+          "course": "AI Test Robotics",
+          "comment": "Completed the main challenge and attempted the extension activity."
+        },
+        {
+          "date": "2026-09-15",
+          "course": "AI Test Robotics",
+          "comment": "Shows strong pattern recognition in block-based coding."
+        },
+        {
+          "date": "2026-09-22",
+          "course": "AI Test Robotics",
+          "comment": "Next step: explain the solution using clearer technical vocabulary."
+        }
+      ],
+      "ai_input": {
+        "comment_text": "Completed the main challenge and attempted the extension activity.\nShows strong pattern recognition in block-based coding.\nNext step: explain the solution using clearer technical vocabulary.",
+        "review_required": true,
+        "suggested_tasks": [
+          "summarize_learning_progress",
+          "extract_strengths_and_needs_review_tags",
+          "identify_support_signal",
+          "recommend_next_teacher_action"
+        ]
+      }
+    },
+    {
+      "student_id": "AI-004",
+      "student": {
+        "name": "Liam Zhang",
+        "age": 11,
+        "gender": "M",
+        "parent_reference": "ai_parent_04"
+      },
+      "current_course": {
+        "name": "AI Test Robotics",
+        "category": "Robotics",
+        "term": "AI Project Test - Fall 2026",
+        "day": "Tue",
+        "time": "16:00-17:00",
+        "room": "AI Room 1"
+      },
+      "attendance_summary": {
+        "recorded_lessons": 4,
+        "attended": 4,
+        "absent": 0,
+        "attendance_rate": 1.0,
+        "completed_makeups": 0,
+        "pending_makeups": 0
+      },
+      "attendance_records": [
+        {
+          "date": "2026-09-08",
+          "course": "AI Test Robotics",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-15",
+          "course": "AI Test Robotics",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-22",
+          "course": "AI Test Robotics",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-29",
+          "course": "AI Test Robotics",
+          "status": "present"
+        }
+      ],
+      "makeup_records": [],
+      "teacher_comments": [
+        {
+          "date": "2026-09-08",
+          "course": "AI Test Robotics",
+          "comment": "Needs occasional reminders to read the full problem before coding."
+        },
+        {
+          "date": "2026-09-15",
+          "course": "AI Test Robotics",
+          "comment": "Improved after using a checklist to find syntax errors."
+        },
+        {
+          "date": "2026-09-22",
+          "course": "AI Test Robotics",
+          "comment": "Next step: continue using the debugging checklist each lesson."
+        }
+      ],
+      "ai_input": {
+        "comment_text": "Needs occasional reminders to read the full problem before coding.\nImproved after using a checklist to find syntax errors.\nNext step: continue using the debugging checklist each lesson.",
+        "review_required": true,
+        "suggested_tasks": [
+          "summarize_learning_progress",
+          "extract_strengths_and_needs_review_tags",
+          "identify_support_signal",
+          "recommend_next_teacher_action"
+        ]
+      }
+    },
+    {
+      "student_id": "AI-005",
+      "student": {
+        "name": "Mia Liu",
+        "age": 9,
+        "gender": "F",
+        "parent_reference": "ai_parent_05"
+      },
+      "current_course": {
+        "name": "AI Test Robotics",
+        "category": "Robotics",
+        "term": "AI Project Test - Fall 2026",
+        "day": "Tue",
+        "time": "16:00-17:00",
+        "room": "AI Room 1"
+      },
+      "attendance_summary": {
+        "recorded_lessons": 4,
+        "attended": 3,
+        "absent": 1,
+        "attendance_rate": 0.75,
+        "completed_makeups": 1,
+        "pending_makeups": 0
+      },
+      "attendance_records": [
+        {
+          "date": "2026-09-08",
+          "course": "AI Test Robotics",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-15",
+          "course": "AI Test Robotics",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-22",
+          "course": "AI Test Robotics",
+          "status": "absent"
+        },
+        {
+          "date": "2026-09-29",
+          "course": "AI Test Robotics",
+          "status": "present"
+        }
+      ],
+      "makeup_records": [
+        {
+          "original_date": "2026-09-15",
+          "original_course": "AI Test Robotics",
+          "status": "completed",
+          "target_date": "2026-09-22",
+          "target_course": "AI Test Robotics"
+        }
+      ],
+      "teacher_comments": [
+        {
+          "date": "2026-09-08",
+          "course": "AI Test Robotics",
+          "comment": "Built a stable robot and tested different motor speeds."
+        },
+        {
+          "date": "2026-09-15",
+          "course": "AI Test Robotics",
+          "comment": "Can compare two test results and identify the better setting."
+        },
+        {
+          "date": "2026-09-22",
+          "course": "AI Test Robotics",
+          "comment": "Next step: write a short prediction before each test."
+        }
+      ],
+      "ai_input": {
+        "comment_text": "Built a stable robot and tested different motor speeds.\nCan compare two test results and identify the better setting.\nNext step: write a short prediction before each test.",
+        "review_required": true,
+        "suggested_tasks": [
+          "summarize_learning_progress",
+          "extract_strengths_and_needs_review_tags",
+          "identify_support_signal",
+          "recommend_next_teacher_action"
+        ]
+      }
+    },
+    {
+      "student_id": "AI-006",
+      "student": {
+        "name": "Ethan Zhao",
+        "age": 12,
+        "gender": "M",
+        "parent_reference": "ai_parent_06"
+      },
+      "current_course": {
+        "name": "AI Test Coding",
+        "category": "Coding",
+        "term": "AI Project Test - Fall 2026",
+        "day": "Wed",
+        "time": "17:00-18:00",
+        "room": "AI Room 2"
+      },
+      "attendance_summary": {
+        "recorded_lessons": 4,
+        "attended": 4,
+        "absent": 0,
+        "attendance_rate": 1.0,
+        "completed_makeups": 0,
+        "pending_makeups": 0
+      },
+      "attendance_records": [
+        {
+          "date": "2026-09-09",
+          "course": "AI Test Coding",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-16",
+          "course": "AI Test Coding",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-23",
+          "course": "AI Test Coding",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-30",
+          "course": "AI Test Coding",
+          "status": "present"
+        }
+      ],
+      "makeup_records": [],
+      "teacher_comments": [
+        {
+          "date": "2026-09-09",
+          "course": "AI Test Coding",
+          "comment": "Understands sequencing and follows the build instructions carefully."
+        },
+        {
+          "date": "2026-09-16",
+          "course": "AI Test Coding",
+          "comment": "Can explain the loop used in today's robotics task."
+        },
+        {
+          "date": "2026-09-23",
+          "course": "AI Test Coding",
+          "comment": "Next step: practice debugging independently before asking for help."
+        }
+      ],
+      "ai_input": {
+        "comment_text": "Understands sequencing and follows the build instructions carefully.\nCan explain the loop used in today's robotics task.\nNext step: practice debugging independently before asking for help.",
+        "review_required": true,
+        "suggested_tasks": [
+          "summarize_learning_progress",
+          "extract_strengths_and_needs_review_tags",
+          "identify_support_signal",
+          "recommend_next_teacher_action"
+        ]
+      }
+    },
+    {
+      "student_id": "AI-007",
+      "student": {
+        "name": "Sofia Yang",
+        "age": 10,
+        "gender": "F",
+        "parent_reference": "ai_parent_07"
+      },
+      "current_course": {
+        "name": "AI Test Coding",
+        "category": "Coding",
+        "term": "AI Project Test - Fall 2026",
+        "day": "Wed",
+        "time": "17:00-18:00",
+        "room": "AI Room 2"
+      },
+      "attendance_summary": {
+        "recorded_lessons": 4,
+        "attended": 4,
+        "absent": 0,
+        "attendance_rate": 1.0,
+        "completed_makeups": 0,
+        "pending_makeups": 0
+      },
+      "attendance_records": [
+        {
+          "date": "2026-09-09",
+          "course": "AI Test Coding",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-16",
+          "course": "AI Test Coding",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-23",
+          "course": "AI Test Coding",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-30",
+          "course": "AI Test Coding",
+          "status": "present"
+        }
+      ],
+      "makeup_records": [],
+      "teacher_comments": [
+        {
+          "date": "2026-09-09",
+          "course": "AI Test Coding",
+          "comment": "Participates actively and collaborates well with a partner."
+        },
+        {
+          "date": "2026-09-16",
+          "course": "AI Test Coding",
+          "comment": "Understands variables but sometimes changes more than one value at a time."
+        },
+        {
+          "date": "2026-09-23",
+          "course": "AI Test Coding",
+          "comment": "Next step: test one change at a time and record the result."
+        }
+      ],
+      "ai_input": {
+        "comment_text": "Participates actively and collaborates well with a partner.\nUnderstands variables but sometimes changes more than one value at a time.\nNext step: test one change at a time and record the result.",
+        "review_required": true,
+        "suggested_tasks": [
+          "summarize_learning_progress",
+          "extract_strengths_and_needs_review_tags",
+          "identify_support_signal",
+          "recommend_next_teacher_action"
+        ]
+      }
+    },
+    {
+      "student_id": "AI-008",
+      "student": {
+        "name": "Lucas Wu",
+        "age": 11,
+        "gender": "M",
+        "parent_reference": "ai_parent_08"
+      },
+      "current_course": {
+        "name": "AI Test Coding",
+        "category": "Coding",
+        "term": "AI Project Test - Fall 2026",
+        "day": "Wed",
+        "time": "17:00-18:00",
+        "room": "AI Room 2"
+      },
+      "attendance_summary": {
+        "recorded_lessons": 4,
+        "attended": 3,
+        "absent": 1,
+        "attendance_rate": 0.75,
+        "completed_makeups": 1,
+        "pending_makeups": 0
+      },
+      "attendance_records": [
+        {
+          "date": "2026-09-09",
+          "course": "AI Test Coding",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-16",
+          "course": "AI Test Coding",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-23",
+          "course": "AI Test Coding",
+          "status": "absent"
+        },
+        {
+          "date": "2026-09-30",
+          "course": "AI Test Coding",
+          "status": "present"
+        }
+      ],
+      "makeup_records": [
+        {
+          "original_date": "2026-09-16",
+          "original_course": "AI Test Coding",
+          "status": "completed",
+          "target_date": "2026-09-23",
+          "target_course": "AI Test Coding"
+        }
+      ],
+      "teacher_comments": [
+        {
+          "date": "2026-09-09",
+          "course": "AI Test Coding",
+          "comment": "Completed the main challenge and attempted the extension activity."
+        },
+        {
+          "date": "2026-09-16",
+          "course": "AI Test Coding",
+          "comment": "Shows strong pattern recognition in block-based coding."
+        },
+        {
+          "date": "2026-09-23",
+          "course": "AI Test Coding",
+          "comment": "Next step: explain the solution using clearer technical vocabulary."
+        }
+      ],
+      "ai_input": {
+        "comment_text": "Completed the main challenge and attempted the extension activity.\nShows strong pattern recognition in block-based coding.\nNext step: explain the solution using clearer technical vocabulary.",
+        "review_required": true,
+        "suggested_tasks": [
+          "summarize_learning_progress",
+          "extract_strengths_and_needs_review_tags",
+          "identify_support_signal",
+          "recommend_next_teacher_action"
+        ]
+      }
+    },
+    {
+      "student_id": "AI-009",
+      "student": {
+        "name": "Chloe Sun",
+        "age": 8,
+        "gender": "F",
+        "parent_reference": "ai_parent_09"
+      },
+      "current_course": {
+        "name": "AI Test Coding",
+        "category": "Coding",
+        "term": "AI Project Test - Fall 2026",
+        "day": "Wed",
+        "time": "17:00-18:00",
+        "room": "AI Room 2"
+      },
+      "attendance_summary": {
+        "recorded_lessons": 4,
+        "attended": 2,
+        "absent": 2,
+        "attendance_rate": 0.5,
+        "completed_makeups": 0,
+        "pending_makeups": 1
+      },
+      "attendance_records": [
+        {
+          "date": "2026-09-09",
+          "course": "AI Test Coding",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-16",
+          "course": "AI Test Coding",
+          "status": "absent"
+        },
+        {
+          "date": "2026-09-23",
+          "course": "AI Test Coding",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-30",
+          "course": "AI Test Coding",
+          "status": "absent"
+        }
+      ],
+      "makeup_records": [
+        {
+          "original_date": "2026-09-16",
+          "original_course": "AI Test Coding",
+          "status": "makeup_available",
+          "target_date": null,
+          "target_course": null
+        }
+      ],
+      "teacher_comments": [
+        {
+          "date": "2026-09-09",
+          "course": "AI Test Coding",
+          "comment": "Needs occasional reminders to read the full problem before coding."
+        },
+        {
+          "date": "2026-09-16",
+          "course": "AI Test Coding",
+          "comment": "Improved after using a checklist to find syntax errors."
+        },
+        {
+          "date": "2026-09-23",
+          "course": "AI Test Coding",
+          "comment": "Next step: continue using the debugging checklist each lesson."
+        }
+      ],
+      "ai_input": {
+        "comment_text": "Needs occasional reminders to read the full problem before coding.\nImproved after using a checklist to find syntax errors.\nNext step: continue using the debugging checklist each lesson.",
+        "review_required": true,
+        "suggested_tasks": [
+          "summarize_learning_progress",
+          "extract_strengths_and_needs_review_tags",
+          "identify_support_signal",
+          "recommend_next_teacher_action"
+        ]
+      }
+    },
+    {
+      "student_id": "AI-010",
+      "student": {
+        "name": "Oliver Guo",
+        "age": 12,
+        "gender": "M",
+        "parent_reference": "ai_parent_10"
+      },
+      "current_course": {
+        "name": "AI Test Coding",
+        "category": "Coding",
+        "term": "AI Project Test - Fall 2026",
+        "day": "Wed",
+        "time": "17:00-18:00",
+        "room": "AI Room 2"
+      },
+      "attendance_summary": {
+        "recorded_lessons": 4,
+        "attended": 4,
+        "absent": 0,
+        "attendance_rate": 1.0,
+        "completed_makeups": 0,
+        "pending_makeups": 0
+      },
+      "attendance_records": [
+        {
+          "date": "2026-09-09",
+          "course": "AI Test Coding",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-16",
+          "course": "AI Test Coding",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-23",
+          "course": "AI Test Coding",
+          "status": "present"
+        },
+        {
+          "date": "2026-09-30",
+          "course": "AI Test Coding",
+          "status": "present"
+        }
+      ],
+      "makeup_records": [],
+      "teacher_comments": [
+        {
+          "date": "2026-09-09",
+          "course": "AI Test Coding",
+          "comment": "Built a stable robot and tested different motor speeds."
+        },
+        {
+          "date": "2026-09-16",
+          "course": "AI Test Coding",
+          "comment": "Can compare two test results and identify the better setting."
+        },
+        {
+          "date": "2026-09-23",
+          "course": "AI Test Coding",
+          "comment": "Next step: write a short prediction before each test."
+        }
+      ],
+      "ai_input": {
+        "comment_text": "Built a stable robot and tested different motor speeds.\nCan compare two test results and identify the better setting.\nNext step: write a short prediction before each test.",
+        "review_required": true,
+        "suggested_tasks": [
+          "summarize_learning_progress",
+          "extract_strengths_and_needs_review_tags",
+          "identify_support_signal",
+          "recommend_next_teacher_action"
+        ]
+      }
+    }
+  ]
+}
