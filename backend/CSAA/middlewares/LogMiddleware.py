@@ -1,4 +1,3 @@
-import json
 import time
 
 from django.utils.deprecation import MiddlewareMixin
@@ -28,17 +27,12 @@ class OpLogs(MiddlewareMixin):
         self.start_time = time.time()  # 开始时间
         re_ip = utils.get_ip(request)
         re_method = request.method
-        re_content = request.GET if re_method == 'GET' else request.POST
-        if re_content:
-            re_content = json.dumps(re_content)
-        else:
-            re_content = None
         self.data.update(
             {
                 're_url': request.path,
                 're_method': re_method,
                 're_ip': re_ip,
-                're_content': re_content,
+                're_content': None,
             }
         )
         # print(self.data)

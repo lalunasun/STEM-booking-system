@@ -11,15 +11,15 @@
       </div>
     </a-layout-header>
     <a-layout>
-      <a-layout-sider v-model="collapsed" collapsible >
+      <a-layout-sider v-model:collapsed="collapsed" :collapsed-width="64" collapsible>
         <a-menu style="overflow:auto; overflow-x: hidden;" v-model:selectedKeys="selectedKeys" v-model:openKeys="openKeys" theme="dark" mode="inline" @click="handleClick">
           <a-menu-item key="schedule">
             <schedule-outlined />
             <span>Schedule</span>
           </a-menu-item>
-          <a-menu-item key="mobileSchedule">
-            <schedule-outlined />
-            <span>Mobile Schedule</span>
+          <a-menu-item v-if="isAdminRole" key="weeklyOverview">
+            <calendar-outlined />
+            <span>Weekly Overview</span>
           </a-menu-item>
           <a-menu-item key="classroom">
             <tablet-outlined />
@@ -69,9 +69,9 @@
               <clock-circle-outlined/>
               <span>Time Slots</span>
             </a-menu-item>
-            <a-menu-item key="thing">
+            <a-menu-item key="course">
               <database-outlined/>
-              <span>Classes</span>
+              <span>Courses</span>
             </a-menu-item>
             <a-menu-item key="classification">
               <layout-outlined/>
@@ -142,7 +142,7 @@ import {
   TabletOutlined
 } from '@ant-design/icons-vue';
 
-import {computed, ref, watch, onMounted, onUnmounted} from 'vue';
+import {computed, ref, watch, onMounted, onUnmounted, nextTick} from 'vue';
 import {useUserStore} from "/@/store";
 import { listApi as listOrderApi } from '/@/api/admin/order';
 
@@ -153,11 +153,15 @@ const openKeys = ref<any[]>(['setup'])
 const collapsed = ref<boolean>(false)
 const newOrderCount = ref(0)
 const ORDER_BADGE_REFRESH_EVENT = 'admin-order-badge-refresh'
-const teacherAllowedRoutes = new Set(['schedule', 'mobileSchedule', 'classroom', 'lesson', 'student'])
-const setupRoutes = new Set(['thing', 'classification', 'tag', 'time', 'term'])
+const teacherAllowedRoutes = new Set(['schedule', 'classroom', 'lesson', 'student'])
+const setupRoutes = new Set(['course', 'thing', 'classification', 'tag', 'time', 'term'])
 const isTeacherRole = computed(() => userStore.admin_user_role === '2')
 const isAdminRole = computed(() => !isTeacherRole.value)
 const adminRoleLabel = computed(() => isTeacherRole.value ? 'Teacher' : 'Administrator')
+
+const syncSidebarForViewport = () => {
+  collapsed.value = window.innerWidth <= 768
+}
 
 const router = useRouter()
 const route = useRoute()
@@ -167,6 +171,9 @@ const handleClick = ({item, key, keyPath}) => {
   if (isTeacherRole.value && !teacherAllowedRoutes.has(String(key))) {
     router.push({ name: 'schedule' })
     return
+  }
+  if (window.innerWidth <= 768) {
+    collapsed.value = true
   }
   router.push({
     name: key,
@@ -179,16 +186,26 @@ const syncOpenKeys = (name) => {
   }
 }
 
+const scrollSelectedMenuItemIntoView = async () => {
+  await nextTick()
+  const selectedItem = document.querySelector('#components-layout-demo-custom-trigger .ant-menu-item-selected')
+  selectedItem?.scrollIntoView({block: 'nearest'})
+}
+
 onMounted(() => {
   console.log('当前路由===>', route.name)
+  syncSidebarForViewport()
+  window.addEventListener('resize', syncSidebarForViewport)
   selectedKeys.value = [route.name]
   syncOpenKeys(route.name)
+  scrollSelectedMenuItemIntoView()
   loadMenuBadges()
   window.addEventListener(ORDER_BADGE_REFRESH_EVENT, loadMenuBadges)
   window.addEventListener('focus', loadMenuBadges)
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', syncSidebarForViewport)
   window.removeEventListener(ORDER_BADGE_REFRESH_EVENT, loadMenuBadges)
   window.removeEventListener('focus', loadMenuBadges)
 })
@@ -198,6 +215,7 @@ watch(
   (name) => {
     selectedKeys.value = [name]
     syncOpenKeys(name)
+    scrollSelectedMenuItemIntoView()
     loadMenuBadges()
   }
 )
@@ -319,14 +337,66 @@ const handleLogout = () => {
   overflow-x: hidden;
 }
 
+@media (max-width: 768px) {
+  .header {
+    min-width: 0;
+    padding-left: 12px;
+    padding-right: 12px;
+
+    .header-logo {
+      width: 28px;
+      height: 28px;
+    }
+
+    .header-title {
+      margin-left: 8px;
+      font-size: 15px;
+      white-space: nowrap;
+    }
+
+    .preview-link {
+      display: none;
+    }
+
+    > span:not(.header-title) {
+      max-width: 92px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+    }
+
+    .header-quit {
+      margin-left: 8px;
+      white-space: nowrap;
+      font-size: 12px;
+    }
+  }
+
+  :deep(.ant-layout-content) {
+    margin: 8px !important;
+  }
+}
+
 :deep(.ant-layout-sider) {
-  padding: 16px 0;
+  padding: 16px 0 0;
   background-color: #f0f2f5;
+}
+
+:deep(.ant-layout-sider-children) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 :deep(.ant-menu) {
   padding-top: 16px;
-  height: 100%;
+  margin-bottom: 48px;
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  overflow-y: auto !important;
+  overflow-x: hidden;
 }
 
 //:deep(.ant-layout-sider-trigger) {

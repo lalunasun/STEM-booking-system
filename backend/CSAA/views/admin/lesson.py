@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view, authentication_classes
 from CSAA import utils
 from CSAA.auth.authentication import AdminTokenAuthtication
 from CSAA.handler import APIResponse
-from CSAA.models import Classification, Thing, Tag, Lesson, Order, CourseAdjustment, TrialRequest, DailyStudentAdjustment, StudentComment, StudentAttendance, ClassPassBooking
+from CSAA.models import AdminTrialSession, Classification, Thing, Tag, Lesson, Order, CourseAdjustment, TrialRequest, DailyStudentAdjustment, StudentComment, StudentAttendance, ClassPassBooking
 from CSAA.serializers import ThingSerializer, UpdateThingSerializer, LessonSerializer, LessonDetailSerializer, DailyLessonSerializer
 
 
@@ -113,11 +113,73 @@ def list_api(request):
                     'status': 'trial',
                 })
 
+        continuing_trials_by_lesson = defaultdict(list)
+        flexible_trial_cards = {}
+        admin_trials = AdminTrialSession.objects.filter(
+            session_date=class_date,
+            status='active',
+        ).select_related('student', 'lesson__thing__tag', 'lesson__thing__time', 'room')
+        for trial in admin_trials:
+            thing = trial.lesson.thing if trial.lesson_id else None
+            room = trial.room or (thing.tag if thing else None)
+            course_name = trial.course_name or (thing.title if thing else 'Trial')
+            start_item = {
+                'trial_session_id': trial.id,
+                'student_id': trial.student_id,
+                'name': trial.student.name,
+                'date': class_date.strftime('%Y-%m-%d'),
+                'status': 'trial',
+                'trial_course': course_name,
+                'trial_time': f'{trial.starts_at.strftime("%H:%M")}-{trial.ends_at.strftime("%H:%M")}',
+                'teacher_confirmation_required': trial.teacher_confirmation_required,
+            }
+            if not trial.lesson_id:
+                if not room:
+                    continue
+                key = (room.id, course_name, trial.starts_at, trial.ends_at)
+                card = flexible_trial_cards.setdefault(key, {
+                    'id': -trial.id,
+                    'lesson_id': None,
+                    'thing': None,
+                    'thing_id': None,
+                    'class_name': course_name,
+                    'day': ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][class_date.weekday()],
+                    'time': start_item['trial_time'],
+                    'room_id': room.id,
+                    'room_name': room.title,
+                    'room_capacity': room.seat,
+                    'scheduled_students': [],
+                    'canceled_students': [],
+                    'scheduled_reschedule_students': [],
+                    'scheduled_trial_students': [],
+                    'continuing_trial_students': [],
+                    'scheduled_class_pass_students': [],
+                    'moved_students': [],
+                    'sick_leave_students': [],
+                    'virtual_trial': True,
+                    'teacher_confirmation_required': trial.teacher_confirmation_required,
+                })
+                card['scheduled_trial_students'].append(start_item)
+                continue
+            if trial.lesson_id in lesson_ids:
+                trials_by_thing[thing.id].append(start_item)
+            for lesson in lessons:
+                if lesson.id == trial.lesson_id or lesson.thing.tag_id != room.id:
+                    continue
+                try:
+                    start_label, end_label = lesson.thing.time.time.split('-', 1)
+                    lesson_start = datetime.time.fromisoformat(start_label.strip().zfill(5))
+                    lesson_end = datetime.time.fromisoformat(end_label.strip().zfill(5))
+                except (AttributeError, ValueError):
+                    continue
+                if lesson_start < trial.ends_at and lesson_end > trial.starts_at:
+                    continuing_trials_by_lesson[lesson.id].append({**start_item, 'continuing': True})
+
         adjusted_out_by_lesson = defaultdict(set)
         moved_in_by_lesson = defaultdict(list)
         sick_leave_by_lesson = defaultdict(list)
         daily_adjustments = DailyStudentAdjustment.objects.filter(
-            lesson_date=class_date,
+            Q(lesson_date=class_date) | Q(target_lesson_date=class_date),
             status='active',
         ).select_related(
             'student',
@@ -126,7 +188,6 @@ def list_api(request):
             'target_lesson',
         )
         for adjustment in daily_adjustments:
-            adjusted_out_by_lesson[adjustment.source_lesson_id].add(adjustment.student_id)
             term = adjustment.source_order.term if adjustment.source_order else None
             item = {
                 'adjustment_id': adjustment.id,
@@ -138,9 +199,12 @@ def list_api(request):
                 'reason': adjustment.reason,
                 'lesson_count_delta': adjustment.lesson_count_delta,
             }
-            if adjustment.adjustment_type == 'move' and adjustment.target_lesson_id:
+            target_date = adjustment.target_lesson_date or adjustment.lesson_date
+            if adjustment.adjustment_type in ('move', 'sick_leave') and adjustment.lesson_date == class_date:
+                adjusted_out_by_lesson[adjustment.source_lesson_id].add(adjustment.student_id)
+            if adjustment.adjustment_type == 'move' and adjustment.target_lesson_id and target_date == class_date:
                 moved_in_by_lesson[adjustment.target_lesson_id].append(item)
-            elif adjustment.adjustment_type == 'sick_leave':
+            elif adjustment.adjustment_type == 'sick_leave' and adjustment.lesson_date == class_date:
                 sick_leave_by_lesson[adjustment.source_lesson_id].append(item)
 
         class_pass_bookings_by_lesson = defaultdict(list)
@@ -183,6 +247,7 @@ def list_api(request):
                 'cancels_by_thing': cancels_by_thing,
                 'makeups_by_thing': makeups_by_thing,
                 'trials_by_thing': trials_by_thing,
+                'continuing_trials_by_lesson': continuing_trials_by_lesson,
                 'adjusted_out_by_lesson': adjusted_out_by_lesson,
                 'moved_in_by_lesson': moved_in_by_lesson,
                 'sick_leave_by_lesson': sick_leave_by_lesson,
@@ -191,7 +256,7 @@ def list_api(request):
                 'absent_keys': absent_keys,
             },
         )
-        return APIResponse(code=0, msg='查询成功', data=serializer.data)
+        return APIResponse(code=0, msg='查询成功', data=list(serializer.data) + list(flexible_trial_cards.values()))
 
 
 # 课程详情

@@ -11,12 +11,12 @@
         <a-upload
           :show-upload-list="false"
           :before-upload="beforeImport"
-          accept=".csv"
+          accept=".csv,.xlsx,.xlsm"
         >
-          <a-button :loading="importing">Import CSV</a-button>
+          <a-button :loading="importing">Import CSV/XLSX</a-button>
         </a-upload>
         <a-button :loading="exporting" @click="exportCsv">Export CSV</a-button>
-        <a-button type="primary" href="/checkin" target="_blank">Open iPad page</a-button>
+        <a-button type="primary" @click="openIpadPage">Open iPad page</a-button>
       </div>
     </header>
 
@@ -49,8 +49,18 @@
           <div class="student-table">
             <div v-for="student in room.students" :key="student.student_id" class="student-row">
               <div>
-                <strong>{{ student.student_name }}</strong>
+                <div class="student-name-line">
+                  <strong>{{ student.student_name }}</strong>
+                  <a-tag v-if="student.student_name_missing" color="red">Name required</a-tag>
+                </div>
+                <p v-if="student.student_name_missing" class="identity-help">
+                  Parent: {{ student.parent_name || student.parent_username || 'Unknown' }}
+                  <template v-if="student.parent_username"> · @{{ student.parent_username }}</template>
+                </p>
                 <p>{{ classLine(student) }}</p>
+                <p class="sign-out-room">
+                  Sign-out room: {{ student.sign_out_room_name || student.room_name || 'No room' }}
+                </p>
               </div>
               <a-tag :color="statusColor(student.attendance.status)">
                 {{ statusText(student.attendance.status) }}
@@ -96,6 +106,7 @@
 import { computed, onMounted, ref } from 'vue';
 import dayjs, { Dayjs } from 'dayjs';
 import { message } from 'ant-design-vue';
+import { compareRoomNames } from '/@/utils/room-order';
 import {
   exportAttendanceApi,
   exportWaiversApi,
@@ -134,7 +145,7 @@ const loadSummary = async () => {
   try {
     const res = await summaryApi({ date: selectedDate.value.format('YYYY-MM-DD') });
     counts.value = res.data?.counts || {};
-    rooms.value = res.data?.rooms || [];
+    rooms.value = [...(res.data?.rooms || [])].sort((a, b) => compareRoomNames(a.room_name, b.room_name));
   } catch (error: any) {
     message.error(error?.msg || 'Failed to load camp sign-in summary');
   } finally {
@@ -154,9 +165,14 @@ const loadWaivers = async () => {
   }
 };
 
+const openIpadPage = () => {
+  window.open(`/checkin?refresh=${Date.now()}`, '_blank');
+};
+
 const beforeImport = async (file: File) => {
-  if (!file.name.toLowerCase().endsWith('.csv')) {
-    message.warning('Please upload a CSV file');
+  const lowerName = file.name.toLowerCase();
+  if (!lowerName.endsWith('.csv') && !lowerName.endsWith('.xlsx') && !lowerName.endsWith('.xlsm')) {
+    message.warning('Please upload a CSV or XLSX file');
     return false;
   }
   const formData = new FormData();
@@ -166,7 +182,7 @@ const beforeImport = async (file: File) => {
     const res = await importEnrollmentsApi(formData);
     const data = res.data || {};
     message.success(
-      `Import finished: ${data.enrollments || 0} new, ${data.updated_enrollments || 0} updated, ${data.error_count || 0} errors`
+      `Import finished: ${data.enrollments || 0} new, ${data.updated_enrollments || 0} updated, ${data.daily_plans || 0} daily plans, ${data.updated_daily_plans || 0} daily updates, ${data.error_count || 0} errors`
     );
     if (data.error_count > 0) {
       console.log('Camp import errors', data.errors || []);
@@ -399,6 +415,23 @@ const classLine = (student: any) =>
 .time-col span {
   margin: 4px 0 0;
   color: #64748b;
+}
+
+.student-name-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.identity-help {
+  color: #b42318 !important;
+  font-weight: 600;
+}
+
+.sign-out-room {
+  color: #0f766e !important;
+  font-weight: 600;
 }
 
 .time-col {

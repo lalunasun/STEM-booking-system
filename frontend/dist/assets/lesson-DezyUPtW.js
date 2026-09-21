@@ -1,0 +1,1 @@
+import{C as a}from"./index-DOeL9D4I.js";const t=async s=>a({url:"/CSAA/admin/lesson/list",params:s,data:{},headers:{}}),i=async s=>a({url:"/CSAA/admin/lesson/detail",params:s,headers:{}});export{i as d,t as l};

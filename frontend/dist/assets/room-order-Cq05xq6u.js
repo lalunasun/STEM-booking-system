@@ -1,0 +1,1 @@
+const t={room1:0,room3:1,room4:2,room5:3,library:4,vexiqlab:5,vexv5lab:6,v5lab:6,meetingroom:90,frclab:91},m=o=>String(o||"").trim().toLowerCase().replace(/\s+/g,""),i=(o,a)=>{const r=String(o||""),e=String(a||""),c=t[m(r)]??1e3,n=t[m(e)]??1e3;return c-n||r.localeCompare(e,void 0,{numeric:!0})};export{i as c};

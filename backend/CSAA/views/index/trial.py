@@ -78,7 +78,7 @@ def create(request):
         )
 
     try:
-        parent = User.objects.get(pk=parent_id)
+        parent = User.objects.get(pk=parent_id, token=request.META.get('HTTP_TOKEN', ''), role='1')
         child = Child.objects.get(pk=child_id, parent=parent)
         robotics_class = Thing.objects.get(pk=robotics_id)
         coding_class = Thing.objects.get(pk=coding_id)

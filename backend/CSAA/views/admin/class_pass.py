@@ -7,6 +7,7 @@ from django.utils.dateparse import parse_date
 from rest_framework.decorators import api_view, authentication_classes
 
 from CSAA.auth.authentication import AdminTokenAuthtication
+from CSAA.course_conflicts import student_slot_conflict_on_date
 from CSAA.handler import APIResponse
 from CSAA.models import Child, ClassPass, ClassPassBooking, Lesson, Order, Thing
 from CSAA.serializers import ClassPassBookingSerializer, ClassPassSerializer
@@ -231,6 +232,14 @@ def booking_review(request):
         if thing.tag and thing.tag.seat is not None:
             if _active_room_count(thing, booking.requested_date, exclude_booking_id=booking.id) >= int(thing.tag.seat):
                 return APIResponse(code=1, msg='This room/time is full on the requested date')
+        conflict = student_slot_conflict_on_date(
+            booking.child,
+            thing,
+            booking.requested_date,
+            exclude_class_pass_booking_id=booking.id,
+        )
+        if conflict:
+            return APIResponse(code=1, msg=conflict)
         lesson = _lesson_for_thing(thing)
         if not lesson:
             return APIResponse(code=1, msg='Lesson does not exist for this class')

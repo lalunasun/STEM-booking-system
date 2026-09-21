@@ -19,6 +19,10 @@
             <span class="result-icon">OK</span>
           </template>
           <template #extra>
+            <div v-if="completion.signOutRoom" class="completion-room-card">
+              <span>Sign-out room</span>
+              <strong>{{ completion.signOutRoom }}</strong>
+            </div>
             <div v-if="completion.showMap" class="camp-map" aria-label="Classroom map">
               <div class="map-front">Front Desk</div>
               <div class="map-hall">Main hallway</div>
@@ -74,7 +78,7 @@
                 <p class="student-label">Student</p>
                 <h2>{{ student.student_name }}</h2>
                 <p class="meta">
-                  {{ student.term_title || 'Camp term' }} · {{ student.room_name || 'No room' }}
+                  {{ student.term_title || 'Camp term' }} · Sign-in {{ student.room_name || 'No room' }} · Sign-out {{ student.sign_out_room_name || student.room_name || 'No room' }}
                 </p>
               </div>
               <a-tag :color="statusColor(student.attendance.status)">
@@ -86,15 +90,16 @@
               <div v-for="item in student.schedule_items" :key="item.order_id" class="schedule-row">
                 <strong>{{ item.class_name || 'Camp activity' }}</strong>
                 <span>{{ item.time || '9:00-16:00' }}</span>
-                <span>{{ item.room_name || student.room_name || 'No room' }}</span>
+                <span>In: {{ item.room_name || student.room_name || 'No room' }}</span>
+                <span>Out: {{ item.sign_out_room_name || student.sign_out_room_name || item.room_name || student.room_name || 'No room' }}</span>
               </div>
             </div>
 
             <div class="time-status">
-              <span v-if="student.waiver_signed" class="waiver-ok">
+              <span v-if="waiverRequired && student.waiver_signed" class="waiver-ok">
                 Waiver signed
               </span>
-              <span v-else class="waiver-needed">
+              <span v-else-if="waiverRequired" class="waiver-needed">
                 Waiver required
               </span>
               <span v-if="student.attendance.sign_in_time">
@@ -149,7 +154,7 @@
               </a-button>
               <a-button
                 size="large"
-                :disabled="!student.attendance.sign_in_time || !!student.attendance.sign_out_time"
+                :disabled="!!student.attendance.sign_out_time"
                 :loading="actionLoadingId === `out-${student.student_id}`"
                 @click="signOut(student)"
               >
@@ -209,6 +214,8 @@ const lastName = ref('');
 const loading = ref(false);
 const searched = ref(false);
 const students = ref<any[]>([]);
+const dailyRoomNames = ref<string[]>([]);
+const waiverRequired = false;
 const notice = ref('');
 const noticeType = ref<'success' | 'info' | 'warning' | 'error'>('info');
 const actionLoadingId = ref('');
@@ -217,6 +224,8 @@ const completion = ref({
   title: '',
   subtitle: '',
   roomName: '',
+  roomNames: [] as string[],
+  signOutRoom: '',
   showMap: false,
 });
 const waiverModal = ref({
@@ -226,7 +235,20 @@ const waiverModal = ref({
   signerName: '',
   student: null as any,
 });
-const mapRooms = ['Room1', 'Room2', 'Room3', 'Room4', 'Room5', 'Room6', 'Room7', 'Room8'];
+const mapRooms = computed(() => {
+  const rooms: string[] = [];
+  const completionRooms = [
+    ...completion.value.roomNames,
+    completion.value.roomName,
+  ].filter(Boolean);
+
+  for (const roomName of completionRooms) {
+    if (!rooms.some((room) => normalizeRoom(room) === normalizeRoom(roomName))) {
+      rooms.push(roomName);
+    }
+  }
+  return rooms;
+});
 const today = dayjs().format('YYYY-MM-DD');
 const todayLabel = computed(() => dayjs(today).format('dddd, MMM D, YYYY'));
 
@@ -245,6 +267,7 @@ const searchStudent = async () => {
       date: today,
     });
     students.value = res.data?.students || [];
+    dailyRoomNames.value = res.data?.room_names || [];
     if (students.value.length > 1) {
       notice.value = 'Multiple students found. Please confirm the student before signing in or out.';
       noticeType.value = 'warning';
@@ -262,6 +285,7 @@ const resetKiosk = () => {
   lastName.value = '';
   searched.value = false;
   students.value = [];
+  dailyRoomNames.value = [];
   notice.value = '';
   actionLoadingId.value = '';
   completion.value = {
@@ -269,11 +293,17 @@ const resetKiosk = () => {
     title: '',
     subtitle: '',
     roomName: '',
+    roomNames: [],
+    signOutRoom: '',
     showMap: false,
   };
 };
 
-const completeAction = (title: string, subtitle: string, options: { roomName?: string; showMap?: boolean } = {}) => {
+const completeAction = (
+  title: string,
+  subtitle: string,
+  options: { roomName?: string; roomNames?: string[]; signOutRoom?: string; showMap?: boolean } = {}
+) => {
   students.value = [];
   searched.value = false;
   notice.value = '';
@@ -282,12 +312,14 @@ const completeAction = (title: string, subtitle: string, options: { roomName?: s
     title,
     subtitle,
     roomName: options.roomName || '',
+    roomNames: options.roomNames || dailyRoomNames.value,
+    signOutRoom: options.signOutRoom || '',
     showMap: !!options.showMap,
   };
 };
 
 const signIn = async (student: any) => {
-  if (!student.waiver_signed) {
+  if (waiverRequired && !student.waiver_signed) {
     waiverModal.value = {
       visible: true,
       loading: false,
@@ -308,7 +340,13 @@ const performSignIn = async (student: any, waiverData: Record<string, any> = {})
     completeAction(
       `${student.student_name} signed in`,
       `Room: ${student.room_name || 'No room'} - ${timeText}`,
-      { roomName: student.room_name, showMap: true }
+      {
+        roomName: student.room_name,
+        roomNames: dailyRoomNames.value.length
+          ? dailyRoomNames.value
+          : (student.schedule_items || []).map((item: any) => item.room_name || student.room_name).filter(Boolean),
+        showMap: true,
+      }
     );
   } catch (error: any) {
     notice.value = error?.msg || 'Sign in failed';
@@ -348,12 +386,14 @@ const signOut = async (student: any) => {
   try {
     const res = await signOutApi({ student_id: student.student_id, date: today });
     const timeText = res.data?.sign_out_time ? formatTime(res.data.sign_out_time) : dayjs().format('h:mm A');
+    const signOutRoom = res.data?.sign_out_room_name || student.sign_out_room_name || student.room_name || 'No room';
     const lateText = res.data?.late_pickup
       ? ` - Late pickup ${res.data.late_pickup_minutes || 0} min after 4:30 PM. Late pickup charge may apply.`
       : '';
     completeAction(
       `${student.student_name} signed out`,
-      `Pickup recorded at ${timeText}${lateText}`
+      `Pickup recorded at ${timeText}${lateText}`,
+      { signOutRoom }
     );
   } catch (error: any) {
     notice.value = error?.msg || 'Sign out failed';
@@ -435,23 +475,37 @@ const normalizeRoom = (value: string) => String(value || '').replace(/\s+/g, '')
   background: #fff;
 }
 
-.completion-panel {
-  border: 1px solid #d8e1ec;
-  border-radius: 8px;
-  background: #fff;
-  padding: 18px;
-}
-
-.result-icon {
-  display: inline-flex;
+.completion-room-card {
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto 22px;
+  padding: 14px 20px;
+  border: 2px solid #0f766e;
+  border-radius: 12px;
+  background: #ecfdf5;
+  box-shadow: 0 12px 28px rgba(15, 118, 110, 0.12);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  background: #1f8f4d;
-  color: #fff;
-  font-size: 20px;
+}
+
+.completion-room-card span {
+  display: block;
+  margin-bottom: 6px;
+  color: #0f766e;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.completion-room-card strong {
+  display: block;
+  color: #064e3b;
+  font-size: clamp(28px, 5.6vw, 44px);
+  line-height: 1.05;
   font-weight: 900;
 }
 
@@ -677,6 +731,16 @@ const normalizeRoom = (value: string) => String(value || '').replace(/\s+/g, '')
   .search-panel,
   .schedule-row {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .completion-room-card {
+    padding: 12px 14px;
+  }
+
+  .completion-room-card strong {
+    font-size: 30px;
   }
 }
 </style>

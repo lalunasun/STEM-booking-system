@@ -9,7 +9,7 @@ const allowList = ['adminLogin', 'login', 'register', 'portal', 'mobile', 'check
 const loginRoutePath = '/index/login'
 // 后台登录地址
 const adminLoginRoutePath = '/adminLogin'
-const teacherAdminRoutes = ['admin', 'schedule', 'mobileSchedule', 'classroom', 'lesson', 'student']
+const teacherAdminRoutes = ['admin', 'schedule', 'classroom', 'lesson', 'student']
 
 
 const router = createRouter({

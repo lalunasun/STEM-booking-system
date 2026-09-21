@@ -3,11 +3,53 @@ from rest_framework.decorators import api_view, authentication_classes
 from CSAA import utils
 from CSAA.auth.authentication import AdminTokenAuthtication
 from CSAA.handler import APIResponse
-from CSAA.models import Tag
+from CSAA.models import Tag, Term, Course, Thing, RoomCoursePermission
+from django.db import transaction
 from CSAA.serializers import TagSerializer
 
 
 # Room列表
+@api_view(['GET', 'POST'])
+@authentication_classes([AdminTokenAuthtication])
+def course_permissions(request):
+    params = request.query_params if request.method == 'GET' else request.data
+    try:
+        room = Tag.objects.get(pk=params.get('room'))
+        term = Term.objects.get(pk=params.get('term'))
+    except (Tag.DoesNotExist, Term.DoesNotExist, ValueError, TypeError):
+        return APIResponse(code=1, msg='Select a valid room and term')
+    if request.method == 'POST':
+        ids = params.get('course_ids')
+        note = str(params.get('note') or '').strip()
+        if not isinstance(ids, list) or len(note) > 500:
+            return APIResponse(code=1, msg='Invalid courses or note')
+        try:
+            ids = {int(value) for value in ids}
+        except (ValueError, TypeError):
+            return APIResponse(code=1, msg='Invalid courses')
+        courses = Course.objects.filter(id__in=ids, active=True)
+        if courses.count() != len(ids):
+            return APIResponse(code=1, msg='Select active courses')
+        with transaction.atomic():
+            Tag.objects.select_for_update().get(pk=room.pk)
+            rule, _ = RoomCoursePermission.objects.get_or_create(room=room, term=term)
+            rule.courses.set(courses)
+            rule.note = note
+            rule.updated_by = request.user
+            rule.save()
+    rule = RoomCoursePermission.objects.filter(room=room, term=term).first()
+    titles = Thing.objects.filter(tag=room, status='0').values_list('title', flat=True)
+    inferred = {str(title).casefold() for title in titles}
+    suggested = [course.id for course in Course.objects.filter(active=True) if course.title.casefold() in inferred]
+    return APIResponse(code=0, msg='Saved' if request.method == 'POST' else 'OK', data={
+        'configured': rule is not None,
+        'course_ids': list(rule.courses.values_list('id', flat=True)) if rule else [],
+        'suggested_course_ids': suggested,
+        'note': rule.note if rule else '',
+        'updated_at': rule.updated_at.isoformat() if rule else None,
+    })
+
+
 @api_view(['GET'])
 def list_api(request):
     if request.method == 'GET':

@@ -13,6 +13,10 @@ urlpatterns = [
     path('admin/thing/create', views.admin.thing.create),  # 新建课程
     path('admin/thing/update', views.admin.thing.update),  # 更新课程
     path('admin/thing/delete', views.admin.thing.delete),  # 删除课程
+    path('admin/course/list', views.admin.course.list_api),
+    path('admin/course/create', views.admin.course.create),
+    path('admin/course/update', views.admin.course.update),
+    path('admin/course/delete', views.admin.course.delete),
     path('admin/lesson/list', views.admin.lesson.list_api),  # 课程列表
     path('admin/lesson/detail', views.admin.lesson.detail),  # 课程详情
     path('admin/studentLessonNote', views.admin.student_lesson_note.list_or_save),
@@ -24,6 +28,10 @@ urlpatterns = [
     path('admin/permanentCourseChange/list', views.admin.permanent_course_change.list_api),
     path('admin/permanentCourseChange/create', views.admin.permanent_course_change.create),
     path('admin/permanentCourseChange/revert', views.admin.permanent_course_change.revert),
+    path('admin/trialBooking/options', views.admin.trial_booking.options),
+    path('admin/trialBooking/list', views.admin.trial_booking.list_api),
+    path('admin/trialBooking/create', views.admin.trial_booking.create),
+    path('admin/trialBooking/cancel', views.admin.trial_booking.cancel),
     path('admin/systemSetting/staffAnnouncement', views.admin.system_setting.staff_announcement),
     path('admin/systemSetting/staffAnnouncement/save', views.admin.system_setting.save_staff_announcement),
     path('admin/systemSetting/teacherAssignments', views.admin.system_setting.teacher_assignments),
@@ -40,6 +48,7 @@ urlpatterns = [
     path('admin/classification/update', views.admin.classification.update),  # 更新分类
     path('admin/classification/delete', views.admin.classification.delete),  # 删除分类
     path('admin/tag/list', views.admin.tag.list_api),  # Room列表
+    path('admin/tag/coursePermissions', views.admin.tag.course_permissions),
     path('admin/tag/create', views.admin.tag.create),  # 创建Room
     path('admin/tag/update', views.admin.tag.update),  # 修改Room
     path('admin/tag/delete', views.admin.tag.delete),  # 删除Room
@@ -81,9 +90,12 @@ urlpatterns = [
     path('admin/user/info', views.admin.user.info),  # 用户信息
     path('admin/adminLogin', views.admin.user.admin_login),  # 管理员登录
     path('admin/student/list', views.admin.student.list_api),  # 学生列表
+    path('admin/student/creationLog', views.admin.student.creation_log),
     path('admin/student/detail', views.admin.student.detail),
     path('admin/student/comment/create', views.admin.student.create_comment),
     path('admin/student/comment/import', views.admin.student.import_comments),
+    path('admin/student/availableSlots', views.admin.student.available_slots),
+    path('admin/student/quickCreate', views.admin.student.quick_create),
     path('admin/student/create', views.admin.student.create),  # 创建学生
     path('admin/student/update', views.admin.student.update),  # 修改学生
     path('admin/student/delete', views.admin.student.delete),  # 删除学生

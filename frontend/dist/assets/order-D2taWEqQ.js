@@ -1,0 +1,1 @@
+import{K as r,C as s}from"./index-DOeL9D4I.js";const c=async e=>r({url:"/CSAA/index/order/create",data:e,headers:{}}),d=async e=>s({url:"/CSAA/index/order/list",params:e,data:{},headers:{}}),t=async e=>r({url:"/CSAA/index/order/cancel_order",params:e,headers:{}});export{t as a,c,d as u};

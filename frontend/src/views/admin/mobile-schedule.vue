@@ -118,6 +118,8 @@ import dayjs, { Dayjs } from 'dayjs';
 import { message } from 'ant-design-vue';
 import { listApi as listLessonsApi } from '/@/api/admin/lesson';
 import { listApi as listNotesApi } from '/@/api/admin/student-lesson-note';
+import { listApi as listRoomsApi } from '/@/api/admin/tag';
+import { compareRoomNames } from '/@/utils/room-order';
 
 interface ScheduleStudent {
   order_id?: number;
@@ -149,6 +151,12 @@ interface ClassPassStudent {
   name: string;
   date?: string;
   pass_title?: string;
+}
+
+interface RoomItem {
+  id: number;
+  title: string;
+  seat?: number | string;
 }
 
 interface LessonItem {
@@ -211,6 +219,7 @@ const roomPalette = [
 
 const selectedDate = ref<Dayjs>(dayjs());
 const lessons = ref<LessonItem[]>([]);
+const rooms = ref<RoomItem[]>([]);
 const noteMap = ref<Record<string, string>>({});
 const loading = ref(false);
 const activeRoomKey = ref('');
@@ -232,34 +241,39 @@ const lessonRows = computed<LessonRow[]>(() =>
 );
 
 const roomIds = computed(() => {
-  const ids: number[] = [];
-  lessons.value.forEach((lesson) => {
-    const id = Number(lesson.room_id || 0);
-    if (id && !ids.includes(id)) {
-      ids.push(id);
-    }
-  });
-  return ids;
+  return rooms.value.map((room) => room.id);
 });
 
 const roomPages = computed<RoomPage[]>(() => {
-  const rooms = new Map<string, { key: string; roomId?: number; roomName: string; rows: LessonRow[] }>();
+  const roomMap = new Map<string, { key: string; roomId?: number; roomName: string; rows: LessonRow[] }>();
+
+  // Keep room tabs aligned with Schedule, including the configured room name
+  // instead of the potentially stale label returned with a lesson.
+  rooms.value.forEach((room) => {
+    roomMap.set(String(room.id), {
+      key: String(room.id),
+      roomId: room.id,
+      roomName: room.title,
+      rows: [],
+    });
+  });
+
   lessonRows.value.forEach((row) => {
     const id = Number(row.lesson.room_id || 0) || undefined;
     const key = id ? String(id) : `room-${row.lesson.room_name || 'none'}`;
-    if (!rooms.has(key)) {
-      rooms.set(key, {
+    if (!roomMap.has(key)) {
+      roomMap.set(key, {
         key,
         roomId: id,
         roomName: row.lesson.room_name || 'No room',
         rows: [],
       });
     }
-    rooms.get(key)?.rows.push(row);
+    roomMap.get(key)?.rows.push(row);
   });
 
-  return Array.from(rooms.values())
-    .sort((a, b) => a.roomName.localeCompare(b.roomName))
+  return Array.from(roomMap.values())
+    .sort((a, b) => compareRoomNames(a.roomName, b.roomName))
     .map((room) => {
       const groups = new Map<string, LessonRow[]>();
       room.rows.forEach((row) => {
@@ -290,8 +304,13 @@ const loadSchedule = async () => {
   loading.value = true;
   try {
     const date = selectedDate.value.format('YYYY-MM-DD');
-    const lessonRes = await listLessonsApi({ date });
+    const [lessonRes, roomRes] = await Promise.all([
+      listLessonsApi({ date }),
+      listRoomsApi({}),
+    ]);
     lessons.value = unwrapList(lessonRes);
+    rooms.value = unwrapList(roomRes)
+      .sort((a: RoomItem, b: RoomItem) => compareRoomNames(a.title, b.title));
     try {
       const noteRes = await listNotesApi({ date });
       noteMap.value = buildNoteMap(unwrapList(noteRes));

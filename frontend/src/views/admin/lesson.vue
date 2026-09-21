@@ -52,85 +52,70 @@
 
             <!--正课学生-->
             <div class="thing-intro" :class="selectTabIndex <= 0 ? '' : 'hide'">
-              <div v-for="child in norData" class="item flex-view">
-                <span style="font-weight: bolder;">name:&nbsp;&nbsp;</span>
-                 <div class="right-box">
-                  <button class="student-link" type="button" @click="openStudent(child)">{{ child.name }}</button>
-                 </div>
-                 <span style="font-weight: bolder;">parent:&nbsp;&nbsp;</span>
-                 <div class="right-box">
-                  <span>{{ child.parent_name }}&nbsp;&nbsp;&nbsp;&nbsp;</span>
-                 </div>
-                 <span style="font-weight: bolder;">phone number:&nbsp;&nbsp;</span>
-                 <div class="right-box">
-                  <span>{{ child.phone }}&nbsp;&nbsp;&nbsp;&nbsp;</span>
-                 </div>
-                 <span style="font-weight: bolder;">term:&nbsp;&nbsp;</span>
-                 <div class="right-box">
-                  <span>{{ child.term_info?.term_name || '--' }}</span>
-                 </div>
-                 <a-button size="small" @click="openComment(child)">Write comment</a-button>
-            </div>
+              <div v-if="norData.length" class="student-list">
+                <div class="student-list-header">
+                  <span>Student</span><span>Parent</span><span>Phone</span><span>Term</span><span>Action</span>
+                </div>
+                <div v-for="child in norData" :key="child.id" class="student-row">
+                  <div class="student-name-cell"><button class="student-link" type="button" @click="openStudent(child)">{{ child.name }}</button></div>
+                  <div class="student-meta" data-label="Parent">{{ child.parent_name || '--' }}</div>
+                  <div class="student-meta" data-label="Phone">{{ child.phone || '--' }}</div>
+                  <div class="student-meta" data-label="Term">{{ child.term_info?.term_name || '--' }}</div>
+                  <div class="student-action"><a-button size="small" class="comment-button" @click="openComment(child)">Write comment</a-button></div>
+                </div>
+              </div>
+              <div v-else class="student-empty">No normal students</div>
             </div>
 
             <!--补课学生-->
             <div class="thing-intro" :class="selectTabIndex == 1 ? '' : 'hide'">
-              <div v-for="child in reData" class="item flex-view">
-                <span style="font-weight: bolder;">name:&nbsp;&nbsp;</span>
-                 <div class="right-box">
-                  <button class="student-link" type="button" @click="openStudent(child)">{{ child.name }}</button>
-                 </div>
-                 <span style="font-weight: bolder;">parent:&nbsp;&nbsp;</span>
-                 <div class="right-box">
-                  <span>{{ child.parent_name }}&nbsp;&nbsp;&nbsp;&nbsp;</span>
-                 </div>
-                 <span style="font-weight: bolder;">phone number:&nbsp;&nbsp;</span>
-                 <div class="right-box">
-                  <span>{{ child.phone }}</span>
-                 </div>
-                 <span v-if="child.makeup_date" class="student-tag reschedule-tag">makeup {{ child.makeup_date }}</span>
-                 <a-button size="small" @click="openComment(child)">Write comment</a-button>
-            </div>
+              <div v-if="reData.length" class="student-list">
+                <div class="student-list-header">
+                  <span>Student</span><span>Parent</span><span>Phone</span><span>Makeup date</span><span>Action</span>
+                </div>
+                <div v-for="child in reData" :key="child.id" class="student-row">
+                  <div class="student-name-cell"><button class="student-link" type="button" @click="openStudent(child)">{{ child.name }}</button></div>
+                  <div class="student-meta" data-label="Parent">{{ child.parent_name || '--' }}</div>
+                  <div class="student-meta" data-label="Phone">{{ child.phone || '--' }}</div>
+                  <div class="student-meta" data-label="Makeup date"><span v-if="child.makeup_date" class="student-tag reschedule-tag">{{ child.makeup_date }}</span><span v-else>--</span></div>
+                  <div class="student-action"><a-button size="small" class="comment-button" @click="openComment(child)">Write comment</a-button></div>
+                </div>
+              </div>
+              <div v-else class="student-empty">No rescheduled students</div>
             </div>
 
             <!--试课学生-->
             <div class="thing-intro" :class="selectTabIndex == 2 ? '' : 'hide'">
-              <div v-for="child in tryData" class="item flex-view">
-                <span style="font-weight: bolder;">name:&nbsp;&nbsp;</span>
-                 <div class="right-box">
-                  <button class="student-link" type="button" @click="openStudent(child)">{{ child.name }}</button>
-                 </div>
-                 <span style="font-weight: bolder;">parent:&nbsp;&nbsp;</span>
-                 <div class="right-box">
-                  <span>{{ child.parent_name }}&nbsp;&nbsp;&nbsp;&nbsp;</span>
-                 </div>
-                 <span style="font-weight: bolder;">phone number:&nbsp;&nbsp;</span>
-                 <div class="right-box">
-                  <span>{{ child.phone }}</span>
-                 </div>
-                 <span v-if="child.trial_date" class="student-tag trial-tag">trial {{ child.trial_date }}</span>
-                 <a-button size="small" @click="openComment(child)">Write comment</a-button>
-            </div>
+              <div v-if="tryData.length" class="student-list">
+                <div class="student-list-header">
+                  <span>Student</span><span>Parent</span><span>Phone</span><span>Trial date</span><span>Action</span>
+                </div>
+                <div v-for="child in tryData" :key="child.id" class="student-row">
+                  <div class="student-name-cell"><button class="student-link" type="button" @click="openStudent(child)">{{ child.name }}</button></div>
+                  <div class="student-meta" data-label="Parent">{{ child.parent_name || '--' }}</div>
+                  <div class="student-meta" data-label="Phone">{{ child.phone || '--' }}</div>
+                  <div class="student-meta" data-label="Trial date"><span v-if="child.trial_date" class="student-tag trial-tag">{{ child.trial_date }}</span><span v-else>--</span></div>
+                  <div class="student-action"><a-button size="small" class="comment-button" @click="openComment(child)">Write comment</a-button></div>
+                </div>
+              </div>
+              <div v-else class="student-empty">No trial students</div>
             </div>
 
             <!--请假学生-->
             <div class="thing-intro" :class="selectTabIndex == 3 ? '' : 'hide'">
-              <div v-for="child in absData" class="item flex-view">
-                <span style="font-weight: bolder;">name:&nbsp;&nbsp;</span>
-                 <div class="right-box">
-                  <button class="student-link" type="button" @click="openStudent(child)">{{ child.name }}</button>
-                 </div>
-                 <span style="font-weight: bolder;">parent:&nbsp;&nbsp;</span>
-                 <div class="right-box">
-                  <span>{{ child.parent_name }}&nbsp;&nbsp;&nbsp;&nbsp;</span>
-                 </div>
-                 <span style="font-weight: bolder;">phone number:&nbsp;&nbsp;</span>
-                 <div class="right-box">
-                  <span>{{ child.phone }}</span>
-                 </div>
-                 <span v-if="child.cancel_date" class="student-tag cancel-tag">cancel {{ child.cancel_date }}</span>
-                 <a-button size="small" @click="openComment(child)">Write comment</a-button>
-            </div>
+              <div v-if="absData.length" class="student-list">
+                <div class="student-list-header">
+                  <span>Student</span><span>Parent</span><span>Phone</span><span>Absent date</span><span>Action</span>
+                </div>
+                <div v-for="child in absData" :key="child.id" class="student-row">
+                  <div class="student-name-cell"><button class="student-link" type="button" @click="openStudent(child)">{{ child.name }}</button></div>
+                  <div class="student-meta" data-label="Parent">{{ child.parent_name || '--' }}</div>
+                  <div class="student-meta" data-label="Phone">{{ child.phone || '--' }}</div>
+                  <div class="student-meta" data-label="Absent date"><span v-if="child.cancel_date" class="student-tag cancel-tag">{{ child.cancel_date }}</span><span v-else>--</span></div>
+                  <div class="student-action"><a-button size="small" class="comment-button" @click="openComment(child)">Write comment</a-button></div>
+                </div>
+              </div>
+              <div v-else class="student-empty">No absent students</div>
             </div>
           </div>
 
@@ -1022,6 +1007,90 @@ const getStuDetail = () => {
   font-size: 20px;
 }
 
+.student-list {
+  margin-top: 18px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.student-list-header,
+.student-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.35fr) minmax(130px, 1fr) minmax(130px, 1fr) minmax(170px, 1.25fr) 132px;
+  align-items: center;
+  gap: 16px;
+  padding: 0 18px;
+}
+
+.student-list-header {
+  min-height: 42px;
+  background: #f6f8fb;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.student-row {
+  min-height: 64px;
+  color: #334155;
+  font-size: 14px;
+  border-top: 1px solid #edf1f5;
+  transition: background-color 0.15s ease;
+}
+
+.student-row:hover {
+  background: #f8fbff;
+}
+
+.student-name-cell,
+.student-meta,
+.student-action {
+  min-width: 0;
+}
+
+.student-name-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.student-meta {
+  overflow: hidden;
+  color: #475569;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.student-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.comment-button {
+  color: #175cd3;
+  border-color: #cbdaf4;
+}
+
+.comment-button:hover,
+.comment-button:focus {
+  color: #1049a0;
+  border-color: #8fb2ed;
+}
+
+.student-empty {
+  margin-top: 18px;
+  padding: 28px 18px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  color: #64748b;
+  text-align: center;
+  background: #f8fafc;
+}
+
 .student-tag {
   border-radius: 3px;
   font-size: 12px;
@@ -1043,5 +1112,43 @@ const getStuDetail = () => {
 .trial-tag {
   background: #f5f3ff;
   color: #6d28d9;
+}
+
+@media (max-width: 760px) {
+  .detail-content {
+    width: auto;
+    margin: 4px 16px;
+  }
+
+  .student-list-header {
+    display: none;
+  }
+
+  .student-row {
+    display: block;
+    padding: 16px;
+  }
+
+  .student-row > div {
+    margin-top: 8px;
+  }
+
+  .student-row > div:first-child {
+    margin-top: 0;
+  }
+
+  .student-meta::before {
+    display: inline-block;
+    width: 92px;
+    color: #64748b;
+    content: attr(data-label);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .student-action {
+    justify-content: flex-start;
+    margin-top: 14px !important;
+  }
 }
 </style>

@@ -79,19 +79,47 @@ def options(request):
     if not source_order:
         return APIResponse(code=1, msg='No active source enrollment exists on the effective date')
 
+    course = request.GET.get('course', '').strip()
+    if not course:
+        rows = Lesson.objects.filter(
+            thing__status='0', thing__time__isnull=False,
+            thing__tag__isnull=False, thing__day__isnull=False,
+        ).exclude(id=source_lesson_id).values_list('thing__title', 'thing__day').distinct()
+        end_date = source_order.return_time.date()
+        data = []
+        for title, day in rows:
+            day_index = DAY_INDEX.get(day)
+            if day_index is None:
+                continue
+            first_date = effective_date + datetime.timedelta(days=(day_index - effective_date.weekday()) % 7)
+            if first_date and first_date <= end_date:
+                data.append({
+                    'class_name': title, 'day': day,
+                    'first_class_date': first_date.strftime('%Y-%m-%d'),
+                    'enrollment_end_date': end_date.strftime('%Y-%m-%d'),
+                })
+        return APIResponse(code=0, msg='Query successful', data=data)
+
     lessons = Lesson.objects.filter(
         thing__status='0',
+        thing__time__isnull=False,
+        thing__tag__isnull=False,
+        thing__day__isnull=False,
     ).exclude(id=source_lesson_id).select_related(
         'thing',
         'thing__time',
         'thing__tag',
     ).order_by('thing__day', 'thing__time__time', 'thing__tag__title')
+    target_day = next(day for day, index in DAY_INDEX.items() if index == effective_date.weekday())
+    lessons = lessons.filter(thing__title=course, thing__day=target_day)
 
     data = []
     for lesson in lessons:
         first_date = _first_class_date(lesson.thing, effective_date)
         if not first_date or first_date > source_order.return_time.date():
             continue
+        capacity = lesson.thing.tag.seat or 0
+        remaining = max(int(capacity) - _occupied_count(lesson, first_date), 0) if capacity else None
         data.append({
             'lesson_id': lesson.id,
             'class_name': lesson.thing.title,
@@ -99,7 +127,9 @@ def options(request):
             'time': lesson.thing.time.time if lesson.thing.time else None,
             'room': lesson.thing.tag.title if lesson.thing.tag else None,
             'capacity': lesson.thing.tag.seat if lesson.thing.tag else 0,
+            'remaining': remaining,
             'first_class_date': first_date.strftime('%Y-%m-%d'),
+            'enrollment_end_date': source_order.return_time.date().strftime('%Y-%m-%d'),
         })
     return APIResponse(code=0, msg='Query successful', data=data)
 

@@ -1,10 +1,12 @@
 from rest_framework.decorators import api_view, authentication_classes
+from django.db import transaction
 
 from CSAA import utils
 from CSAA.auth.authentication import AdminTokenAuthtication, TokenAuthtication
 from CSAA.handler import APIResponse
 from CSAA.models import Child, User
 from CSAA.serializers import AdminStudentSerializer, ChildSerializer
+from CSAA.student_creation_audit import record_student_created
 
 
 def _token_user(request):
@@ -27,6 +29,7 @@ def list_api(request):
 # 创建child
 @api_view(['POST'])
 @authentication_classes([TokenAuthtication])
+@transaction.atomic
 def create(request):
     data = request.data.copy()
     user = _token_user(request)
@@ -35,7 +38,8 @@ def create(request):
 
     serializer = ChildSerializer(data=data)
     if serializer.is_valid():
-        serializer.save()
+        student = serializer.save()
+        record_student_created(student, 'parent', user)
         return APIResponse(code=0, msg='创建成功', data=serializer.data)
     else:
         utils.log_error(request, '添加child输入参数错误')

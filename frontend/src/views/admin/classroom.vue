@@ -111,14 +111,15 @@
 
                           <div class="student-inline-actions">
                             <a-button
+                              v-if="!row.lesson.virtual_trial"
                               size="small"
                               :type="student.absentMarked ? 'default' : 'primary'"
                               @click="toggleAbsent(student, row.lesson)"
                             >
                               {{ student.absentMarked ? 'Present' : 'Absent' }}
                             </a-button>
-                            <a-button size="small" @click="openComment(student, row.lesson)">Comment</a-button>
-                            <a-button size="small" @click="openNote(student, row.lesson)">Note</a-button>
+                            <a-button v-if="!row.lesson.virtual_trial" size="small" @click="openComment(student, row.lesson)">Comment</a-button>
+                            <a-button v-if="!row.lesson.virtual_trial" size="small" @click="openNote(student, row.lesson)">Note</a-button>
                             <a-button size="small" @click="openStudent(student)">Profile</a-button>
                           </div>
                         </div>
@@ -177,14 +178,15 @@
 
                 <div class="student-actions">
                   <a-button
+                    v-if="!selectedLesson.virtual_trial"
                     size="large"
                     :type="student.absentMarked ? 'default' : 'primary'"
                     @click="toggleAbsent(student)"
                   >
                     {{ student.absentMarked ? 'Mark present' : 'Absent' }}
                   </a-button>
-                  <a-button size="large" @click="openComment(student)">Comment</a-button>
-                  <a-button size="large" @click="openNote(student)">Note</a-button>
+                  <a-button v-if="!selectedLesson.virtual_trial" size="large" @click="openComment(student)">Comment</a-button>
+                  <a-button v-if="!selectedLesson.virtual_trial" size="large" @click="openNote(student)">Note</a-button>
                   <a-button size="large" @click="openStudent(student)">Profile</a-button>
                 </div>
               </article>
@@ -219,16 +221,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import dayjs, { Dayjs } from 'dayjs';
 import { message } from 'ant-design-vue';
 import { listApi as listLessonsApi } from '/@/api/admin/lesson';
+import { listApi as listRoomsApi } from '/@/api/admin/tag';
 import { listApi as listTimeApi } from '/@/api/admin/time';
 import { listApi as listNoteApi, saveApi as saveNoteApi } from '/@/api/admin/student-lesson-note';
 import { markAbsentApi } from '/@/api/admin/student-attendance';
 import { createCommentApi } from '/@/api/admin/student';
 import { ADMIN_USER_ID } from '/@/store/constants';
+import { compareRoomNames } from '/@/utils/room-order';
+import { subscribeToScheduleDataChanges } from '/@/utils/schedule-sync';
 
 interface ScheduleStudent {
   order_id?: number;
@@ -276,6 +281,12 @@ interface TimeSlot {
   time: string;
 }
 
+interface RoomItem {
+  id: number;
+  title: string;
+  seat?: number | string;
+}
+
 interface LessonItem {
   id: number;
   lesson_id?: number;
@@ -294,6 +305,8 @@ interface LessonItem {
   scheduled_class_pass_students?: ClassPassStudent[];
   moved_students?: AdjustmentStudent[];
   sick_leave_students?: AdjustmentStudent[];
+  virtual_trial?: boolean;
+  teacher_confirmation_required?: boolean;
 }
 
 interface DisplayStudent {
@@ -345,8 +358,10 @@ const router = useRouter();
 const selectedDate = ref<Dayjs>(dayjs());
 const studentKeyword = ref('');
 const lessons = ref<LessonItem[]>([]);
+const rooms = ref<RoomItem[]>([]);
 const timeSlots = ref<TimeSlot[]>([]);
 const loading = ref(false);
+let unsubscribeScheduleSync: (() => void) | undefined;
 const selectedLessonKey = ref('');
 const activeRoomKey = ref('');
 const roomPager = ref<HTMLElement | null>(null);
@@ -433,23 +448,35 @@ const timeSlotGroups = computed<TimeSlotGroup[]>(() => {
 });
 
 const roomPages = computed<RoomPage[]>(() => {
-  const rooms = new Map<string, { key: string; roomId?: number; roomName: string; rows: ClassroomLessonRow[] }>();
+  const roomMap = new Map<string, { key: string; roomId?: number; roomName: string; rows: ClassroomLessonRow[] }>();
+
+  // Use the same configured room list as Schedule so legacy room labels cannot
+  // create a second tab in the iPad view.
+  rooms.value.forEach((room) => {
+    roomMap.set(String(room.id), {
+      key: String(room.id),
+      roomId: room.id,
+      roomName: room.title,
+      rows: [],
+    });
+  });
+
   lessonRows.value.forEach((row) => {
     const roomId = Number(row.lesson.room_id || 0) || undefined;
     const key = roomId ? String(roomId) : `room-${row.lesson.room_name || 'none'}`;
-    if (!rooms.has(key)) {
-      rooms.set(key, {
+    if (!roomMap.has(key)) {
+      roomMap.set(key, {
         key,
         roomId,
         roomName: row.lesson.room_name || 'No room',
         rows: [],
       });
     }
-    rooms.get(key)?.rows.push(row);
+    roomMap.get(key)?.rows.push(row);
   });
 
-  return Array.from(rooms.values())
-    .sort((a, b) => a.roomName.localeCompare(b.roomName))
+  return Array.from(roomMap.values())
+    .sort((a, b) => compareRoomNames(a.roomName, b.roomName))
     .map((room) => {
       const timeLabels = new Set<string>();
       timeSlots.value.forEach((slot) => timeLabels.add(normalizeTime(slot.time)));
@@ -507,20 +534,29 @@ watch(roomPages, (pages) => {
 
 onMounted(() => {
   loadClassroom();
+  unsubscribeScheduleSync = subscribeToScheduleDataChanges(loadClassroom);
+});
+
+onUnmounted(() => {
+  unsubscribeScheduleSync?.();
 });
 
 const loadClassroom = async () => {
   loading.value = true;
   try {
     const date = selectedDate.value.format('YYYY-MM-DD');
-    const [lessonRes, noteRes, timeRes] = await Promise.all([
+    const [lessonRes, noteRes, timeRes, roomRes] = await Promise.all([
       listLessonsApi({ date }),
       listNoteApi({ date }),
       listTimeApi({}),
+      listRoomsApi({}),
     ]);
     lessons.value = lessonRes.data || [];
     studentNotes.value = buildNoteMap(noteRes.data || []);
     timeSlots.value = timeRes.data || [];
+    rooms.value = [...(roomRes.data || [])].sort((a: RoomItem, b: RoomItem) =>
+      compareRoomNames(a.title, b.title)
+    );
     if (!lessons.value.some((lesson) => lessonKey(lesson) === selectedLessonKey.value)) {
       selectedLessonKey.value = lessons.value[0] ? lessonKey(lessons.value[0]) : '';
     }

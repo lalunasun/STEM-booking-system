@@ -3,7 +3,7 @@ from rest_framework.decorators import api_view, authentication_classes
 from CSAA import utils
 from CSAA.auth.authentication import AdminTokenAuthtication
 from CSAA.handler import APIResponse
-from CSAA.models import Classification, Thing, Tag
+from CSAA.models import Classification, Course, Thing, Tag
 from CSAA.serializers import ThingSerializer, UpdateThingSerializer
 
 from django.db.models import Case, When, IntegerField
@@ -70,7 +70,9 @@ def detail(request):
 def create(request):
     serializer = ThingSerializer(data=request.data)
     if serializer.is_valid():
-        serializer.save()
+        thing = serializer.save()
+        if thing.title:
+            Course.objects.get_or_create(title=str(thing.title).strip())
         return APIResponse(code=0, msg='创建成功', data=serializer.data)
     else:
         print(serializer.errors)
@@ -90,7 +92,9 @@ def update(request):
 
     serializer = UpdateThingSerializer(thing, data=request.data)
     if serializer.is_valid():
-        serializer.save()
+        thing = serializer.save()
+        if thing.title:
+            Course.objects.get_or_create(title=str(thing.title).strip())
         return APIResponse(code=0, msg='查询成功', data=serializer.data)
     else:
         # print(serializer.errors)

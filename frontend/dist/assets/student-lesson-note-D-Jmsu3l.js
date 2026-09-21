@@ -1,0 +1,1 @@
+import{K as a,C as e}from"./index-DOeL9D4I.js";const r=async s=>a({url:"/CSAA/admin/studentAttendance/markAbsent",params:{},data:s,headers:{}}),t="/CSAA/admin/studentLessonNote",o=async s=>e({url:t,params:s,data:{},headers:{}}),m=async s=>a({url:t,params:{},data:s,headers:{"Content-Type":"multipart/form-data;charset=utf-8"}});export{o as l,r as m,m as s};

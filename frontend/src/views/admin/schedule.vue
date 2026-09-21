@@ -25,6 +25,13 @@
             @change="selectWeek"
           />
           <a-button
+            v-if="canManageSchedule && savedAdjustments.length && !adjustmentMode"
+            :title="'Show saved adjustments for this date'"
+            @click="showSavedAdjustments = !showSavedAdjustments"
+          >
+            <undo-outlined /> Adjustments ({{ savedAdjustments.length }})
+          </a-button>
+          <a-button
             v-if="!adjustmentMode && canManageSchedule"
             type="primary"
             @click="enterAdjustmentMode"
@@ -44,6 +51,24 @@
           </a-radio-group>
           <span v-if="adjustmentScope === 'date'">{{ draftActions.length }} unsaved change(s)</span>
           <span v-else>Permanent change from a selected effective date</span>
+          <span v-if="adjustmentScope === 'date' && draggedStudent" class="selected-move-student">
+            Selected: {{ draggedStudent.student.name }} · {{ draggedStudent.sourceDate }}
+          </span>
+          <a-button
+            v-if="adjustmentScope === 'date' && draggedStudent"
+            size="small"
+            type="primary"
+            @click="selectDateForMove"
+          >
+            Choose target date, then class
+          </a-button>
+          <a-button
+            v-if="adjustmentScope === 'date' && draggedStudent"
+            size="small"
+            @click="clearSelectedStudent"
+          >
+            Clear selection
+          </a-button>
         </div>
         <div class="adjustment-actions">
           <a-button :disabled="!draftActions.length" @click="undoLastDraft">
@@ -51,20 +76,6 @@
           </a-button>
           <a-button :disabled="!draftActions.length" @click="discardDrafts">
             Discard
-          </a-button>
-          <a-button
-            v-if="adjustmentScope === 'date' && savedAdjustments.length"
-            danger
-            @click="revertLastSaved"
-          >
-            Revert last saved
-          </a-button>
-          <a-button
-            v-if="adjustmentScope === 'future' && permanentChanges.length"
-            danger
-            @click="revertLastPermanent"
-          >
-            Revert last permanent
           </a-button>
           <a-button
             v-if="adjustmentScope === 'date'"
@@ -76,6 +87,78 @@
             <save-outlined /> Save changes
           </a-button>
           <a-button @click="exitAdjustmentMode">Exit</a-button>
+        </div>
+      </section>
+
+      <section v-if="adjustmentMode && adjustmentScope === 'date' && draftActions.length" class="saved-adjustments">
+        <strong>Unsaved changes</strong>
+        <div v-for="(action, index) in draftActions" :key="`${action.student_id}-${index}`" class="saved-adjustment-row">
+          <span class="saved-adjustment-description">
+            <strong>{{ action.student_name }}</strong>
+            {{ action.type === 'sick_leave' ? 'Sick leave' : 'Move' }} · {{ action.source_class }}
+            <template v-if="action.target_class"> → {{ action.target_class }}</template>
+          </span>
+          <a-button size="small" :title="`Remove ${action.student_name}'s unsaved change`" @click="removeDraftAction(index)">
+            <close-outlined />
+          </a-button>
+        </div>
+      </section>
+
+      <section
+        v-if="canManageSchedule && savedAdjustments.length && (adjustmentMode && adjustmentScope === 'date' || showSavedAdjustments)"
+        class="saved-adjustments"
+        aria-label="Saved daily adjustments"
+      >
+        <strong>Saved adjustments for {{ selectedDate.format('MMM D') }}</strong>
+        <div v-for="record in savedAdjustments" :key="record.id" class="saved-adjustment-row">
+          <span class="saved-adjustment-description">
+            <strong>{{ record.student_name }}</strong>
+            <span v-if="record.adjustment_type === 'sick_leave'">
+              Sick leave · {{ record.source_class }} · {{ record.source_room }} ·
+              {{ record.source_time }} · {{ record.source_lesson_date }}
+              <template v-if="record.lesson_count_delta">· 1 lesson deducted</template>
+            </span>
+            <span v-else>
+              Move · {{ record.source_class }} · {{ record.source_room }}
+              ({{ record.source_lesson_date }}) → {{ record.target_class }} ·
+              {{ record.target_room }} ({{ record.target_lesson_date }})
+            </span>
+          </span>
+          <a-popconfirm
+            :title="getRevertConfirmation(record)"
+            ok-text="Revert"
+            cancel-text="Keep"
+            @confirm="revertSavedAdjustment(record)"
+          >
+            <a-button
+              size="small"
+              danger
+              :loading="revertingAdjustmentId === record.id"
+              :disabled="revertingAdjustmentId !== null && revertingAdjustmentId !== record.id"
+            >
+              <undo-outlined /> Revert
+            </a-button>
+          </a-popconfirm>
+        </div>
+      </section>
+
+      <section v-if="adjustmentMode && adjustmentScope === 'future' && permanentChanges.length" class="saved-adjustments">
+        <strong>Active permanent changes</strong>
+        <div v-for="record in permanentChanges" :key="record.id" class="saved-adjustment-row">
+          <span class="saved-adjustment-description">
+            <strong>{{ record.student_name }}</strong>
+            {{ record.source_class }} → {{ record.target_class }} · from {{ record.effective_date }}
+          </span>
+          <a-popconfirm
+            :title="`Revert ${record.student_name}'s permanent change to ${record.source_class}?`"
+            ok-text="Revert"
+            cancel-text="Keep"
+            @confirm="revertPermanentChange(record)"
+          >
+            <a-button size="small" danger :loading="revertingPermanentId === record.id">
+              <undo-outlined /> Revert
+            </a-button>
+          </a-popconfirm>
         </div>
       </section>
 
@@ -147,6 +230,7 @@
             class="schedule-scroll"
             @dragover.prevent="handleScheduleDragOver"
             @dragleave="stopAutoScroll"
+            @wheel="handleScheduleWheel"
           >
             <div class="daily-board" :style="boardGridStyle">
               <div class="time-header">Time</div>
@@ -190,9 +274,11 @@
                   v-for="room in rooms"
                   :key="`${slot.id}-${room.id}`"
                   class="schedule-cell"
-                  :class="{ 'empty-cell': !getCellLessons(room.id, slot.id).length }"
+                  :class="{ 'empty-cell': !getCellLessons(room.id, slot.id).length && !getContinuingLessons(room.id, slot.id).length && !getContinuingTrials(room.id, slot.id).length }"
+                  @dragover.prevent
+                  @drop.self="dropStudentToCell(room, slot)"
                 >
-                  <template v-if="getCellLessons(room.id, slot.id).length">
+                  <template v-if="getCellLessons(room.id, slot.id).length || getContinuingLessons(room.id, slot.id).length || getContinuingTrials(room.id, slot.id).length">
                     <div
                       class="slot-summary"
                       :class="{ full: isCellFull(room.id, slot.id) }"
@@ -222,6 +308,7 @@
                       >
                         <span class="lesson-title-line">
                           <strong>{{ lesson.class_name || 'Untitled class' }}</strong>
+                          <small v-if="!isStandardHourTime(lesson.time)">{{ lesson.time }}</small>
                         </span>
                       </button>
 
@@ -253,7 +340,11 @@
                             type="button"
                             class="student-main"
                             :title="getStudentHoverText(lesson, student)"
-                            @click="toDetailPage(lesson)"
+                            @click="adjustmentMode
+                              ? selectStudentForMove(lesson, student)
+                              : lesson.virtual_trial
+                                ? openStudentDetail(student)
+                                : toDetailPage(lesson)"
                           >
                             <span>{{ student.name }}</span>
                             <small v-if="student.badge">{{ student.badge }}</small>
@@ -285,7 +376,24 @@
                           >
                             {{ student.absentMarked ? 'Present' : 'Mark absent' }}
                           </button>
+                          <a-popconfirm
+                            v-if="getSavedAdjustment(lesson, student)"
+                            :title="getRevertConfirmation(getSavedAdjustment(lesson, student)!)"
+                            ok-text="Revert"
+                            cancel-text="Keep"
+                            @confirm="revertSavedAdjustment(getSavedAdjustment(lesson, student)!)"
+                          >
+                            <button
+                              type="button"
+                              class="note-button"
+                              :title="`Revert ${student.name}'s adjustment`"
+                              :disabled="revertingAdjustmentId !== null"
+                            >
+                              <undo-outlined />
+                            </button>
+                          </a-popconfirm>
                           <button
+                            v-if="!lesson.virtual_trial"
                             type="button"
                             class="note-button"
                             :class="{ 'has-note': !!getStudentNote(lesson, student) }"
@@ -300,6 +408,35 @@
                         </span>
                       </div>
                     </article>
+                    <div
+                      v-for="lesson in getContinuingLessons(room.id, slot.id)"
+                      :key="`continuing-${lesson.id}`"
+                      class="slot-continuation"
+                      :class="{ 'trial-continuation': lesson.virtual_trial }"
+                    >
+                      <template v-if="lesson.virtual_trial">
+                        <span>Trial continues:</span>
+                        <button
+                          v-for="student in getVisibleStudents(lesson)"
+                          :key="`continuing-student-${lesson.id}-${student.studentId}`"
+                          type="button"
+                          @click="openStudentDetail(student)"
+                        >
+                          {{ student.name }}
+                        </button>
+                        <span>· {{ lesson.class_name || 'Trial' }} · {{ lesson.time }}</span>
+                      </template>
+                      <template v-else>
+                        Continues: {{ lesson.class_name || 'Class' }} · {{ lesson.time }}
+                      </template>
+                    </div>
+                    <div
+                      v-for="trial in getContinuingTrials(room.id, slot.id)"
+                      :key="`trial-continuing-${trial.trial_session_id}`"
+                      class="slot-continuation"
+                    >
+                      Trial continues: {{ trial.name }} · {{ trial.trial_course }} · {{ trial.trial_time }}
+                    </div>
                   </template>
                 </div>
               </template>
@@ -342,22 +479,33 @@
           <span>Current class: {{ permanentModal.sourceClass }}</span>
         </div>
         <a-form layout="vertical">
-          <a-form-item label="Effective date">
-            <a-date-picker
-              v-model:value="permanentModal.effectiveDate"
-              :allow-clear="false"
-              style="width: 100%"
-              @change="loadPermanentOptions"
-            />
-          </a-form-item>
-          <a-form-item label="New recurring class">
+          <a-form-item label="Course">
             <a-select
-              v-model:value="permanentModal.targetLessonId"
+              v-model:value="permanentModal.courseName"
               show-search
               option-filter-prop="label"
-              placeholder="Select the new class"
+              placeholder="Select course"
               :loading="permanentModal.loadingOptions"
-              :options="permanentModal.options"
+              :options="permanentCourseOptions"
+              @change="onPermanentCourseChange"
+            />
+          </a-form-item>
+          <a-form-item label="First class date">
+            <a-date-picker
+              v-model:value="permanentModal.firstClassDate"
+              :disabled="!permanentModal.courseName"
+              :disabled-date="isPermanentDateDisabled"
+              style="width: 100%"
+              @change="onPermanentDateChange"
+            />
+          </a-form-item>
+          <a-form-item label="Time and room">
+            <a-select
+              v-model:value="permanentModal.targetLessonId"
+              placeholder="Select time and room"
+              :disabled="!permanentModal.firstClassDate"
+              :loading="permanentModal.loadingTargets"
+              :options="permanentTargetOptions"
             />
           </a-form-item>
           <a-form-item label="Reason">
@@ -397,6 +545,7 @@
 
 <script lang="ts" setup>
 import {
+  CloseOutlined,
   EditOutlined,
   HolderOutlined,
   MedicineBoxOutlined,
@@ -432,6 +581,8 @@ import {
 import { listApi as listRoomsApi } from '/@/api/admin/tag';
 import { listApi as listTimesApi } from '/@/api/admin/time';
 import { ADMIN_USER_ID, ADMIN_USER_ROLE } from '/@/store/constants';
+import { compareRoomNames } from '/@/utils/room-order';
+import { notifyScheduleDataChanged } from '/@/utils/schedule-sync';
 
 interface RoomItem {
   id: number;
@@ -471,13 +622,17 @@ interface AdjustmentStudent {
 }
 
 interface TrialStudent {
-  trial_request_id: number;
+  trial_request_id?: number;
+  trial_session_id?: number;
   student_id: number;
   order_id?: number;
   name: string;
   date: string;
   comment_done?: boolean;
   absent_marked?: boolean;
+  trial_course?: string;
+  trial_time?: string;
+  continuing?: boolean;
 }
 
 interface ClassPassStudent {
@@ -506,9 +661,12 @@ interface LessonItem {
   canceled_students?: AdjustmentStudent[];
   scheduled_reschedule_students?: AdjustmentStudent[];
   scheduled_trial_students?: TrialStudent[];
+  continuing_trial_students?: TrialStudent[];
   scheduled_class_pass_students?: ClassPassStudent[];
   moved_students?: AdjustmentStudent[];
   sick_leave_students?: AdjustmentStudent[];
+  virtual_trial?: boolean;
+  teacher_confirmation_required?: boolean;
 }
 
 interface DisplayStudent {
@@ -527,12 +685,32 @@ interface DraftAction {
   student_id: number;
   student_name: string;
   source_lesson_id: number;
+  source_lesson_date?: string;
   source_class: string;
   target_lesson_id?: number;
+  target_lesson_date?: string;
   target_class?: string;
   reason?: string;
   deduct_lesson?: boolean;
   term_title?: string;
+}
+
+interface SavedAdjustment {
+  id: number;
+  student_id: number;
+  student_name: string;
+  adjustment_type: 'move' | 'sick_leave';
+  source_lesson_id: number;
+  target_lesson_id?: number;
+  source_class: string;
+  source_room?: string;
+  source_time?: string;
+  source_lesson_date: string;
+  target_class?: string;
+  target_room?: string;
+  target_time?: string;
+  target_lesson_date: string;
+  lesson_count_delta: number;
 }
 
 const dayCodes = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -574,10 +752,13 @@ const studentNotes = ref<Record<string, string>>({});
 const adjustmentMode = ref(false);
 const adjustmentScope = ref('date');
 const draftActions = ref<DraftAction[]>([]);
-const savedAdjustments = ref<any[]>([]);
+const savedAdjustments = ref<SavedAdjustment[]>([]);
+const showSavedAdjustments = ref(false);
+const revertingAdjustmentId = ref<number | null>(null);
 const permanentChanges = ref<any[]>([]);
+const revertingPermanentId = ref<number | null>(null);
 const savingAdjustments = ref(false);
-const draggedStudent = ref<{ lesson: LessonItem; student: DisplayStudent } | null>(null);
+const draggedStudent = ref<{ lesson: LessonItem; student: DisplayStudent; sourceDate: string } | null>(null);
 const scheduleScrollRef = ref<HTMLElement | null>(null);
 const autoScrollFrame = ref<number | null>(null);
 const autoScrollVector = reactive({ x: 0, y: 0 });
@@ -604,15 +785,30 @@ const permanentModal = reactive({
   visible: false,
   saving: false,
   loadingOptions: false,
+  loadingTargets: false,
   studentId: 0,
   studentName: '',
   sourceLessonId: 0,
   sourceClass: '',
-  effectiveDate: dayjs(),
+  earliestDate: dayjs(),
+  courseName: undefined as string | undefined,
+  firstClassDate: null as Dayjs | null,
   targetLessonId: undefined as number | undefined,
   reason: '',
-  options: [] as Array<{ value: number; label: string }>,
+  options: [] as Array<{ lesson_id: number; class_name: string; day: string; time: string; room: string; first_class_date: string; enrollment_end_date: string; remaining: number | null }>,
+  targetOptions: [] as Array<{ lesson_id: number; class_name: string; day: string; time: string; room: string; first_class_date: string; enrollment_end_date: string; remaining: number | null }>,
 });
+const permanentCourseOptions = computed(() => [...new Set(permanentModal.options.map((item) => item.class_name))]
+  .sort((left, right) => left.localeCompare(right))
+  .map((name) => ({ value: name, label: name })));
+const permanentTargetOptions = computed(() => permanentModal.targetOptions
+  .filter((item) => item.class_name === permanentModal.courseName &&
+    item.first_class_date === permanentModal.firstClassDate?.format('YYYY-MM-DD'))
+  .map((item) => ({
+    value: item.lesson_id,
+    label: `${item.time} · ${item.room}${item.remaining === null ? '' : ` · ${item.remaining} left`}`,
+    disabled: item.remaining === 0,
+  })));
 const staffAnnouncement = ref(
   'Please review your classroom assignment and student changes before the first lesson.'
 );
@@ -644,9 +840,14 @@ const displayedTimeSlots = computed(() => {
       return false;
     }
     if (weekendDayCodes.has(dayCode)) {
-      return minutes >= 9 * 60 && minutes < 18 * 60 && minutes !== 12 * 60;
+      if (minutes < 9 * 60 || minutes >= 18 * 60 || minutes === 12 * 60) {
+        return false;
+      }
+    } else if (minutes < 16 * 60 || minutes >= 20 * 60) {
+      return false;
     }
-    return minutes >= 16 * 60 && minutes < 20 * 60;
+
+    return isStandardHourTime(slot.time);
   });
 });
 
@@ -666,9 +867,7 @@ onMounted(async () => {
     if (teacherResponse?.data?.value) {
       teacherAssignments.value = teacherResponse.data.value;
     }
-    rooms.value = [...(roomResponse.data || [])].sort((a, b) =>
-      String(a.title || '').localeCompare(String(b.title || ''), undefined, { numeric: true })
-    );
+    rooms.value = [...(roomResponse.data || [])].sort((a, b) => compareRoomNames(a.title, b.title));
     timeSlots.value = [...(timeResponse.data || [])].sort((a, b) =>
       getTimeMinutes(a.time) - getTimeMinutes(b.time)
     );
@@ -775,6 +974,7 @@ const saveInlineTeacher = async (roomId: number) => {
 
 const loadSelectedDate = async () => {
   loading.value = true;
+  savedAdjustments.value = [];
   try {
     if (selectedDayCode.value === 'Mon') {
       lessons.value = [];
@@ -786,7 +986,7 @@ const loadSelectedDate = async () => {
     });
     lessons.value = lessonResponse.data || [];
     loadStudentNotes();
-    loadSavedAdjustments();
+    await loadSavedAdjustments();
   } catch (error) {
     lessons.value = [];
     console.log(error);
@@ -803,6 +1003,19 @@ const getTimeMinutes = (value?: string) => {
   return Number(match[1]) * 60 + Number(match[2] || 0);
 };
 
+const getTimeRange = (value?: string) => {
+  const parts = String(value || '').split('-');
+  return {
+    start: getTimeMinutes(parts[0]),
+    end: getTimeMinutes(parts[1] || parts[0]),
+  };
+};
+
+const isStandardHourTime = (value?: string) => {
+  const { start, end } = getTimeRange(value);
+  return start % 60 === 0 && end - start === 60;
+};
+
 const selectedDayCode = computed(() => dayCodes[selectedDate.value.day()]);
 
 const getCellLessons = (roomId: number, timeId: number) => {
@@ -812,21 +1025,55 @@ const getCellLessons = (roomId: number, timeId: number) => {
 };
 
 const getRawCellLessons = (roomId: number, timeId: number) => {
+  const slot = timeSlots.value.find((item) => Number(item.id) === Number(timeId));
+  if (!slot) return [];
+  const rowStart = getTimeMinutes(slot.time);
+  return lessons.value
+    .filter((lesson) => lesson.day === selectedDayCode.value)
+    .filter((lesson) => Number(lesson.room_id) === Number(roomId))
+    .filter((lesson) => Math.floor(getTimeRange(lesson.time).start / 60) * 60 === rowStart);
+};
+
+const getOverlappingCellLessons = (roomId: number, timeId: number) => {
+  const slot = timeSlots.value.find((item) => Number(item.id) === Number(timeId));
+  if (!slot) return [];
+  const rowStart = getTimeMinutes(slot.time);
   return lessons.value
     .filter((lesson) => lesson.day === selectedDayCode.value)
     .filter((lesson) => Number(lesson.room_id) === Number(roomId))
     .filter((lesson) => {
-      const slot = timeSlots.value.find((item) => Number(item.id) === Number(timeId));
-      return slot && lesson.time === slot.time;
+      const { start, end } = getTimeRange(lesson.time);
+      return start < rowStart + 60 && end > rowStart;
     });
 };
 
-const getLessonSlotLessons = (lesson: LessonItem) => {
-  return lessons.value.filter((item) =>
-    item.day === lesson.day &&
-    Number(item.room_id) === Number(lesson.room_id) &&
-    item.time === lesson.time
-  );
+const getContinuingLessons = (roomId: number, timeId: number) => {
+  const slot = timeSlots.value.find((item) => Number(item.id) === Number(timeId));
+  if (!slot) return [];
+  const rowStart = getTimeMinutes(slot.time);
+  return getOverlappingCellLessons(roomId, timeId)
+    .filter((lesson) => getTimeRange(lesson.time).start < rowStart)
+    .filter((lesson) => getPresentStudentCount(lesson) > 0)
+    .filter(matchesStudentSearch);
+};
+
+const getContinuingTrials = (roomId: number, timeId: number) => {
+  const slot = timeSlots.value.find((item) => Number(item.id) === Number(timeId));
+  if (!slot) return [];
+  const rowStart = getTimeMinutes(slot.time);
+  const visibleIds = new Set(getOverlappingCellLessons(roomId, timeId).flatMap((lesson) => [
+    ...(lesson.scheduled_trial_students || []),
+    ...(lesson.continuing_trial_students || []),
+  ]).map((student) => student.trial_session_id).filter(Boolean));
+  return lessons.value
+    .filter((lesson) => Number(lesson.room_id) === Number(roomId))
+    .flatMap((lesson) => (lesson.scheduled_trial_students || []).filter((student) =>
+      student.trial_session_id && student.trial_time &&
+      !visibleIds.has(student.trial_session_id) &&
+      getTimeRange(student.trial_time).start < rowStart &&
+      getTimeRange(student.trial_time).end > rowStart &&
+      (!studentKeyword.value.trim() || student.name.toLowerCase().includes(studentKeyword.value.trim().toLowerCase()))
+    ));
 };
 
 const isStudentActiveOnDate = (student: ScheduleStudent) => {
@@ -884,14 +1131,21 @@ const getDisplayStudents = (lesson: LessonItem): DisplayStudent[] => {
   const trialStudents: DisplayStudent[] = (lesson.scheduled_trial_students || [])
     .filter((student) => isAdjustmentOnSelectedDate(student.date))
     .map((student) => ({
-      id: student.trial_request_id,
+      id: student.trial_session_id || student.trial_request_id,
       studentId: student.student_id,
       name: student.name,
       type: 'trial',
-      badge: 'Trial',
+      badge: student.trial_time ? `Trial · ${student.trial_time}` : 'Trial',
       commentDone: !!student.comment_done,
       absentMarked: !!student.absent_marked,
     }));
+  const continuingTrialStudents: DisplayStudent[] = (lesson.continuing_trial_students || []).map((student) => ({
+    id: student.trial_session_id,
+    studentId: student.student_id,
+    name: student.name,
+    type: 'trial',
+    badge: `Trial continues · ${student.trial_course}`,
+  }));
 
   const classPassStudents: DisplayStudent[] = (lesson.scheduled_class_pass_students || [])
     .filter((student) => isAdjustmentOnSelectedDate(student.date))
@@ -958,6 +1212,7 @@ const getDisplayStudents = (lesson: LessonItem): DisplayStudent[] => {
     ...canceledStudents,
     ...rescheduledStudents,
     ...trialStudents,
+    ...continuingTrialStudents,
     ...classPassStudents,
     ...movedStudents,
     ...sickStudents,
@@ -988,7 +1243,7 @@ const getLessonCapacity = (lesson: LessonItem) => {
 };
 
 const countsTowardRoomCapacity = (student: DisplayStudent) => {
-  return ['normal', 'rescheduled', 'moved'].includes(student.type);
+  return ['normal', 'rescheduled', 'trial', 'class_pass', 'moved'].includes(student.type);
 };
 
 const getPresentStudentCount = (lesson: LessonItem) => {
@@ -1003,10 +1258,12 @@ const isLessonFull = (lesson: LessonItem) => {
 };
 
 const getRoomSlotPresentStudentCount = (lesson: LessonItem) => {
-  return getLessonSlotLessons(lesson).reduce(
-    (total, slotLesson) => total + getPresentStudentCount(slotLesson),
-    0
-  );
+  const { start, end } = getTimeRange(lesson.time);
+  const counts = timeSlots.value
+    .filter((slot) => isStandardHourTime(slot.time))
+    .filter((slot) => getTimeMinutes(slot.time) < end && getTimeMinutes(slot.time) + 60 > start)
+    .map((slot) => getCellPresentStudentCount(Number(lesson.room_id), slot.id));
+  return Math.max(0, ...counts);
 };
 
 const isSameRoomSlot = (left: LessonItem, right: LessonItem) => {
@@ -1026,7 +1283,7 @@ const getCellCapacity = (roomId: number, timeId: number) => {
 };
 
 const getCellPresentStudentCount = (roomId: number, timeId: number) => {
-  return getRawCellLessons(roomId, timeId).reduce(
+  return getContinuingTrials(roomId, timeId).length + getOverlappingCellLessons(roomId, timeId).reduce(
     (total, lesson) => total + getPresentStudentCount(lesson),
     0
   );
@@ -1038,8 +1295,7 @@ const isCellFull = (roomId: number, timeId: number) => {
 };
 
 const getLessonEndMinutes = (lesson: LessonItem) => {
-  const parts = String(lesson.time || '').split('-');
-  return getTimeMinutes(parts[1] || parts[0]);
+  return getTimeRange(lesson.time).end;
 };
 
 const isLessonEnded = (lesson: LessonItem) => {
@@ -1085,7 +1341,7 @@ const getAttendanceKey = (lesson: LessonItem, student: DisplayStudent) => {
 };
 
 const canMarkAttendance = (lesson: LessonItem, student: DisplayStudent) => {
-  return isLessonEnded(lesson) && needsLessonComment(student) && (!student.commentDone || student.absentMarked);
+  return !lesson.virtual_trial && isLessonEnded(lesson) && needsLessonComment(student) && (!student.commentDone || student.absentMarked);
 };
 
 const toggleAbsent = async (lesson: LessonItem, student: DisplayStudent) => {
@@ -1184,6 +1440,17 @@ const handleScheduleDragOver = (event: DragEvent) => {
   }
 };
 
+const handleScheduleWheel = (event: WheelEvent) => {
+  const scrollEl = scheduleScrollRef.value;
+  if (!scrollEl || (!event.shiftKey && !event.deltaX)) {
+    return;
+  }
+  if (event.cancelable) {
+    event.preventDefault();
+  }
+  scrollEl.scrollLeft += event.shiftKey ? event.deltaY : event.deltaX;
+};
+
 const handleScheduleKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Escape' && draggedStudent.value) {
     stopAutoScroll();
@@ -1226,13 +1493,18 @@ const loadStudentNotes = async () => {
 };
 
 const loadSavedAdjustments = async () => {
+  const date = selectedDate.value.format('YYYY-MM-DD');
   try {
     const response = await listAdjustmentsApi({
-      date: selectedDate.value.format('YYYY-MM-DD'),
+      date,
     });
-    savedAdjustments.value = response.data || [];
+    if (selectedDate.value.format('YYYY-MM-DD') === date) {
+      savedAdjustments.value = response.data || [];
+    }
   } catch (error) {
-    savedAdjustments.value = [];
+    if (selectedDate.value.format('YYYY-MM-DD') === date) {
+      savedAdjustments.value = [];
+    }
     console.log(error);
   }
 };
@@ -1252,6 +1524,7 @@ const exitAdjustmentMode = () => {
     message.warning('Save or discard unsaved changes before exiting');
     return;
   }
+  clearSelectedStudent();
   adjustmentMode.value = false;
 };
 
@@ -1282,11 +1555,25 @@ const selectStudentForMove = (lesson: LessonItem, student: DisplayStudent) => {
     return;
   }
   if (isSelectedStudent(lesson, student)) {
-    draggedStudent.value = null;
+    clearSelectedStudent();
     return;
   }
-  draggedStudent.value = { lesson, student };
-  message.info(`${student.name} selected. Click a target class or drag the handle.`);
+  draggedStudent.value = {
+    lesson,
+    student,
+    sourceDate: selectedDate.value.format('YYYY-MM-DD'),
+  };
+  message.info(`${student.name} selected. Choose a date, then click a target class.`);
+};
+
+const clearSelectedStudent = () => {
+  draggedStudent.value = null;
+};
+
+const selectDateForMove = () => {
+  if (draggedStudent.value) {
+    message.info('Choose a date from the left, then click the target class.');
+  }
 };
 
 const canAcceptDrop = (targetLesson: LessonItem) => {
@@ -1346,7 +1633,11 @@ const startStudentDrag = (event: DragEvent, lesson: LessonItem, student: Display
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move';
   }
-  draggedStudent.value = { lesson, student };
+  draggedStudent.value = {
+    lesson,
+    student,
+    sourceDate: selectedDate.value.format('YYYY-MM-DD'),
+  };
 };
 
 const endStudentDrag = () => {
@@ -1383,12 +1674,30 @@ const dropStudent = (targetLesson: LessonItem) => {
     student_id: dragged.student.studentId,
     student_name: dragged.student.name,
     source_lesson_id: sourceLessonId,
+    source_lesson_date: dragged.sourceDate,
     source_class: dragged.lesson.class_name || 'Untitled class',
     target_lesson_id: targetLessonId,
+    target_lesson_date: selectedDate.value.format('YYYY-MM-DD'),
     target_class: targetLesson.class_name || 'Untitled class',
     term_title: dragged.student.title,
   });
   draggedStudent.value = null;
+};
+
+const dropStudentToCell = (room: RoomItem, slot: TimeItem) => {
+  if (!adjustmentMode.value || !draggedStudent.value) {
+    return;
+  }
+  const targetLessons = getRawCellLessons(room.id, slot.id);
+  if (targetLessons.length === 1) {
+    dropStudent(targetLessons[0]);
+    return;
+  }
+  if (targetLessons.length > 1) {
+    message.info('Choose the specific course block in this room and time');
+    return;
+  }
+  message.warning('No course is configured in this room and time. Add a course first.');
 };
 
 const openSickLeave = (lesson: LessonItem, student: DisplayStudent) => {
@@ -1431,6 +1740,10 @@ const discardDrafts = () => {
   draftActions.value = [];
 };
 
+const removeDraftAction = (index: number) => {
+  draftActions.value.splice(index, 1);
+};
+
 const saveAdjustments = async () => {
   if (!canManageSchedule.value) {
     return;
@@ -1442,6 +1755,7 @@ const saveAdjustments = async () => {
       actions: JSON.stringify(draftActions.value),
     });
     draftActions.value = [];
+    notifyScheduleDataChanged();
     message.success('Daily adjustments saved');
     await loadSelectedDate();
   } catch (error: any) {
@@ -1451,20 +1765,46 @@ const saveAdjustments = async () => {
   }
 };
 
-const revertLastSaved = async () => {
+const getRevertConfirmation = (record: SavedAdjustment) =>
+  record.adjustment_type === 'sick_leave'
+    ? `Revert ${record.student_name}'s sick leave? Any deducted lesson will be restored.`
+    : `Revert ${record.student_name}'s move? Their original class will be restored.`;
+
+const getSavedAdjustment = (lesson: LessonItem, student: DisplayStudent) => {
+  if (!canManageSchedule.value || !['moved', 'sick'].includes(student.type)) return null;
+  const lessonId = Number(lesson.lesson_id || lesson.id);
+  return savedAdjustments.value.find((record) =>
+    record.id === student.id && record.student_id === student.studentId &&
+    (student.type === 'sick' ? record.source_lesson_id === lessonId : record.target_lesson_id === lessonId)
+  ) || null;
+};
+
+const revertSavedAdjustment = async (record: SavedAdjustment) => {
   if (!canManageSchedule.value) {
     return;
   }
-  const record = savedAdjustments.value[savedAdjustments.value.length - 1];
-  if (!record) {
+  const date = selectedDate.value.format('YYYY-MM-DD');
+  if (
+    revertingAdjustmentId.value !== null ||
+    !savedAdjustments.value.some((item) => item.id === record.id) ||
+    (record.source_lesson_date !== date && record.target_lesson_date !== date)
+  ) {
     return;
   }
+  revertingAdjustmentId.value = record.id;
   try {
-    await revertAdjustmentApi({ id: record.id });
-    message.success('Last saved adjustment reverted');
+    const response = await revertAdjustmentApi({ id: record.id });
+    if (response.code !== 0) {
+      message.error(response.msg || 'Failed to revert adjustment');
+      return;
+    }
+    notifyScheduleDataChanged();
+    message.success(`${record.student_name}'s adjustment reverted`);
     await loadSelectedDate();
   } catch (error: any) {
     message.error(error?.msg || 'Failed to revert adjustment');
+  } finally {
+    revertingAdjustmentId.value = null;
   }
 };
 
@@ -1485,10 +1825,13 @@ const openPermanentChange = (lesson: LessonItem, student: DisplayStudent) => {
   permanentModal.studentName = student.name;
   permanentModal.sourceLessonId = Number(lesson.lesson_id || lesson.id);
   permanentModal.sourceClass = lesson.class_name || 'Untitled class';
-  permanentModal.effectiveDate = selectedDate.value;
+  permanentModal.earliestDate = selectedDate.value;
+  permanentModal.courseName = undefined;
+  permanentModal.firstClassDate = null;
   permanentModal.targetLessonId = undefined;
   permanentModal.reason = '';
   permanentModal.options = [];
+  permanentModal.targetOptions = [];
   permanentModal.visible = true;
   loadPermanentOptions();
 };
@@ -1498,17 +1841,14 @@ const loadPermanentOptions = async () => {
     return;
   }
   permanentModal.loadingOptions = true;
-  permanentModal.targetLessonId = undefined;
   try {
     const response = await permanentOptionsApi({
       student_id: permanentModal.studentId,
       source_lesson_id: permanentModal.sourceLessonId,
-      effective_date: permanentModal.effectiveDate.format('YYYY-MM-DD'),
+      effective_date: permanentModal.earliestDate.format('YYYY-MM-DD'),
     });
-    permanentModal.options = (response.data || []).map((option: any) => ({
-      value: option.lesson_id,
-      label: `${option.class_name} | ${option.day} ${option.time} | ${option.room} | first ${option.first_class_date}`,
-    }));
+    if (response.code !== 0) throw new Error(response.msg || 'No classes available on this date');
+    permanentModal.options = response.data || [];
   } catch (error: any) {
     permanentModal.options = [];
     message.error(error?.msg || 'Failed to load available classes');
@@ -1517,24 +1857,68 @@ const loadPermanentOptions = async () => {
   }
 };
 
+const onPermanentCourseChange = () => {
+  permanentModal.firstClassDate = null;
+  permanentModal.targetLessonId = undefined;
+  permanentModal.targetOptions = [];
+};
+
+const isPermanentDateDisabled = (date: Dayjs) => {
+  const options = permanentModal.options.filter((item) => item.class_name === permanentModal.courseName);
+  if (!options.length || date.isBefore(permanentModal.earliestDate, 'day')) return true;
+  const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.day()];
+  return !options.some((item) => item.day === day &&
+    !date.isAfter(dayjs(item.enrollment_end_date), 'day'));
+};
+
+const onPermanentDateChange = async () => {
+  permanentModal.targetLessonId = undefined;
+  permanentModal.targetOptions = [];
+  if (!permanentModal.firstClassDate || !permanentModal.courseName) return;
+  const course = permanentModal.courseName;
+  const date = permanentModal.firstClassDate.format('YYYY-MM-DD');
+  permanentModal.loadingTargets = true;
+  try {
+    const response = await permanentOptionsApi({
+      student_id: permanentModal.studentId,
+      source_lesson_id: permanentModal.sourceLessonId,
+      effective_date: date,
+      course,
+    });
+    if (response.code !== 0) throw new Error(response.msg || 'No classes available on this date');
+    if (permanentModal.courseName === course && permanentModal.firstClassDate?.format('YYYY-MM-DD') === date) {
+      permanentModal.targetOptions = response.data || [];
+    }
+  } catch (error: any) {
+    message.error(error?.message || error?.msg || 'Failed to load available classes');
+  } finally {
+    permanentModal.loadingTargets = false;
+  }
+};
+
 const savePermanentChange = async () => {
   if (!canManageSchedule.value) {
     return;
   }
-  if (!permanentModal.targetLessonId) {
-    message.warning('Select the new recurring class');
+  if (!permanentModal.firstClassDate || !permanentModal.targetLessonId) {
+    message.warning('Select the first class date, time and room');
     return;
   }
   permanentModal.saving = true;
   try {
-    await createPermanentApi({
+    const response = await createPermanentApi({
       student_id: permanentModal.studentId,
       source_lesson_id: permanentModal.sourceLessonId,
       target_lesson_id: permanentModal.targetLessonId,
-      effective_date: permanentModal.effectiveDate.format('YYYY-MM-DD'),
+      effective_date: permanentModal.firstClassDate.format('YYYY-MM-DD'),
       reason: permanentModal.reason,
     });
+    if (response.code !== 0) {
+      message.error(response.msg || 'Failed to save permanent course change');
+      return;
+    }
     permanentModal.visible = false;
+    notifyScheduleDataChanged();
     message.success('Permanent course change saved');
     await Promise.all([loadSelectedDate(), loadPermanentChanges()]);
   } catch (error: any) {
@@ -1544,20 +1928,23 @@ const savePermanentChange = async () => {
   }
 };
 
-const revertLastPermanent = async () => {
-  if (!canManageSchedule.value) {
-    return;
-  }
-  const record = permanentChanges.value[0];
-  if (!record) {
-    return;
-  }
+const revertPermanentChange = async (record: any) => {
+  if (!canManageSchedule.value || revertingPermanentId.value !== null ||
+      !permanentChanges.value.some((item) => item.id === record.id)) return;
+  revertingPermanentId.value = record.id;
   try {
-    await revertPermanentApi({ id: record.id });
-    message.success('Permanent course change reverted');
+    const response = await revertPermanentApi({ id: record.id });
+    if (response.code !== 0) {
+      message.error(response.msg || 'Failed to revert permanent course change');
+      return;
+    }
+    notifyScheduleDataChanged();
+    message.success(`${record.student_name}'s permanent change reverted`);
     await Promise.all([loadSelectedDate(), loadPermanentChanges()]);
   } catch (error: any) {
     message.error(error?.msg || 'Failed to revert permanent course change');
+  } finally {
+    revertingPermanentId.value = null;
   }
 };
 
@@ -1629,6 +2016,16 @@ const toDetailPage = (lesson: LessonItem) => {
       id: thingId,
       lessonId,
       date: selectedDate.value.format('YYYY-MM-DD'),
+    },
+  });
+};
+
+const openStudentDetail = (student: DisplayStudent) => {
+  router.push({
+    name: 'student',
+    query: {
+      id: student.studentId,
+      returnTo: route.fullPath,
     },
   });
 };
@@ -1729,6 +2126,50 @@ const selectNextDay = () => {
 .adjustment-mode > span {
   color: #175cd3;
   font-size: 12px;
+}
+
+.selected-move-student {
+  border-radius: 4px;
+  background: #dbeafe;
+  color: #174ea6 !important;
+  font-weight: 700;
+  padding: 3px 6px;
+}
+
+.saved-adjustments {
+  margin-top: 8px;
+  border-bottom: 1px solid #d0d5dd;
+  padding: 4px 2px 8px;
+}
+
+.saved-adjustments > strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+
+.saved-adjustment-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+}
+
+.saved-adjustment-row + .saved-adjustment-row {
+  border-top: 1px solid #eef0f3;
+}
+
+.saved-adjustment-description {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.saved-adjustment-row .ant-btn {
+  flex: none;
 }
 
 .announcement {
@@ -1899,6 +2340,7 @@ const selectNextDay = () => {
 
 .schedule-scroll {
   overflow: auto;
+  overscroll-behavior: contain;
   border: 1px solid #d0d5dd;
   border-radius: 7px;
   max-height: calc(100vh - 205px);
@@ -2030,6 +2472,37 @@ const selectNextDay = () => {
 
 .slot-summary.full strong {
   color: #b42318;
+}
+
+.slot-continuation {
+  padding: 3px 2px;
+  color: #667085;
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.slot-continuation.trial-continuation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 4px;
+  margin: 4px 8px;
+  padding: 7px 9px;
+  border: 1px solid #d6bbfb;
+  border-radius: 4px;
+  background: #f9f5ff;
+  color: #6941c6;
+}
+
+.trial-continuation button {
+  border: 0;
+  background: transparent;
+  color: #6941c6;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .lesson-block {
@@ -2321,6 +2794,31 @@ const selectNextDay = () => {
 
   .week-picker {
     width: 100%;
+  }
+
+  .adjustment-toolbar {
+    position: static;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .adjustment-mode,
+  .adjustment-actions {
+    width: 100%;
+  }
+
+  .adjustment-mode :deep(.ant-radio-group) {
+    display: flex;
+    width: 100%;
+  }
+
+  .adjustment-mode :deep(.ant-radio-button-wrapper) {
+    flex: 1;
+    height: auto;
+    padding: 5px 7px;
+    text-align: center;
+    white-space: normal;
+    line-height: 20px;
   }
 
   .schedule-workspace {

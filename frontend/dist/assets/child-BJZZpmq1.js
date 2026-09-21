@@ -1,0 +1,1 @@
+import{C as t,K as e}from"./index-DOeL9D4I.js";const d=async a=>e({url:"/CSAA/index/child/create",data:a,headers:{}}),i=async a=>t({url:"/CSAA/index/child/list",params:a,data:{},headers:{}}),r=async(a,s)=>e({url:"/CSAA/index/child/update",params:a,data:s,headers:{}});export{d as c,i as l,r as u};

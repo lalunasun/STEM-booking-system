@@ -4,8 +4,14 @@ import json
 from django.db.models import Q
 from rest_framework import serializers
 
-from CSAA.models import Thing, Classification, Tag, User, Comment, LoginLog, Order, OpLog, \
-    Ad, Notice, ErrorLog, Lesson, Time, Term, Child, CourseAdjustment, TrialRequest, StudentLessonNote, SystemSetting, DailyStudentAdjustment, StudentComment, ClassPass, ClassPassBooking
+from CSAA.models import Thing, Classification, Course, Tag, User, Comment, LoginLog, Order, OpLog, \
+    Ad, Notice, ErrorLog, Lesson, Time, Term, Child, CourseAdjustment, TrialRequest, AdminTrialSession, StudentLessonNote, SystemSetting, DailyStudentAdjustment, StudentComment, ClassPass, ClassPassBooking
+
+
+def is_dashboard_test_student(name):
+    """Keep seeded parent/demo records out of staff schedule dashboards."""
+    value = str(name or '').strip().lower()
+    return 'parent' in value or 'demo' in value
 
 
 # 课程信息序列化
@@ -352,6 +358,12 @@ class ClassPassSerializer(serializers.ModelSerializer):
         model = ClassPass
         fields = '__all__'
 
+
+class CourseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Course
+        fields = '__all__'
+
     def get_parent_name(self, obj):
         if not obj.parent:
             return None
@@ -644,6 +656,7 @@ class DailyLessonSerializer(serializers.ModelSerializer):
     canceled_students = serializers.SerializerMethodField()
     scheduled_reschedule_students = serializers.SerializerMethodField()
     scheduled_trial_students = serializers.SerializerMethodField()
+    continuing_trial_students = serializers.SerializerMethodField()
     scheduled_class_pass_students = serializers.SerializerMethodField()
     moved_students = serializers.SerializerMethodField()
     sick_leave_students = serializers.SerializerMethodField()
@@ -665,6 +678,7 @@ class DailyLessonSerializer(serializers.ModelSerializer):
             'canceled_students',
             'scheduled_reschedule_students',
             'scheduled_trial_students',
+            'continuing_trial_students',
             'scheduled_class_pass_students',
             'moved_students',
             'sick_leave_students',
@@ -688,6 +702,7 @@ class DailyLessonSerializer(serializers.ModelSerializer):
             }
             for order in orders
             if order.child_id not in adjusted_student_ids
+            and not is_dashboard_test_student(order.child.name)
         ]
 
     def get_canceled_students(self, obj):
@@ -703,6 +718,7 @@ class DailyLessonSerializer(serializers.ModelSerializer):
                 'status': 'cancel',
             }
             for adjustment in adjustments
+            if not is_dashboard_test_student(adjustment.student.name)
         ]
 
     def get_scheduled_reschedule_students(self, obj):
@@ -720,6 +736,7 @@ class DailyLessonSerializer(serializers.ModelSerializer):
                 'absent_marked': self._is_absent(obj, adjustment.student_id),
             }
             for adjustment in adjustments
+            if not is_dashboard_test_student(adjustment.student.name)
         ]
 
     def get_scheduled_trial_students(self, obj):
@@ -730,6 +747,13 @@ class DailyLessonSerializer(serializers.ModelSerializer):
                 'absent_marked': self._is_absent(obj, student.get('student_id')),
             }
             for student in self.context['trials_by_thing'].get(obj.thing_id, [])
+            if not is_dashboard_test_student(student.get('name'))
+        ]
+
+    def get_continuing_trial_students(self, obj):
+        return [
+            student for student in self.context.get('continuing_trials_by_lesson', {}).get(obj.id, [])
+            if not is_dashboard_test_student(student.get('name'))
         ]
 
     def get_scheduled_class_pass_students(self, obj):
@@ -740,6 +764,7 @@ class DailyLessonSerializer(serializers.ModelSerializer):
                 'absent_marked': self._is_absent(obj, student.get('student_id')),
             }
             for student in self.context.get('class_pass_bookings_by_lesson', {}).get(obj.id, [])
+            if not is_dashboard_test_student(student.get('name'))
         ]
 
     def get_moved_students(self, obj):
@@ -750,10 +775,15 @@ class DailyLessonSerializer(serializers.ModelSerializer):
                 'absent_marked': self._is_absent(obj, student.get('student_id')),
             }
             for student in self.context['moved_in_by_lesson'].get(obj.id, [])
+            if not is_dashboard_test_student(student.get('name'))
         ]
 
     def get_sick_leave_students(self, obj):
-        return self.context['sick_leave_by_lesson'].get(obj.id, [])
+        return [
+            student
+            for student in self.context['sick_leave_by_lesson'].get(obj.id, [])
+            if not is_dashboard_test_student(student.get('name'))
+        ]
 
     def _has_lesson_comment(self, obj, student_id):
         if not student_id:
@@ -979,7 +1009,7 @@ class AdminStudentSerializer(serializers.ModelSerializer):
                 'scheduled_date': scheduled_date.strftime('%Y-%m-%d') if scheduled_date else None,
             }
 
-        return [
+        legacy_packages = [
             {
                 'trial_request_id': request.id,
                 'status': request.status,
@@ -995,6 +1025,35 @@ class AdminStudentSerializer(serializers.ModelSerializer):
             }
             for request in requests
         ]
+        admin_packages = {}
+        sessions = AdminTrialSession.objects.filter(student=obj).select_related(
+            'lesson__thing__time', 'lesson__thing__tag', 'room'
+        ).order_by('-created_time', 'session_index')
+        for session in sessions:
+            key = str(session.package_key)
+            package = admin_packages.setdefault(key, {
+                'trial_request_id': key,
+                'source': 'admin',
+                'status': session.status,
+                'order_id': None,
+                'created_time': session.created_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'courses': [],
+            })
+            thing = session.lesson.thing if session.lesson_id else None
+            room = session.room or (thing.tag if thing else None)
+            course_name = session.course_name or (thing.title if thing else 'Trial')
+            package['courses'].append({
+                'category': course_name,
+                'configured': True,
+                'class_name': course_name,
+                'day': thing.day if thing else ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][session.session_date.weekday()],
+                'time': f'{session.starts_at.strftime("%H:%M")}-{session.ends_at.strftime("%H:%M")}',
+                'room': room.title if room else None,
+                'scheduled_date': session.session_date.strftime('%Y-%m-%d'),
+                'booking_mode': session.booking_mode,
+                'teacher_confirmation_required': session.teacher_confirmation_required,
+            })
+        return list(admin_packages.values()) + legacy_packages
 
     def get_absence_records(self, obj):
         if self.context.get('summary_only') and hasattr(obj, 'prefetched_absences'):
@@ -1269,10 +1328,12 @@ class LessonDetailSerializer(serializers.ModelSerializer):
         if class_date:
             moved_in = DailyStudentAdjustment.objects.filter(
                 target_lesson=obj,
-                lesson_date=class_date,
                 status='active',
                 adjustment_type='move',
                 student__isnull=False,
+            ).filter(
+                Q(target_lesson_date=class_date) |
+                Q(target_lesson_date__isnull=True, lesson_date=class_date)
             ).select_related('student', 'student__parent', 'source_order__term')
 
             for adjustment in moved_in:
@@ -1362,6 +1423,25 @@ class LessonDetailSerializer(serializers.ModelSerializer):
                 'trial_date': trial_date.strftime('%Y-%m-%d') if trial_date else None,
                 'adjustment_status': 'trial',
             })
+
+        admin_sessions = AdminTrialSession.objects.filter(
+            lesson=obj, status='active',
+        ).select_related('student__parent')
+        if self.context.get('class_date'):
+            admin_sessions = admin_sessions.filter(session_date=self.context['class_date'])
+        for session in admin_sessions:
+            child = session.student
+            parent = child.parent
+            students.append({
+                'id': child.id,
+                'name': child.name,
+                'parent_name': (parent.nickname or parent.username) if parent else None,
+                'phone': parent.mobile if parent else None,
+                'trial_session_id': session.id,
+                'trial_date': session.session_date.strftime('%Y-%m-%d'),
+                'adjustment_status': 'trial',
+            })
+            seen.add(child.id)
 
         if not self.context.get('class_date'):
             for student in obj.try_students.all():

@@ -26,4 +26,9 @@ const updateApi = async (params: any, data: any) =>
 const deleteApi = async (params: any) =>
     post<any>({url: URL.delete, params: params, headers: {}});
 
-export {listApi, createApi, updateApi, deleteApi};
+const permissionsApi = (params: any) =>
+    get<any>({url: '/CSAA/admin/tag/coursePermissions', params});
+const savePermissionsApi = (data: any) =>
+    post<any>({url: '/CSAA/admin/tag/coursePermissions', data});
+
+export {listApi, createApi, updateApi, deleteApi, permissionsApi, savePermissionsApi};

@@ -153,7 +153,7 @@ const constantRouterMap = [
     children: [
 
       { path: 'schedule', name: 'schedule', component: () => import('/@/views/admin/schedule.vue') },
-      { path: 'mobileSchedule', name: 'mobileSchedule', component: () => import('/@/views/admin/mobile-schedule.vue') },
+      { path: 'weeklyOverview', name: 'weeklyOverview', component: () => import('/@/views/admin/weekly-overview.vue') },
       { path: 'classroom', name: 'classroom', component: () => import('/@/views/admin/classroom.vue') },
       { path: 'campCheckin', name: 'campCheckin', component: () => import('/@/views/admin/camp-checkin.vue') },
       { path: 'lesson', name: 'lesson', component: () => import('/@/views/admin/lesson.vue') },
@@ -163,6 +163,7 @@ const constantRouterMap = [
       { path: 'classPass', name: 'classPass', component: () => import('/@/views/admin/class-pass.vue') },
       { path: 'courseAdjustment', name: 'courseAdjustment', component: () => import('/@/views/admin/course-adjustment.vue') },
       { path: 'thing', name: 'thing', component: () => import('/@/views/admin/thing.vue') },
+      { path: 'course', name: 'course', component: () => import('/@/views/admin/course.vue') },
 
       { path: 'user', name: 'user', component: () => import('/@/views/admin/user.vue') },
       { path: 'student', name: 'student', component: () => import('/@/views/admin/student.vue') },

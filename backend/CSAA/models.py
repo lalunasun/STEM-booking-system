@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 
 
@@ -97,7 +99,32 @@ class Classification(models.Model):
         db_table = "b_classification"
 
 
+# Course name catalog. Concrete class instances remain in Thing.
+class Course(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    title = models.CharField(max_length=100, unique=True)
+    active = models.BooleanField(default=True)
+    create_time = models.DateTimeField(auto_now_add=True, null=True)
+
+    class Meta:
+        db_table = "b_course"
+
+
 # Class Infomation
+class RoomCoursePermission(models.Model):
+    room = models.ForeignKey(Tag, on_delete=models.CASCADE)
+    term = models.ForeignKey(Term, on_delete=models.CASCADE)
+    courses = models.ManyToManyField(Course, blank=True)
+    note = models.CharField(max_length=500, blank=True, default='')
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['room', 'term'], name='unique_room_course_term'),
+        ]
+
+
 class Thing(models.Model):
     STATUS_CHOICES = (
         ('0', 'available'),
@@ -333,6 +360,7 @@ class CampAttendance(models.Model):
     term = models.ForeignKey(Term, on_delete=models.SET_NULL, blank=True, null=True, related_name='camp_attendance_records')
     attendance_date = models.DateField()
     room = models.ForeignKey(Tag, on_delete=models.SET_NULL, blank=True, null=True, related_name='camp_attendance_records')
+    sign_out_room = models.ForeignKey(Tag, on_delete=models.SET_NULL, blank=True, null=True, related_name='camp_sign_out_attendance_records')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='not_arrived')
     sign_in_time = models.DateTimeField(blank=True, null=True)
     sign_out_time = models.DateTimeField(blank=True, null=True)
@@ -374,6 +402,7 @@ class CampEnrollment(models.Model):
     parent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='camp_enrollments')
     term = models.ForeignKey(Term, on_delete=models.CASCADE, related_name='camp_enrollments')
     default_room = models.ForeignKey(Tag, on_delete=models.SET_NULL, blank=True, null=True, related_name='camp_enrollments')
+    sign_out_room = models.ForeignKey(Tag, on_delete=models.SET_NULL, blank=True, null=True, related_name='camp_sign_out_enrollments')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='unpaid')
     note = models.TextField(max_length=1000, blank=True, default='')
@@ -522,6 +551,7 @@ class DailyStudentAdjustment(models.Model):
     id = models.BigAutoField(primary_key=True)
     student = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='daily_adjustments')
     lesson_date = models.DateField()
+    target_lesson_date = models.DateField(blank=True, null=True)
     adjustment_type = models.CharField(max_length=20, choices=ADJUSTMENT_TYPE_CHOICES)
     source_lesson = models.ForeignKey(
         Lesson,
@@ -696,6 +726,42 @@ class TrialRequest(models.Model):
 
     class Meta:
         db_table = "b_trial_request"
+
+
+class AdminTrialSession(models.Model):
+    package_key = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True)
+    session_index = models.PositiveSmallIntegerField()
+    student = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='admin_trial_sessions')
+    lesson = models.ForeignKey(
+        Lesson,
+        on_delete=models.PROTECT,
+        related_name='admin_trial_sessions',
+        null=True,
+        blank=True,
+    )
+    room = models.ForeignKey(
+        Tag,
+        on_delete=models.PROTECT,
+        related_name='flexible_admin_trial_sessions',
+        null=True,
+        blank=True,
+    )
+    course_name = models.CharField(max_length=100, blank=True, default='')
+    booking_mode = models.CharField(max_length=20, default='existing')
+    teacher_confirmation_required = models.BooleanField(default=False)
+    session_date = models.DateField(db_index=True)
+    starts_at = models.TimeField()
+    ends_at = models.TimeField()
+    status = models.CharField(max_length=20, default='active')
+    note = models.CharField(max_length=500, blank=True, default='')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='created_trial_sessions')
+    created_time = models.DateTimeField(auto_now_add=True)
+    canceled_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='canceled_trial_sessions')
+    canceled_time = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'b_admin_trial_session'
+        constraints = [models.UniqueConstraint(fields=['package_key', 'session_index'], name='unique_admin_trial_package_session')]
 
 
 class SystemSetting(models.Model):

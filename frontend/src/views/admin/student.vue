@@ -4,6 +4,9 @@
       <div class="table-operations">
         <a-space>
           <a-button v-if="canManageStudents" type="primary" @click="handleAdd">New</a-button>
+          <a-button v-if="canManageStudents" type="primary" @click="openQuickAdd">Quick Add Student</a-button>
+          <a-button v-if="canManageStudents" @click="openTrialBooking">New trial student</a-button>
+          <a-button v-if="canManageStudents" @click="openCreationLog">Add history</a-button>
           <a-button v-if="canManageStudents" @click="openImportComments">Import Comments</a-button>
           <a-button v-if="canManageStudents" danger @click="handleBatchDelete">Mass Delete</a-button>
           <a-input-search addon-before="Student" enter-button @search="onSearch" @change="onSearchChange" />
@@ -94,9 +97,23 @@
             </a-form-item>
           </a-col>
           <a-col span="24">
-            <a-form-item label="Parent" name="parent">
+            <a-form-item label="Gender" name="gender">
               <a-select
-                placeholder="Please select"
+                placeholder="Optional"
+                allowClear
+                v-model:value="modal.form.gender"
+                :options="[
+                  { value: 'M', label: 'Male' },
+                  { value: 'F', label: 'Female' },
+                  { value: 'Other', label: 'Other' },
+                ]"
+              />
+            </a-form-item>
+          </a-col>
+          <a-col span="24">
+            <a-form-item label="Parent" name="parent" extra="Optional. You can link a parent account later.">
+              <a-select
+                placeholder="Optional"
                 allowClear
                 show-search
                 optionFilterProp="label"
@@ -105,9 +122,214 @@
               />
             </a-form-item>
           </a-col>
+          <a-col span="24">
+            <a-form-item label="Remark" name="remark">
+              <a-textarea
+                v-model:value="modal.form.remark"
+                placeholder="Optional internal note"
+                :rows="3"
+                :maxlength="500"
+                show-count
+              />
+            </a-form-item>
+          </a-col>
         </a-row>
       </a-form>
     </a-modal>
+
+    <a-drawer
+      :visible="quick.visible"
+      title="Quick Add Student"
+      placement="right"
+      width="min(560px, 100vw)"
+      @close="closeQuickAdd"
+    >
+      <a-form :label-col="{ style: { width: '120px' } }">
+        <a-divider orientation="left">Student information</a-divider>
+        <a-form-item label="Student name" required>
+          <a-input v-model:value="quick.form.name" placeholder="Required" allowClear />
+        </a-form-item>
+        <a-form-item label="Age">
+          <a-input-number v-model:value="quick.form.age" :min="1" :max="99" style="width: 100%" />
+        </a-form-item>
+        <a-form-item label="Gender">
+          <a-select
+            v-model:value="quick.form.gender"
+            placeholder="Optional"
+            allow-clear
+            :options="[
+              { value: 'M', label: 'Male' },
+              { value: 'F', label: 'Female' },
+              { value: 'Other', label: 'Other' },
+            ]"
+          />
+        </a-form-item>
+        <a-form-item label="Parent" extra="Optional. You can link a parent account later.">
+          <a-select
+            v-model:value="quick.form.parent"
+            placeholder="Optional"
+            allow-clear
+            show-search
+            optionFilterProp="label"
+            :options="quick.parentData"
+          />
+        </a-form-item>
+        <a-form-item label="Note">
+          <a-textarea v-model:value="quick.form.remark" :rows="2" :maxlength="500" show-count />
+        </a-form-item>
+
+        <a-divider orientation="left">First class</a-divider>
+        <a-form-item label="Term" required>
+          <a-select
+            v-model:value="quick.form.term"
+            placeholder="Select term"
+            show-search
+            optionFilterProp="label"
+            allow-clear
+            @change="handleQuickTermChange"
+          >
+            <a-select-option
+              v-for="term in quick.terms"
+              :key="term.id"
+              :value="term.id"
+              :label="term.title"
+            >
+              {{ term.title }}
+            </a-select-option>
+          </a-select>
+        </a-form-item>
+        <div class="quick-filter-grid">
+          <a-form-item label="Start date" required>
+            <a-date-picker
+              v-model:value="quick.form.startDate"
+              value-format="YYYY-MM-DD"
+              :disabled-date="disableQuickStartDate"
+              style="width: 100%"
+              @change="clearQuickResults"
+            />
+          </a-form-item>
+          <a-form-item label="End date" required>
+            <a-date-picker
+              v-model:value="quick.form.endDate"
+              value-format="YYYY-MM-DD"
+              :disabled-date="disableQuickEndDate"
+              style="width: 100%"
+              @change="clearQuickResults"
+            />
+          </a-form-item>
+        </div>
+        <a-form-item label="Course" required>
+          <a-select
+            v-model:value="quick.form.course"
+            placeholder="Select course"
+            show-search
+            optionFilterProp="label"
+            allow-clear
+            @change="handleQuickCourseChange"
+          >
+            <a-select-option
+              v-for="course in quickCourseOptions"
+              :key="course"
+              :value="course"
+              :label="course"
+            >
+              {{ course }}
+            </a-select-option>
+          </a-select>
+        </a-form-item>
+        <div class="quick-filter-grid">
+          <a-form-item label="Day">
+            <a-select v-model:value="quick.form.day" placeholder="Any day" allow-clear @change="clearQuickResults">
+              <a-select-option v-for="day in quickDayOptions" :key="day" :value="day">
+                {{ dayLabel(day) }}
+              </a-select-option>
+            </a-select>
+          </a-form-item>
+          <a-form-item label="Time">
+            <a-select v-model:value="quick.form.time" placeholder="Any time" allow-clear @change="clearQuickResults">
+              <a-select-option v-for="time in quickTimeOptions" :key="time.id" :value="time.id">
+                {{ time.label }}
+              </a-select-option>
+            </a-select>
+          </a-form-item>
+        </div>
+        <a-button block :loading="quick.searching" @click="findAvailableSlots">Find Available Slots</a-button>
+
+        <div v-if="quick.results.length" class="quick-results">
+          <div class="quick-results-title">Available rooms and times</div>
+          <button
+            v-for="slot in quick.results"
+            :key="slot.slot_key"
+            type="button"
+            class="quick-slot"
+            :class="{ selected: quick.selectedSlot?.slot_key === slot.slot_key, full: !isQuickSlotAvailable(slot) }"
+            :disabled="!isQuickSlotAvailable(slot)"
+            @click="selectQuickSlot(slot)"
+          >
+            <span class="quick-slot-main">
+              <strong>{{ slot.title }}</strong>
+              <small v-if="slot.new_class">New class</small>
+              <span>{{ dayLabel(slot.day) }} {{ slot.time || '-' }} · {{ slot.room || 'Room TBD' }}</span>
+            </span>
+            <span class="quick-slot-capacity">
+              {{ slot.enrolled_count }}/{{ slot.capacity ?? '-' }}
+              <small v-if="slot.available_seats !== null && slot.available_seats !== undefined">
+                {{ isQuickSlotAvailable(slot) ? `${slot.available_seats} left` : 'Full' }}
+              </small>
+            </span>
+          </button>
+        </div>
+        <a-empty v-else-if="quick.searched" description="No matching class found" />
+      </a-form>
+
+      <template #footer>
+        <div class="quick-drawer-footer">
+          <a-button @click="closeQuickAdd">Cancel</a-button>
+          <a-button type="primary" :loading="quick.saving" :disabled="!quick.selectedSlot" @click="saveQuickStudent">
+            Save Student & Class
+          </a-button>
+        </div>
+      </template>
+    </a-drawer>
+
+    <a-drawer
+      :visible="creationLog.visible"
+      title="Student additions"
+      placement="right"
+      width="min(560px, 100vw)"
+      @close="creationLog.visible = false"
+    >
+      <a-alert
+        v-if="creationLog.rows.some((row) => !row.confirmed)"
+        type="info"
+        show-icon
+        message="Older entries are request records; their success cannot be verified from the old log."
+        class="creation-log-notice"
+      />
+      <a-table
+        size="small"
+        rowKey="id"
+        :loading="creationLog.loading"
+        :columns="creationLogColumns"
+        :data-source="creationLog.rows"
+        :scroll="{ x: 520 }"
+        :pagination="{ pageSize: 10, showSizeChanger: false }"
+      >
+        <template #bodyCell="{ record, column }">
+          <template v-if="column.key === 'student'">
+            <span v-if="record.student_name">{{ record.student_name }} <small>#{{ record.student_id }}</small></span>
+            <span v-else-if="record.student_id">Student #{{ record.student_id }} (deleted)</span>
+            <span v-else>Not recorded</span>
+          </template>
+          <template v-if="column.key === 'source'">{{ creationSourceLabel(record.source) }}</template>
+          <template v-if="column.key === 'status'">
+            <a-tag :color="record.confirmed ? 'green' : 'default'">
+              {{ record.confirmed ? 'Created' : 'Unverified' }}
+            </a-tag>
+          </template>
+        </template>
+      </a-table>
+    </a-drawer>
 
     <a-modal
       :visible="importModal.visible"
@@ -170,6 +392,10 @@
           <span>{{ detail.record.age || '-' }}</span>
         </div>
         <div class="detail-row">
+          <span class="detail-label">Gender</span>
+          <span>{{ detail.record.gender || '-' }}</span>
+        </div>
+        <div class="detail-row">
           <span class="detail-label">Parent</span>
           <span>
             {{ detail.record.parent_name || detail.record.parent_username || '-' }}
@@ -185,6 +411,10 @@
           <span class="detail-label">Active terms</span>
           <span>{{ formatList(detail.record.active_terms) }}</span>
         </div>
+        <div class="detail-row">
+          <span class="detail-label">Remark</span>
+          <span>{{ detail.record.remark || '-' }}</span>
+        </div>
         <div v-if="detail.record.trial_packages?.length" class="detail-row detail-row-block">
           <span class="detail-label">Trial package</span>
           <div class="trial-package-list">
@@ -198,6 +428,15 @@
                 <a-tag :color="getTrialStatusColor(trialPackage.status)">
                   {{ formatTrialStatus(trialPackage.status) }}
                 </a-tag>
+                <a-popconfirm
+                  v-if="canManageStudents && trialPackage.source === 'admin' && trialPackage.status === 'active'"
+                  title="Cancel both trial sessions?"
+                  ok-text="Cancel package"
+                  cancel-text="Keep"
+                  @confirm="cancelTrialBooking(trialPackage.trial_request_id)"
+                >
+                  <a-button size="small" danger>Cancel trial</a-button>
+                </a-popconfirm>
               </div>
               <div class="trial-course-list">
                 <div
@@ -302,19 +541,304 @@
       </div>
       </a-spin>
     </a-modal>
+
+    <a-modal
+      v-model:visible="trialBooking.visible"
+      title="New trial student"
+      width="720px"
+      ok-text="Book trial"
+      :confirm-loading="trialBooking.saving"
+      @ok="saveTrialBooking"
+    >
+      <div class="trial-booking-fields">
+        <a-form-item label="Student name" required>
+          <a-input v-model:value="trialBooking.studentName" :maxlength="30" placeholder="Student name" />
+        </a-form-item>
+        <a-form-item label="Age">
+          <a-input-number v-model:value="trialBooking.age" :min="1" :max="99" style="width: 100%" />
+        </a-form-item>
+      </div>
+      <a-form-item label="Parent account" extra="Optional. Link a parent account later if needed.">
+        <a-select v-model:value="trialBooking.parentId" :options="quick.parentData" show-search option-filter-prop="label" allow-clear placeholder="Select parent" />
+      </a-form-item>
+      <div v-for="(session, index) in trialBooking.sessions" :key="index" class="trial-booking-session">
+        <strong>Session {{ index + 1 }} · 90 minutes</strong>
+        <div class="trial-booking-fields">
+          <a-form-item label="Subject">
+            <a-select v-model:value="session.subject" :options="trialSubjects" @change="onTrialSubjectChange(index)" />
+          </a-form-item>
+          <a-form-item label="Date">
+            <a-date-picker v-model:value="session.date" style="width: 100%" @change="loadTrialOptions(index)" />
+          </a-form-item>
+        </div>
+        <a-form-item v-if="supportsFlexibleTrial(session.subject)" label="Booking method">
+          <a-radio-group v-model:value="session.mode" button-style="solid" @change="loadTrialOptions(index)">
+            <a-radio-button value="existing">Existing class</a-radio-button>
+            <a-radio-button value="flexible">Flexible trial slot</a-radio-button>
+          </a-radio-group>
+        </a-form-item>
+        <a-form-item :label="session.mode === 'flexible' ? 'Time and room' : 'Class, time and room'">
+          <a-select
+            v-model:value="session.selectedKey"
+            :loading="session.loading"
+            :disabled="!session.date"
+            :options="session.options.map((item) => ({
+              value: item.option_key,
+              label: getTrialOptionLabel(index, item),
+              disabled: item.remaining < 1 || trialOptionConflicts(index, item),
+            }))"
+            :placeholder="session.mode === 'flexible' ? 'Select a 90-minute time and room' : 'Select an available class'"
+            @change="onTrialClassChange(index)"
+          />
+          <div v-if="session.loaded && !session.loading && session.date && !session.options.length" class="trial-empty-help">
+            <template v-if="session.mode === 'flexible'">
+              No permitted room or school time is available for this date. Check Room Course Permissions or choose another date.
+            </template>
+            <template v-else>
+              No {{ session.subject }} class is configured for {{ session.date.format('dddd') }}. Choose another date or use a flexible trial slot.
+            </template>
+          </div>
+          <div v-if="selectedTrialOption(session)?.teacher_confirmation_required" class="trial-teacher-warning">
+            No regular class is running in this room at that time. Teacher confirmation is needed.
+          </div>
+        </a-form-item>
+      </div>
+      <a-form-item label="Note">
+        <a-textarea v-model:value="trialBooking.note" :rows="2" :maxlength="500" />
+      </a-form-item>
+    </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { FormInstance, message } from 'ant-design-vue';
-import { createApi, deleteApi, detailApi, importCommentsApi, listApi, updateApi } from '/@/api/admin/student';
+import dayjs, { Dayjs } from 'dayjs';
+import { availableSlotsApi, createApi, creationLogApi, deleteApi, detailApi, importCommentsApi, listApi, quickCreateApi, updateApi } from '/@/api/admin/student';
+import { listApi as listCourseCatalogApi } from '/@/api/admin/course';
 import { listApi as listUserApi } from '/@/api/admin/user';
+import { listApi as listTermApi } from '/@/api/admin/term';
+import { listApi as listThingApi } from '/@/api/admin/thing';
+import { optionsApi as trialOptionsApi, createApi as createTrialApi, cancelApi as cancelTrialApi } from '/@/api/admin/trial-booking';
 import { ADMIN_USER_ROLE } from '/@/store/constants';
 import { useRoute, useRouter } from 'vue-router';
+import { notifyScheduleDataChanged } from '/@/utils/schedule-sync';
 
 const route = useRoute();
 const router = useRouter();
 const canManageStudents = computed(() => localStorage.getItem(ADMIN_USER_ROLE) !== '2');
+
+const trialSubjects = ['Robotics', 'Coding', 'AI', '3D', 'VEX IQ', 'VEX V5', 'Spark Maths']
+  .map((value) => ({ value, label: value }));
+type TrialSessionForm = {
+  subject: string;
+  date: Dayjs | null;
+  mode: 'existing' | 'flexible';
+  selectedKey: string | undefined;
+  options: any[];
+  loading: boolean;
+  loaded: boolean;
+};
+const newTrialSession = (subject: string): TrialSessionForm => ({
+  subject, date: null, mode: 'existing', selectedKey: undefined, options: [], loading: false, loaded: false,
+});
+const trialBooking = reactive({
+  visible: false,
+  saving: false,
+  studentName: '',
+  age: undefined as number | undefined,
+  parentId: undefined as number | undefined,
+  note: '',
+  sessions: [newTrialSession('Robotics'), newTrialSession('Coding')] as TrialSessionForm[],
+});
+
+const selectedTrialOption = (session: TrialSessionForm) =>
+  session.options.find((item) => item.option_key === session.selectedKey);
+
+const flexibleTrialSubjects = new Set(['AI', '3D', 'VEX IQ', 'VEX V5']);
+const supportsFlexibleTrial = (subject: string) => flexibleTrialSubjects.has(subject);
+
+const trialTimesOverlap = (first: any, second: any) =>
+  Boolean(first && second && first.start < second.end && second.start < first.end);
+
+const trialOptionConflicts = (index: number, option: any) => {
+  const session = trialBooking.sessions[index];
+  if (!session.date) return false;
+  return trialBooking.sessions.some((other, otherIndex) => {
+    if (otherIndex === index || !other.date || !other.selectedKey) return false;
+    if (other.date.format('YYYY-MM-DD') !== session.date!.format('YYYY-MM-DD')) return false;
+    return trialTimesOverlap(option, selectedTrialOption(other));
+  });
+};
+
+const getTrialOptionLabel = (index: number, option: any) => {
+  const status = option.remaining < 1
+    ? 'Full'
+    : trialOptionConflicts(index, option)
+      ? 'Time conflict with the other session'
+      : `${option.remaining} seats left`;
+  const teacherStatus = option.teacher_confirmation_required ? ' · Teacher confirmation needed' : '';
+  return `${option.course} · ${option.start}-${option.end} · ${option.room} · ${status}${teacherStatus}`;
+};
+
+const onTrialClassChange = (index: number) => {
+  const session = trialBooking.sessions[index];
+  const option = selectedTrialOption(session);
+  if (option && trialOptionConflicts(index, option)) {
+    session.selectedKey = undefined;
+    message.warning('The two trial sessions cannot overlap on the same date');
+  }
+};
+
+const onTrialSubjectChange = (index: number) => {
+  const session = trialBooking.sessions[index];
+  if (!supportsFlexibleTrial(session.subject)) session.mode = 'existing';
+  loadTrialOptions(index);
+};
+
+const trialSessionsConflict = () => {
+  const [first, second] = trialBooking.sessions;
+  if (!first.date || !second.date || first.date.format('YYYY-MM-DD') !== second.date.format('YYYY-MM-DD')) {
+    return false;
+  }
+  return trialTimesOverlap(selectedTrialOption(first), selectedTrialOption(second));
+};
+
+const openTrialBooking = async () => {
+  trialBooking.studentName = '';
+  trialBooking.age = undefined;
+  trialBooking.parentId = undefined;
+  trialBooking.note = '';
+  trialBooking.sessions = [newTrialSession('Robotics'), newTrialSession('Coding')];
+  trialBooking.visible = true;
+  try {
+    if (!quick.parentData.length) {
+      const response = await listUserApi({});
+      quick.parentData = (response.data || [])
+        .filter((item: any) => item.role === '1')
+        .map((item: any) => ({ value: item.id, label: `${item.nickname || item.username} · @${item.username} · ID ${item.id}` }));
+    }
+  } catch (error: any) {
+    message.error(error?.msg || 'Could not load parents');
+  }
+};
+
+const loadTrialOptions = async (index: number) => {
+  const session = trialBooking.sessions[index];
+  session.selectedKey = undefined;
+  session.options = [];
+  session.loaded = false;
+  if (!session.date || !session.subject) return;
+  const queryDate = session.date.format('YYYY-MM-DD');
+  const querySubject = session.subject;
+  session.loading = true;
+  try {
+    const queryMode = session.mode;
+    const response = await trialOptionsApi({ subject: querySubject, date: queryDate, mode: queryMode });
+    if (session.date?.format('YYYY-MM-DD') === queryDate && session.subject === querySubject && session.mode === queryMode) {
+      if (response.code !== 0) throw new Error(response.msg || 'Could not load classes');
+      session.options = response.data || [];
+      session.loaded = true;
+    }
+  } catch (error: any) {
+    message.error(error?.message || error?.msg || 'Could not load classes');
+  } finally {
+    session.loading = false;
+  }
+};
+
+const saveTrialBooking = async () => {
+  if (!trialBooking.studentName.trim()) {
+    message.warning('Enter the new student name');
+    return;
+  }
+  if (trialBooking.sessions.some((session) => !session.date || !session.selectedKey)) {
+    message.warning('Select the date and class for both sessions');
+    return;
+  }
+  if (trialSessionsConflict()) {
+    message.warning('The two trial sessions cannot overlap on the same date');
+    return;
+  }
+  trialBooking.saving = true;
+  try {
+    const response = await createTrialApi({
+      student_name: trialBooking.studentName.trim(),
+      age: trialBooking.age,
+      parent_id: trialBooking.parentId,
+      note: trialBooking.note,
+      sessions: trialBooking.sessions.map((session) => {
+        const option = selectedTrialOption(session);
+        return session.mode === 'flexible'
+          ? {
+              mode: 'flexible',
+              subject: session.subject,
+              date: session.date!.format('YYYY-MM-DD'),
+              room_id: option.room_id,
+              start: option.start,
+            }
+          : {
+              mode: 'existing',
+              date: session.date!.format('YYYY-MM-DD'),
+              lesson_id: option.lesson_id,
+            };
+      }),
+    });
+    if (response.code !== 0) throw new Error(response.msg || 'Could not book trial');
+    notifyScheduleDataChanged();
+    message.success('Trial student and package created');
+    trialBooking.visible = false;
+    getDataList();
+    handleView({ id: response.data.student_id });
+  } catch (error: any) {
+    message.error(error?.message || error?.msg || 'Could not book trial');
+  } finally {
+    trialBooking.saving = false;
+  }
+};
+
+const cancelTrialBooking = async (packageKey: string) => {
+  try {
+    const response = await cancelTrialApi(packageKey);
+    if (response.code !== 0) throw new Error(response.msg || 'Could not cancel trial');
+    notifyScheduleDataChanged();
+    message.success('Trial package canceled');
+    if (detail.record.id) await loadStudentDetail(detail.record.id);
+  } catch (error: any) {
+    message.error(error?.message || error?.msg || 'Could not cancel trial');
+  }
+};
+
+const creationLogColumns = [
+  { title: 'Server time', dataIndex: 'created_time', key: 'created_time', width: 145 },
+  { title: 'Student', key: 'student', width: 160 },
+  { title: 'Source', key: 'source', width: 105 },
+  { title: 'Result', key: 'status', width: 110 },
+];
+const creationLog = reactive({
+  visible: false,
+  loading: false,
+  rows: [] as any[],
+});
+const creationSourceLabel = (source: string) => ({
+  admin_quick: 'Quick Add',
+  admin: 'Admin New',
+  admin_trial: 'Trial student',
+  parent: 'Parent',
+} as Record<string, string>)[source] || 'Other';
+
+const openCreationLog = async () => {
+  if (!canManageStudents.value) return;
+  creationLog.visible = true;
+  creationLog.loading = true;
+  try {
+    const response = await creationLogApi();
+    creationLog.rows = response.data || [];
+  } catch (error: any) {
+    message.error(error?.msg || 'Failed to load student additions');
+  } finally {
+    creationLog.loading = false;
+  }
+};
 
 const columns = reactive([
   {
@@ -365,7 +889,7 @@ const columns = reactive([
     key: 'operation',
     align: 'center',
     fixed: 'right',
-    width: 190,
+    width: 270,
   },
 ]);
 
@@ -387,11 +911,12 @@ const modal = reactive({
     id: undefined,
     name: undefined,
     age: undefined,
+    gender: undefined,
     parent: undefined,
+    remark: undefined,
   },
   rules: {
     name: [{ required: true, message: 'Please enter student name', trigger: 'change' }],
-    parent: [{ required: true, message: 'Please select parent', trigger: 'change' }],
   },
 });
 
@@ -411,7 +936,70 @@ const importModal = reactive({
   result: null as any,
 });
 
+const quick = reactive({
+  visible: false,
+  searching: false,
+  saving: false,
+  searched: false,
+  parentData: [] as any[],
+  terms: [] as any[],
+  things: [] as any[],
+  courses: [] as any[],
+  results: [] as any[],
+  selectedSlot: null as any,
+  form: {
+    name: '',
+    age: undefined as number | undefined,
+    gender: undefined as string | undefined,
+    parent: undefined as number | undefined,
+    remark: '',
+    term: undefined as number | undefined,
+    startDate: undefined as string | undefined,
+    endDate: undefined as string | undefined,
+    course: undefined as string | undefined,
+    day: undefined as string | undefined,
+    time: undefined as number | undefined,
+    thing: undefined as number | undefined,
+  },
+});
+
 const myform = ref<FormInstance>();
+
+const dayLabels: Record<string, string> = {
+  Mon: 'Monday',
+  Tue: 'Tuesday',
+  Wed: 'Wednesday',
+  Thu: 'Thursday',
+  Fri: 'Friday',
+  Sat: 'Saturday',
+  Sun: 'Sunday',
+};
+
+const dayLabel = (day: string | undefined) => dayLabels[day || ''] || day || '-';
+
+const quickCourseOptions = computed(() => {
+  return quick.courses.filter(course => course.active).map(course => course.title);
+});
+
+const quickDayOptions = computed(() => {
+  return [...new Set(
+    quick.things
+      .filter((thing: any) => String(thing.status) !== '1')
+      .map((thing: any) => thing.day)
+      .filter(Boolean),
+  )];
+});
+
+const quickTimeOptions = computed(() => {
+  const times = quick.things
+    .filter((thing: any) => (
+      (!quick.form.day || thing.day === quick.form.day)
+      && thing.time
+      && String(thing.status) !== '1'
+    ))
+    .map((thing: any) => ({ id: thing.time, label: thing.time_title || thing.time }));
+  return Array.from(new Map(times.map((time: any) => [time.id, time])).values());
+});
 
 onMounted(() => {
   loadRouteState();
@@ -564,6 +1152,190 @@ const handleAdd = () => {
   modal.title = 'New Student';
 };
 
+const resetQuickForm = () => {
+  quick.form.name = '';
+  quick.form.age = undefined;
+  quick.form.gender = undefined;
+  quick.form.parent = undefined;
+  quick.form.remark = '';
+  quick.form.term = undefined;
+  quick.form.startDate = undefined;
+  quick.form.endDate = undefined;
+  quick.form.course = undefined;
+  quick.form.day = undefined;
+  quick.form.time = undefined;
+  quick.form.thing = undefined;
+  quick.results = [];
+  quick.selectedSlot = null;
+  quick.searched = false;
+};
+
+const loadQuickOptions = async () => {
+  const requests: Promise<any>[] = [listTermApi({}), listThingApi({}), listCourseCatalogApi({})];
+  if (!quick.parentData.length) {
+    requests.push(listUserApi({}));
+  }
+
+  try {
+    const [termResponse, thingResponse, courseResponse, parentResponse] = await Promise.all(requests);
+    quick.terms = termResponse?.data || [];
+    quick.things = thingResponse?.data || [];
+    quick.courses = courseResponse?.data || [];
+    if (parentResponse) {
+      quick.parentData = (parentResponse.data || [])
+        .filter((item: any) => item.role === '1')
+        .map((item: any) => ({
+          value: item.id,
+          label: `${item.nickname || item.username} · @${item.username} · ID ${item.id}${item.mobile ? ` · ${item.mobile}` : ''}`,
+        }));
+    }
+  } catch (err: any) {
+    message.error(err.msg || 'Failed to load class options');
+  }
+};
+
+const openQuickAdd = async () => {
+  if (!canManageStudents.value) {
+    return;
+  }
+  resetQuickForm();
+  quick.visible = true;
+  await loadQuickOptions();
+};
+
+const closeQuickAdd = () => {
+  if (quick.saving) {
+    return;
+  }
+  quick.visible = false;
+};
+
+const clearQuickResults = () => {
+  quick.results = [];
+  quick.selectedSlot = null;
+  quick.form.thing = undefined;
+  quick.searched = false;
+};
+
+const selectedQuickTerm = computed(() => (
+  quick.terms.find((term: any) => Number(term.id) === Number(quick.form.term))
+));
+
+const handleQuickTermChange = () => {
+  const term = selectedQuickTerm.value;
+  quick.form.startDate = term?.expect_time ? dayjs(term.expect_time).format('YYYY-MM-DD') : undefined;
+  quick.form.endDate = term?.return_time ? dayjs(term.return_time).format('YYYY-MM-DD') : undefined;
+  clearQuickResults();
+};
+
+const outsideQuickTerm = (current: Dayjs) => {
+  const term = selectedQuickTerm.value;
+  if (!term?.expect_time || !term?.return_time) return false;
+  return current.isBefore(dayjs(term.expect_time), 'day') || current.isAfter(dayjs(term.return_time), 'day');
+};
+
+const disableQuickStartDate = (current: Dayjs) => (
+  outsideQuickTerm(current)
+  || Boolean(quick.form.endDate && current.isAfter(dayjs(quick.form.endDate), 'day'))
+);
+
+const disableQuickEndDate = (current: Dayjs) => (
+  outsideQuickTerm(current)
+  || Boolean(quick.form.startDate && current.isBefore(dayjs(quick.form.startDate), 'day'))
+);
+
+const handleQuickCourseChange = () => {
+  quick.form.day = undefined;
+  quick.form.time = undefined;
+  clearQuickResults();
+};
+
+const findAvailableSlots = async () => {
+  if (!quick.form.term || !quick.form.startDate || !quick.form.endDate || !quick.form.course) {
+    message.warning('Please select the term, class dates, and course first');
+    return;
+  }
+
+  quick.searching = true;
+  quick.searched = false;
+  quick.selectedSlot = null;
+  try {
+    const response = await availableSlotsApi({
+      term: quick.form.term,
+      start_date: quick.form.startDate,
+      end_date: quick.form.endDate,
+      course: quick.form.course,
+      day: quick.form.day,
+      time: quick.form.time,
+    });
+    quick.results = response.data || [];
+    quick.searched = true;
+    if (!quick.results.length) {
+      message.info('No matching class found');
+    }
+  } catch (err: any) {
+    message.error(err.msg || 'Failed to find available slots');
+  } finally {
+    quick.searching = false;
+  }
+};
+
+const isQuickSlotAvailable = (slot: any) => (
+  slot.available_seats === null
+  || slot.available_seats === undefined
+  || Number(slot.available_seats) > 0
+);
+
+const selectQuickSlot = (slot: any) => {
+  if (!isQuickSlotAvailable(slot)) {
+    return;
+  }
+  quick.selectedSlot = slot;
+  quick.form.thing = slot.id;
+};
+
+const saveQuickStudent = async () => {
+  if (!quick.form.name.trim()) {
+    message.warning('Please enter student name');
+    return;
+  }
+  if (!quick.form.term || !quick.form.startDate || !quick.form.endDate || !quick.selectedSlot) {
+    message.warning('Please select an available class');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('name', quick.form.name.trim());
+  formData.append('term', String(quick.form.term));
+  formData.append('start_date', quick.form.startDate);
+  formData.append('end_date', quick.form.endDate);
+  if (quick.selectedSlot.id) {
+    formData.append('thing', String(quick.selectedSlot.id));
+  } else {
+    formData.append('course', quick.selectedSlot.title);
+    formData.append('room', String(quick.selectedSlot.room_id));
+    formData.append('day', quick.selectedSlot.day);
+    formData.append('time', String(quick.selectedSlot.time_id));
+  }
+  if (quick.form.age !== undefined && quick.form.age !== null) formData.append('age', String(quick.form.age));
+  if (quick.form.gender) formData.append('gender', quick.form.gender);
+  if (quick.form.parent) formData.append('parent', String(quick.form.parent));
+  if (quick.form.remark.trim()) formData.append('remark', quick.form.remark.trim());
+
+  quick.saving = true;
+  try {
+    const response = await quickCreateApi(formData);
+    notifyScheduleDataChanged();
+    message.success(response.msg || 'Student and class created');
+    quick.visible = false;
+    getDataList();
+  } catch (err: any) {
+    message.error(err.msg || 'Failed to create student and class');
+  } finally {
+    quick.saving = false;
+  }
+};
+
 const handleEdit = (record: any) => {
   if (!canManageStudents.value) {
     return;
@@ -644,6 +1416,7 @@ const submitImportComments = async () => {
   try {
     const res = await importCommentsApi(formData);
     importModal.result = res.data;
+    notifyScheduleDataChanged();
     message.success(res.msg || 'Comments imported');
     if (!importModal.result?.error_count) {
       importModal.visible = false;
@@ -683,6 +1456,7 @@ const confirmDelete = (record: any) => {
   }
   deleteApi({ ids: record.id })
     .then(() => {
+      notifyScheduleDataChanged();
       getDataList();
     })
     .catch((err) => {
@@ -702,6 +1476,7 @@ const handleBatchDelete = () => {
   deleteApi({ ids: data.selectedRowKeys.join(',') })
     .then(() => {
       message.success('Delete Successful');
+      notifyScheduleDataChanged();
       data.selectedRowKeys = [];
       getDataList();
     })
@@ -722,11 +1497,20 @@ const handleOk = () => {
       if (modal.form.age !== undefined && modal.form.age !== null) {
         formData.append('age', String(modal.form.age));
       }
-      formData.append('parent', modal.form.parent || '');
+      if (modal.form.gender) {
+        formData.append('gender', modal.form.gender);
+      }
+      if (modal.form.parent !== undefined && modal.form.parent !== null && modal.form.parent !== '') {
+        formData.append('parent', String(modal.form.parent));
+      }
+      if (modal.form.remark) {
+        formData.append('remark', modal.form.remark);
+      }
 
       const action = modal.editFlag ? updateApi({ id: modal.form.id }, formData) : createApi(formData);
       action
         .then(() => {
+          notifyScheduleDataChanged();
           hideModal();
           getDataList();
         })
@@ -773,6 +1557,91 @@ const hideModal = () => {
 .table-operations {
   margin-bottom: 16px;
   text-align: right;
+}
+
+.quick-help {
+  margin-bottom: 16px;
+}
+
+.quick-filter-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.quick-results {
+  margin-top: 18px;
+}
+
+.quick-results-title {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.quick-slot {
+  align-items: center;
+  background: #f8fbff;
+  border: 1px solid #b8d4f5;
+  border-radius: 4px;
+  color: #17365d;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.quick-slot:hover,
+.quick-slot.selected {
+  background: #eaf3ff;
+  border-color: #1677ff;
+}
+
+.quick-slot.full {
+  background: #fafafa;
+  border-color: #d9d9d9;
+  color: #8c8c8c;
+  cursor: not-allowed;
+}
+
+.quick-slot-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.quick-slot-main span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.quick-slot-capacity {
+  flex: 0 0 auto;
+  font-weight: 600;
+  text-align: right;
+}
+
+.quick-slot-capacity small {
+  color: #16a34a;
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+.quick-slot.full .quick-slot-capacity small {
+  color: #dc2626;
+}
+
+.quick-drawer-footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .class-list {
@@ -979,5 +1848,45 @@ const hideModal = () => {
   color: #9a3412;
   margin-top: 10px;
   padding: 8px 10px;
+}
+
+.trial-booking-session {
+  border: 1px solid #d7e2ef;
+  border-radius: 6px;
+  padding: 12px 14px 0;
+  margin-bottom: 12px;
+}
+
+.trial-booking-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.trial-empty-help {
+  color: #b45309;
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.trial-teacher-warning {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-left: 3px solid #d99b2b;
+  background: #fff8e8;
+  color: #76510d;
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .trial-booking-fields {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .quick-filter-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
 }
 </style>

@@ -1,1 +1,0 @@
-import{C as a,K as e}from"./index-BTLuKwnu.js";const t="/CSAA/admin/studentLessonNote",n=async s=>a({url:t,params:s,data:{},headers:{}}),r=async s=>e({url:t,params:{},data:s,headers:{"Content-Type":"multipart/form-data;charset=utf-8"}});export{n as l,r as s};

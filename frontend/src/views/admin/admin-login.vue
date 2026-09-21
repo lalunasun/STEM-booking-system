@@ -54,9 +54,9 @@ const myform = ref()
 const loginBtn = ref<Boolean>(false)
 const checked = ref<Boolean>(false)
 const data = reactive({
-  loginForm: {
-    username: 'admin123',
-    password: 'admin123'
+      loginForm: {
+        username: 'test',
+        password: 'test'
   },
   rules: {
     username: [
@@ -182,6 +182,47 @@ const loginSuccess = () => {
 
   .footer {
     height: 80px;
+  }
+}
+
+@media (max-width: 640px) {
+  #userLayout {
+    min-height: 100vh;
+
+    .user-layout-header {
+      height: 64px;
+      padding: 0 16px;
+      font-size: 21px;
+      line-height: 64px;
+
+      .logo {
+        width: 30px;
+        height: 30px;
+        margin-right: 10px;
+      }
+    }
+
+    .main-container .main {
+      top: 50%;
+      right: 12px;
+      left: 12px;
+      width: auto;
+      transform: translate(0, -50%);
+
+      .main_right {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 20px 16px;
+
+        .sys_title {
+          font-size: 21px;
+        }
+      }
+    }
+
+    .footer {
+      height: 24px;
+    }
   }
 }
 </style>
