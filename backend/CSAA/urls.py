@@ -96,6 +96,7 @@ urlpatterns = [
     path('admin/student/comment/import', views.admin.student.import_comments),
     path('admin/student/availableSlots', views.admin.student.available_slots),
     path('admin/student/quickCreate', views.admin.student.quick_create),
+    path('admin/student/addCourse', views.admin.student.add_course),
     path('admin/student/create', views.admin.student.create),  # 创建学生
     path('admin/student/update', views.admin.student.update),  # 修改学生
     path('admin/student/delete', views.admin.student.delete),  # 删除学生

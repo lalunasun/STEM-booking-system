@@ -14,7 +14,7 @@ from rest_framework.decorators import api_view, authentication_classes
 
 from CSAA import utils
 from CSAA.auth.authentication import AdminOrTeacherTokenAuthtication, AdminTokenAuthtication
-from CSAA.course_conflicts import student_slot_conflict
+from CSAA.course_conflicts import student_slot_conflict, thing_label, things_overlap
 from CSAA.handler import APIResponse
 from CSAA.models import Child, CourseAdjustment, Lesson, OpLog, Order, StudentAttendance, StudentComment, Term, Thing, User, Tag
 from CSAA.room_permissions import candidate_classes, course_allowed
@@ -387,7 +387,7 @@ def _enrollment_window(term, params):
     return (start, end), None
 
 
-def _active_enrollment_count(thing, term, start_date=None, end_date=None):
+def _active_enrollment_count(thing, term, start_date=None, end_date=None, orders=None):
     """Count peak concurrent students in the requested date and room/time window."""
     if not thing or not thing.tag or not thing.time or not thing.day:
         return Order.objects.filter(
@@ -406,14 +406,17 @@ def _active_enrollment_count(thing, term, start_date=None, end_date=None):
         return h1 * 60 + m1, h2 * 60 + m2
 
     target = minutes(thing.time.time)
-    orders = Order.objects.filter(
-        thing__tag=thing.tag, thing__day=thing.day,
-        child__isnull=False,
-        status__in=[2, 6],
-        trial_package_requests__isnull=True,
-    ).select_related('thing__time', 'term')
+    if orders is None:
+        orders = Order.objects.filter(
+            thing__tag=thing.tag, thing__day=thing.day,
+            child__isnull=False,
+            status__in=[2, 6],
+            trial_package_requests__isnull=True,
+        ).select_related('thing__time', 'term')
     intervals = []
     for order in orders:
+        if order.thing.tag_id != thing.tag_id or order.thing.day != thing.day:
+            continue
         span = minutes(order.thing.time.time) if order.thing.time else None
         if target and span:
             left, right = max(target[0], span[0]), min(target[1], span[1])
@@ -443,9 +446,11 @@ def _active_enrollment_count(thing, term, start_date=None, end_date=None):
     ), default=0)
 
 
-def _slot_payload(thing, term, start_date=None, end_date=None):
+def _slot_payload(thing, term, start_date=None, end_date=None, orders=None):
     capacity = thing.tag.seat if thing.tag else None
-    enrolled_count = _active_enrollment_count(thing, term, start_date, end_date)
+    enrolled_count = _active_enrollment_count(
+        thing, term, start_date, end_date, orders=orders,
+    )
     available_seats = None if capacity is None else max(int(capacity) - enrolled_count, 0)
     return {
         'id': thing.id,
@@ -463,6 +468,66 @@ def _slot_payload(thing, term, start_date=None, end_date=None):
         'term_id': term.id,
         'term_title': term.title,
     }
+
+
+def _resolve_enrollment_selection(params):
+    try:
+        term = Term.objects.get(pk=params.get('term'))
+        if params.get('thing'):
+            thing = Thing.objects.select_related('tag', 'time').get(
+                pk=params.get('thing'), status='0',
+            )
+            room_id = thing.tag_id
+        else:
+            room_id = int(params.get('room'))
+            thing = None
+        Tag.objects.select_for_update().get(pk=room_id)
+        if thing is None:
+            candidates = candidate_classes(
+                term, str(params.get('course') or '').strip(),
+                params.get('day'), int(params.get('time')),
+            )
+            thing = next((item for item in candidates if item.tag_id == room_id), None)
+            if thing is None:
+                return None, 'This room or time is no longer available'
+    except (Term.DoesNotExist, Thing.DoesNotExist, Tag.DoesNotExist, TypeError, ValueError):
+        return None, 'Selected term or class does not exist'
+
+    window, error = _enrollment_window(term, params)
+    if error:
+        return None, error
+    start, end = window
+    if not course_allowed(room_id, term, thing.title):
+        return None, 'This course is no longer allowed in this room for the selected term'
+    return (term, thing, start, end), None
+
+
+def _recurring_student_conflict(student, thing, start, end, existing_orders=None):
+    if not start or not end:
+        return student_slot_conflict(student, thing)
+    if existing_orders is None:
+        existing_orders = Order.objects.filter(
+            child=student,
+            status__in=[2, 6],
+            expect_time__lte=end,
+            return_time__gte=start,
+        ).select_related('thing', 'thing__time', 'thing__tag')
+    for order in existing_orders:
+        if things_overlap(order.thing, thing):
+            return f'Schedule conflict: this student already has {thing_label(order.thing)} at this time'
+    return None
+
+
+def _ensure_class_saved(thing):
+    if thing.pk is not None:
+        return
+    template = Thing.objects.filter(title__iexact=thing.title, status='0').first()
+    if template:
+        thing.classification = template.classification
+        thing.cover = template.cover
+        thing.price = template.price
+    thing.save()
+    Lesson.objects.get_or_create(thing=thing)
 
 
 @api_view(['GET'])
@@ -491,8 +556,31 @@ def available_slots(request):
         things = candidate_classes(term, course, day, int(time_id) if time_id else None)
     except (TypeError, ValueError):
         return APIResponse(code=1, msg='Invalid time')
-    slots = [_slot_payload(thing, term, start.date() if start else None,
-                           end.date() if end else None) for thing in things]
+    capacity_orders = list(Order.objects.filter(
+        child__isnull=False,
+        status__in=[2, 6],
+        trial_package_requests__isnull=True,
+    ).select_related('thing__tag', 'thing__time', 'term'))
+    slots = [_slot_payload(
+        thing, term, start.date() if start else None,
+        end.date() if end else None, orders=capacity_orders,
+    ) for thing in things]
+    student_id = request.GET.get('student')
+    if student_id:
+        try:
+            student = Child.objects.get(pk=student_id)
+        except (Child.DoesNotExist, TypeError, ValueError):
+            return APIResponse(code=1, msg='Student does not exist')
+        existing_orders = list(Order.objects.filter(
+            child=student,
+            status__in=[2, 6],
+            expect_time__lte=end,
+            return_time__gte=start,
+        ).select_related('thing', 'thing__time', 'thing__tag')) if start and end else None
+        for thing, slot in zip(things, slots):
+            slot['conflict'] = _recurring_student_conflict(
+                student, thing, start, end, existing_orders=existing_orders,
+            )
     return APIResponse(code=0, msg='Available slots loaded', data=slots)
 
 
@@ -505,35 +593,10 @@ def quick_create(request):
     if error:
         return APIResponse(code=1, msg=error)
 
-    try:
-        term = Term.objects.get(pk=request.data.get('term'))
-        if request.data.get('thing'):
-            thing = Thing.objects.select_related('tag', 'time').get(
-                pk=request.data.get('thing'), status='0',
-            )
-            room_id = thing.tag_id
-        else:
-            room_id = int(request.data.get('room'))
-            thing = None
-        Tag.objects.select_for_update().get(pk=room_id)
-        if thing is None:
-            candidates = candidate_classes(
-                term, str(request.data.get('course') or '').strip(),
-                request.data.get('day'), int(request.data.get('time')),
-            )
-            thing = next((item for item in candidates if item.tag_id == room_id), None)
-            if thing is None:
-                return APIResponse(code=1, msg='This room or time is no longer available')
-    except (Term.DoesNotExist, Thing.DoesNotExist, Tag.DoesNotExist, TypeError, ValueError):
-        return APIResponse(code=1, msg='Selected term or class does not exist')
-
-    window, error = _enrollment_window(term, request.data)
+    selection, error = _resolve_enrollment_selection(request.data)
     if error:
         return APIResponse(code=1, msg=error)
-    start, end = window
-
-    if not course_allowed(room_id, term, thing.title):
-        return APIResponse(code=1, msg='This course is no longer allowed in this room for the selected term')
+    term, thing, start, end = selection
     parent = None
     if data.get('parent'):
         parent = User.objects.get(pk=data['parent'])
@@ -548,14 +611,7 @@ def quick_create(request):
         return APIResponse(code=1, msg=f'{thing.title} is full for {thing.day} {thing.time.time if thing.time else ""}')
 
     with transaction.atomic():
-        if thing.pk is None:
-            template = Thing.objects.filter(title__iexact=thing.title, status='0').first()
-            if template:
-                thing.classification = template.classification
-                thing.cover = template.cover
-                thing.price = template.price
-            thing.save()
-            Lesson.objects.get_or_create(thing=thing)
+        _ensure_class_saved(thing)
         student = Child.objects.create(
             parent=parent,
             name=data['name'],
@@ -590,6 +646,89 @@ def quick_create(request):
             'student_name': student.name,
             'slot': _slot_payload(thing, term, start.date() if start else None,
                                   end.date() if end else None),
+        },
+    )
+
+
+@api_view(['POST'])
+@authentication_classes([AdminTokenAuthtication])
+@transaction.atomic
+def add_course(request):
+    """Add a new active enrollment to an existing student."""
+    try:
+        student = Child.objects.select_for_update().select_related('parent').get(
+            pk=request.data.get('student'),
+        )
+    except (Child.DoesNotExist, TypeError, ValueError):
+        return APIResponse(code=1, msg='Student does not exist')
+
+    selection, error = _resolve_enrollment_selection(request.data)
+    if error:
+        return APIResponse(code=1, msg=error)
+    term, thing, start, end = selection
+
+    duplicates = Order.objects.filter(
+        child=student,
+        status__in=[2, 6],
+    )
+    if thing.pk is not None:
+        duplicates = duplicates.filter(thing=thing)
+    else:
+        duplicates = duplicates.filter(
+            thing__title__iexact=thing.title,
+            thing__tag_id=thing.tag_id,
+            thing__day=thing.day,
+            thing__time_id=thing.time_id,
+        )
+    if start and end:
+        duplicates = duplicates.filter(expect_time__lte=end, return_time__gte=start)
+    duplicate = duplicates.exists()
+    if duplicate:
+        return APIResponse(code=1, msg='This student is already enrolled in this class for the selected dates')
+
+    conflict = _recurring_student_conflict(student, thing, start, end)
+    if conflict:
+        return APIResponse(code=1, msg=conflict)
+
+    capacity = thing.tag.seat if thing.tag else None
+    if capacity is not None and _active_enrollment_count(
+        thing, term, start.date() if start else None, end.date() if end else None,
+    ) >= int(capacity):
+        return APIResponse(
+            code=1,
+            msg=f'{thing.title} is full for {thing.day} {thing.time.time if thing.time else ""}',
+        )
+
+    _ensure_class_saved(thing)
+    order = Order.objects.create(
+        order_number=str(utils.get_timestamp()),
+        user=student.parent,
+        thing=thing,
+        count=1,
+        num=1,
+        child=student,
+        expect_time=start,
+        return_time=end,
+        term=term,
+        amount='0',
+        status=6,
+        pay_time=timezone.now(),
+        receiver_name=student.name,
+        receiver_phone=student.parent.mobile if student.parent else None,
+        remark='Admin added course',
+    )
+    lesson, _ = Lesson.objects.get_or_create(thing=thing)
+    lesson.students.add(student)
+
+    return APIResponse(
+        code=0,
+        msg='Course added to student',
+        data={
+            'order_id': order.id,
+            'student_id': student.id,
+            'slot': _slot_payload(
+                thing, term, start.date() if start else None, end.date() if end else None,
+            ),
         },
     )
 

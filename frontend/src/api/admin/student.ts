@@ -8,6 +8,7 @@ enum URL {
   importComments = '/CSAA/admin/student/comment/import',
   availableSlots = '/CSAA/admin/student/availableSlots',
   quickCreate = '/CSAA/admin/student/quickCreate',
+  addCourse = '/CSAA/admin/student/addCourse',
   create = '/CSAA/admin/student/create',
   update = '/CSAA/admin/student/update',
   delete = '/CSAA/admin/student/delete',
@@ -23,10 +24,12 @@ const importCommentsApi = async (data: any) =>
 const availableSlotsApi = async (params: any) => get<any>({ url: URL.availableSlots, params, data: {}, headers: {} });
 const quickCreateApi = async (data: any) =>
   post<any>({ url: URL.quickCreate, params: {}, data, headers: { 'Content-Type': 'multipart/form-data;charset=utf-8' } });
+const addCourseApi = async (data: any) =>
+  post<any>({ url: URL.addCourse, params: {}, data, headers: { 'Content-Type': 'multipart/form-data;charset=utf-8' } });
 const createApi = async (data: any) =>
   post<any>({ url: URL.create, params: {}, data, headers: { 'Content-Type': 'multipart/form-data;charset=utf-8' } });
 const updateApi = async (params: any, data: any) =>
   post<any>({ url: URL.update, params, data, headers: { 'Content-Type': 'multipart/form-data;charset=utf-8' } });
 const deleteApi = async (params: any) => post<any>({ url: URL.delete, params, headers: {} });
 
-export { listApi, creationLogApi, detailApi, createCommentApi, importCommentsApi, availableSlotsApi, quickCreateApi, createApi, updateApi, deleteApi };
+export { listApi, creationLogApi, detailApi, createCommentApi, importCommentsApi, availableSlotsApi, quickCreateApi, addCourseApi, createApi, updateApi, deleteApi };

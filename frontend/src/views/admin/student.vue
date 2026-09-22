@@ -293,6 +293,138 @@
     </a-drawer>
 
     <a-drawer
+      :visible="courseAdd.visible"
+      :title="`Add course · ${courseAdd.studentName}`"
+      placement="right"
+      width="min(620px, 100vw)"
+      @close="closeCourseAdd"
+    >
+      <a-alert
+        type="info"
+        show-icon
+        message="This adds a new active course to the existing student. It does not replace their current courses."
+        class="course-add-notice"
+      />
+      <a-form :label-col="{ style: { width: '120px' } }">
+        <a-form-item label="Term" required>
+          <a-select
+            v-model:value="courseAdd.form.term"
+            placeholder="Select term"
+            show-search
+            optionFilterProp="label"
+            @change="handleCourseAddTermChange"
+          >
+            <a-select-option
+              v-for="term in quick.terms"
+              :key="term.id"
+              :value="term.id"
+              :label="term.title"
+            >
+              {{ term.title }}
+            </a-select-option>
+          </a-select>
+        </a-form-item>
+        <div class="quick-filter-grid">
+          <a-form-item label="Start date" required>
+            <a-date-picker
+              v-model:value="courseAdd.form.startDate"
+              value-format="YYYY-MM-DD"
+              :disabled-date="disableCourseAddStartDate"
+              style="width: 100%"
+              @change="clearCourseAddResults"
+            />
+          </a-form-item>
+          <a-form-item label="End date" required>
+            <a-date-picker
+              v-model:value="courseAdd.form.endDate"
+              value-format="YYYY-MM-DD"
+              :disabled-date="disableCourseAddEndDate"
+              style="width: 100%"
+              @change="clearCourseAddResults"
+            />
+          </a-form-item>
+        </div>
+        <a-form-item label="Course" required>
+          <a-select
+            v-model:value="courseAdd.form.course"
+            placeholder="Select course"
+            show-search
+            optionFilterProp="label"
+            @change="handleCourseAddCourseChange"
+          >
+            <a-select-option
+              v-for="course in quickCourseOptions"
+              :key="course"
+              :value="course"
+              :label="course"
+            >
+              {{ course }}
+            </a-select-option>
+          </a-select>
+        </a-form-item>
+        <div class="quick-filter-grid">
+          <a-form-item label="Day" required>
+            <a-select v-model:value="courseAdd.form.day" placeholder="Select day" @change="clearCourseAddResults">
+              <a-select-option v-for="day in courseAddDayOptions" :key="day" :value="day">
+                {{ dayLabel(day) }}
+              </a-select-option>
+            </a-select>
+          </a-form-item>
+          <a-form-item label="Time">
+            <a-select v-model:value="courseAdd.form.time" placeholder="Any time" allow-clear @change="clearCourseAddResults">
+              <a-select-option v-for="time in courseAddTimeOptions" :key="time.id" :value="time.id">
+                {{ time.label }}
+              </a-select-option>
+            </a-select>
+          </a-form-item>
+        </div>
+        <a-button block :loading="courseAdd.searching" @click="findCourseAddSlots">Find Available Slots</a-button>
+
+        <div v-if="courseAdd.results.length" class="quick-results">
+          <div class="quick-results-title">Available rooms and times</div>
+          <button
+            v-for="slot in courseAdd.results"
+            :key="slot.slot_key"
+            type="button"
+            class="quick-slot"
+            :class="{ selected: courseAdd.selectedSlot?.slot_key === slot.slot_key, full: !isCourseAddSlotAvailable(slot) }"
+            :disabled="!isCourseAddSlotAvailable(slot)"
+            @click="selectCourseAddSlot(slot)"
+          >
+            <span class="quick-slot-main">
+              <strong>{{ slot.title }}</strong>
+              <small v-if="slot.new_class">New class</small>
+              <span>{{ dayLabel(slot.day) }} {{ slot.time || '-' }} · {{ slot.room || 'Room TBD' }}</span>
+              <small v-if="slot.conflict" class="course-add-conflict">{{ slot.conflict }}</small>
+            </span>
+            <span class="quick-slot-capacity">
+              {{ slot.enrolled_count }}/{{ slot.capacity ?? '-' }}
+              <small v-if="slot.conflict">Conflict</small>
+              <small v-else-if="slot.available_seats !== null && slot.available_seats !== undefined">
+                {{ Number(slot.available_seats) > 0 ? `${slot.available_seats} left` : 'Full' }}
+              </small>
+            </span>
+          </button>
+        </div>
+        <a-empty v-else-if="courseAdd.searched" description="No matching class found" />
+      </a-form>
+
+      <template #footer>
+        <div class="quick-drawer-footer">
+          <a-button @click="closeCourseAdd">Cancel</a-button>
+          <a-button
+            type="primary"
+            :loading="courseAdd.saving"
+            :disabled="!courseAdd.selectedSlot"
+            @click="saveCourseAdd"
+          >
+            Add course
+          </a-button>
+        </div>
+      </template>
+    </a-drawer>
+
+    <a-drawer
       :visible="creationLog.visible"
       title="Student additions"
       placement="right"
@@ -383,6 +515,9 @@
     >
       <a-spin :spinning="detail.loading">
       <div class="detail-view">
+        <div v-if="canManageStudents" class="detail-actions">
+          <a-button type="primary" @click="openCourseAdd(detail.record)">Add course</a-button>
+        </div>
         <div class="detail-row">
           <span class="detail-label">Student name</span>
           <span>{{ detail.record.name || '-' }}</span>
@@ -613,7 +748,7 @@
 <script setup lang="ts">
 import { FormInstance, message } from 'ant-design-vue';
 import dayjs, { Dayjs } from 'dayjs';
-import { availableSlotsApi, createApi, creationLogApi, deleteApi, detailApi, importCommentsApi, listApi, quickCreateApi, updateApi } from '/@/api/admin/student';
+import { addCourseApi, availableSlotsApi, createApi, creationLogApi, deleteApi, detailApi, importCommentsApi, listApi, quickCreateApi, updateApi } from '/@/api/admin/student';
 import { listApi as listCourseCatalogApi } from '/@/api/admin/course';
 import { listApi as listUserApi } from '/@/api/admin/user';
 import { listApi as listTermApi } from '/@/api/admin/term';
@@ -963,6 +1098,25 @@ const quick = reactive({
   },
 });
 
+const courseAdd = reactive({
+  visible: false,
+  searching: false,
+  saving: false,
+  searched: false,
+  studentId: undefined as number | undefined,
+  studentName: '',
+  results: [] as any[],
+  selectedSlot: null as any,
+  form: {
+    term: undefined as number | undefined,
+    startDate: undefined as string | undefined,
+    endDate: undefined as string | undefined,
+    course: undefined as string | undefined,
+    day: undefined as string | undefined,
+    time: undefined as number | undefined,
+  },
+});
+
 const myform = ref<FormInstance>();
 
 const dayLabels: Record<string, string> = {
@@ -994,6 +1148,26 @@ const quickTimeOptions = computed(() => {
   const times = quick.things
     .filter((thing: any) => (
       (!quick.form.day || thing.day === quick.form.day)
+      && thing.time
+      && String(thing.status) !== '1'
+    ))
+    .map((thing: any) => ({ id: thing.time, label: thing.time_title || thing.time }));
+  return Array.from(new Map(times.map((time: any) => [time.id, time])).values());
+});
+
+const courseAddDayOptions = computed(() => {
+  return [...new Set(
+    quick.things
+      .filter((thing: any) => String(thing.status) !== '1')
+      .map((thing: any) => thing.day)
+      .filter(Boolean),
+  )];
+});
+
+const courseAddTimeOptions = computed(() => {
+  const times = quick.things
+    .filter((thing: any) => (
+      (!courseAdd.form.day || thing.day === courseAdd.form.day)
       && thing.time
       && String(thing.status) !== '1'
     ))
@@ -1336,6 +1510,153 @@ const saveQuickStudent = async () => {
   }
 };
 
+const resetCourseAdd = () => {
+  courseAdd.searching = false;
+  courseAdd.saving = false;
+  courseAdd.searched = false;
+  courseAdd.results = [];
+  courseAdd.selectedSlot = null;
+  courseAdd.form.term = undefined;
+  courseAdd.form.startDate = undefined;
+  courseAdd.form.endDate = undefined;
+  courseAdd.form.course = undefined;
+  courseAdd.form.day = undefined;
+  courseAdd.form.time = undefined;
+};
+
+const openCourseAdd = async (student: any) => {
+  if (!canManageStudents.value || !student?.id) return;
+  resetCourseAdd();
+  courseAdd.studentId = Number(student.id);
+  courseAdd.studentName = student.name || `Student #${student.id}`;
+  detail.visible = false;
+  courseAdd.visible = true;
+  await loadQuickOptions();
+};
+
+const closeCourseAdd = () => {
+  if (courseAdd.saving) return;
+  courseAdd.visible = false;
+  if (courseAdd.studentId) loadStudentDetail(courseAdd.studentId);
+};
+
+const clearCourseAddResults = () => {
+  courseAdd.results = [];
+  courseAdd.selectedSlot = null;
+  courseAdd.searched = false;
+};
+
+const selectedCourseAddTerm = computed(() => (
+  quick.terms.find((term: any) => Number(term.id) === Number(courseAdd.form.term))
+));
+
+const handleCourseAddTermChange = () => {
+  const term = selectedCourseAddTerm.value;
+  courseAdd.form.startDate = term?.expect_time ? dayjs(term.expect_time).format('YYYY-MM-DD') : undefined;
+  courseAdd.form.endDate = term?.return_time ? dayjs(term.return_time).format('YYYY-MM-DD') : undefined;
+  clearCourseAddResults();
+};
+
+const outsideCourseAddTerm = (current: Dayjs) => {
+  const term = selectedCourseAddTerm.value;
+  if (!term?.expect_time || !term?.return_time) return false;
+  return current.isBefore(dayjs(term.expect_time), 'day') || current.isAfter(dayjs(term.return_time), 'day');
+};
+
+const disableCourseAddStartDate = (current: Dayjs) => (
+  outsideCourseAddTerm(current)
+  || Boolean(courseAdd.form.endDate && current.isAfter(dayjs(courseAdd.form.endDate), 'day'))
+);
+
+const disableCourseAddEndDate = (current: Dayjs) => (
+  outsideCourseAddTerm(current)
+  || Boolean(courseAdd.form.startDate && current.isBefore(dayjs(courseAdd.form.startDate), 'day'))
+);
+
+const handleCourseAddCourseChange = () => {
+  courseAdd.form.day = undefined;
+  courseAdd.form.time = undefined;
+  clearCourseAddResults();
+};
+
+const findCourseAddSlots = async () => {
+  if (!courseAdd.studentId || !courseAdd.form.term || !courseAdd.form.startDate
+    || !courseAdd.form.endDate || !courseAdd.form.course || !courseAdd.form.day) {
+    message.warning('Please select the term, class dates, course, and day first');
+    return;
+  }
+  courseAdd.searching = true;
+  courseAdd.searched = false;
+  courseAdd.selectedSlot = null;
+  try {
+    const response = await availableSlotsApi({
+      student: courseAdd.studentId,
+      term: courseAdd.form.term,
+      start_date: courseAdd.form.startDate,
+      end_date: courseAdd.form.endDate,
+      course: courseAdd.form.course,
+      day: courseAdd.form.day,
+      time: courseAdd.form.time,
+    });
+    courseAdd.results = response.data || [];
+    courseAdd.searched = true;
+    if (!courseAdd.results.length) message.info('No matching class found');
+  } catch (err: any) {
+    message.error(err.msg || 'Failed to find available slots');
+  } finally {
+    courseAdd.searching = false;
+  }
+};
+
+const isCourseAddSlotAvailable = (slot: any) => (
+  !slot.conflict
+  && (slot.available_seats === null
+    || slot.available_seats === undefined
+    || Number(slot.available_seats) > 0)
+);
+
+const selectCourseAddSlot = (slot: any) => {
+  if (!isCourseAddSlotAvailable(slot)) return;
+  courseAdd.selectedSlot = slot;
+};
+
+const saveCourseAdd = async () => {
+  if (!courseAdd.studentId || !courseAdd.form.term || !courseAdd.form.startDate
+    || !courseAdd.form.endDate || !courseAdd.selectedSlot) {
+    message.warning('Please select an available class');
+    return;
+  }
+  const formData = new FormData();
+  formData.append('student', String(courseAdd.studentId));
+  formData.append('term', String(courseAdd.form.term));
+  formData.append('start_date', courseAdd.form.startDate);
+  formData.append('end_date', courseAdd.form.endDate);
+  if (courseAdd.selectedSlot.id) {
+    formData.append('thing', String(courseAdd.selectedSlot.id));
+  } else {
+    formData.append('course', courseAdd.selectedSlot.title);
+    formData.append('room', String(courseAdd.selectedSlot.room_id));
+    formData.append('day', courseAdd.selectedSlot.day);
+    formData.append('time', String(courseAdd.selectedSlot.time_id));
+  }
+
+  courseAdd.saving = true;
+  try {
+    const response = await addCourseApi(formData);
+    if (response.code !== 0) throw new Error(response.msg || 'Failed to add course');
+    notifyScheduleDataChanged();
+    message.success('Course added to existing student');
+    const studentId = courseAdd.studentId;
+    courseAdd.visible = false;
+    getDataList();
+    await loadStudentDetail(studentId);
+  } catch (err: any) {
+    message.error(err?.message || err?.msg || 'Failed to add course');
+  } finally {
+    courseAdd.saving = false;
+  }
+};
+
 const handleEdit = (record: any) => {
   if (!canManageStudents.value) {
     return;
@@ -1563,6 +1884,10 @@ const hideModal = () => {
   margin-bottom: 16px;
 }
 
+.course-add-notice {
+  margin-bottom: 18px;
+}
+
 .quick-filter-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1620,6 +1945,11 @@ const hideModal = () => {
   font-size: 12px;
 }
 
+.quick-slot-main .course-add-conflict {
+  color: #cf1322;
+  font-size: 11px;
+}
+
 .quick-slot-capacity {
   flex: 0 0 auto;
   font-weight: 600;
@@ -1657,6 +1987,11 @@ const hideModal = () => {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.detail-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .detail-row {

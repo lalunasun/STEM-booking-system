@@ -1297,6 +1297,88 @@ class QuickStudentEnrollmentTests(TestCase):
         self.assertEqual(order.term, self.term)
         self.assertEqual(order.status, 6)
 
+    def test_admin_can_add_course_to_existing_student(self):
+        student = Child.objects.create(parent=self.parent, name='Existing Student')
+
+        response = self.client.post(
+            '/CSAA/admin/student/addCourse',
+            {
+                'student': student.id,
+                'term': self.term.id,
+                'thing': self.thing.id,
+                'start_date': '2026-09-08',
+                'end_date': '2027-02-02',
+            },
+            HTTP_ADMINTOKEN=self.admin.admin_token,
+        )
+
+        self.assertEqual(response.json()['code'], 0)
+        self.assertEqual(Child.objects.filter(name='Existing Student').count(), 1)
+        order = Order.objects.get(child=student)
+        self.assertEqual(order.thing, self.thing)
+        self.assertEqual(order.term, self.term)
+        self.assertEqual(order.status, 6)
+        self.assertEqual(order.expect_time.date(), datetime.date(2026, 9, 8))
+        self.assertEqual(order.return_time.date(), datetime.date(2027, 2, 2))
+        self.assertTrue(Lesson.objects.get(thing=self.thing).students.filter(pk=student.id).exists())
+
+    def test_admin_add_course_rejects_duplicate_and_time_conflict(self):
+        student = Child.objects.create(parent=self.parent, name='Busy Student')
+        Order.objects.create(
+            child=student,
+            user=self.parent,
+            thing=self.thing,
+            term=self.term,
+            status=6,
+            expect_time=datetime.datetime(2026, 9, 1),
+            return_time=datetime.datetime(2027, 6, 30),
+        )
+        duplicate = self.client.post(
+            '/CSAA/admin/student/addCourse',
+            {
+                'student': student.id,
+                'term': self.term.id,
+                'thing': self.thing.id,
+                'start_date': '2026-09-08',
+                'end_date': '2027-02-02',
+            },
+            HTTP_ADMINTOKEN=self.admin.admin_token,
+        )
+        conflicting_thing = Thing.objects.create(
+            title='Another Course', tag=self.room, time=self.time, day='Tue', status='0',
+        )
+        slot_response = self.client.get(
+            '/CSAA/admin/student/availableSlots',
+            {
+                'student': student.id,
+                'term': self.term.id,
+                'course': 'Another Course',
+                'day': 'Tue',
+                'start_date': '2026-09-08',
+                'end_date': '2027-02-02',
+            },
+            HTTP_ADMINTOKEN=self.admin.admin_token,
+        )
+        conflict = self.client.post(
+            '/CSAA/admin/student/addCourse',
+            {
+                'student': student.id,
+                'term': self.term.id,
+                'thing': conflicting_thing.id,
+                'start_date': '2026-09-08',
+                'end_date': '2027-02-02',
+            },
+            HTTP_ADMINTOKEN=self.admin.admin_token,
+        )
+
+        self.assertEqual(duplicate.json()['code'], 1)
+        self.assertIn('already enrolled', duplicate.json()['msg'])
+        slot = next(item for item in slot_response.json()['data'] if item['id'] == conflicting_thing.id)
+        self.assertIn('Schedule conflict', slot['conflict'])
+        self.assertEqual(conflict.json()['code'], 1)
+        self.assertIn('Schedule conflict', conflict.json()['msg'])
+        self.assertEqual(Order.objects.filter(child=student).count(), 1)
+
     def test_creation_log_distinguishes_confirmed_additions_from_old_requests(self):
         OpLog.objects.create(
             re_url='/CSAA/admin/student/create',
