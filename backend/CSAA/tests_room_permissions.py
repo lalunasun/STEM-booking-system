@@ -1,10 +1,11 @@
 import datetime
+import json
 from io import StringIO
 
 from django.core.management import call_command
 from django.test import TestCase
 
-from CSAA.models import Child, Course, Lesson, Order, RoomCoursePermission, Tag, Term, Thing, Time, User
+from CSAA.models import Child, Course, DailyStudentAdjustment, Lesson, Order, RoomCoursePermission, Tag, Term, Thing, Time, User
 
 
 class RoomPermissionTests(TestCase):
@@ -116,6 +117,79 @@ class RoomPermissionTests(TestCase):
         result = self.client.get('/CSAA/admin/lesson/list', {'date': '2026-09-08'}).json()
         lesson = next(item for item in result['data'] if item['class_name'] == 'Scratch')
         self.assertEqual(lesson['scheduled_students'][0]['name'], 'New student')
+
+    def test_daily_move_materializes_same_course_in_an_allowed_room(self):
+        python = Course.objects.create(title='Python')
+        source_room = Tag.objects.create(title='Python Source Room', seat=4)
+        source_thing = Thing.objects.create(
+            title='Python', tag=source_room, time=self.time, day='Tue', status='0',
+        )
+        source_lesson = Lesson.objects.create(thing=source_thing)
+        student = Child.objects.create(name='Python Student')
+        Order.objects.create(
+            order_number='PYMOVE001', child=student, thing=source_thing, term=self.term,
+            status=6, expect_time=self.term.expect_time, return_time=self.term.return_time,
+        )
+        self.save_rule([self.spike, python])
+
+        response = self.client.post(
+            '/CSAA/admin/dailyAdjustment/saveBatch',
+            {
+                'lesson_date': '2026-09-08',
+                'actions': json.dumps([{
+                    'type': 'move',
+                    'student_id': student.id,
+                    'source_lesson_id': source_lesson.id,
+                    'target_room_id': self.room.id,
+                    'target_time_id': self.time.id,
+                }]),
+            },
+            **self.headers,
+        ).json()
+
+        self.assertEqual(response['code'], 0)
+        target = Thing.objects.get(
+            title='Python', tag=self.room, time=self.time, day='Tue', status='0',
+        )
+        record = DailyStudentAdjustment.objects.get(student=student)
+        self.assertEqual(record.target_lesson.thing, target)
+        self.assertEqual(Thing.objects.filter(
+            title='Python', tag=self.room, time=self.time, day='Tue', status='0',
+        ).count(), 1)
+
+    def test_daily_move_does_not_create_a_course_without_room_permission(self):
+        python = Course.objects.create(title='Python')
+        source_room = Tag.objects.create(title='Python Source Room', seat=4)
+        source_thing = Thing.objects.create(
+            title='Python', tag=source_room, time=self.time, day='Tue', status='0',
+        )
+        source_lesson = Lesson.objects.create(thing=source_thing)
+        student = Child.objects.create(name='Blocked Python Student')
+        Order.objects.create(
+            order_number='PYMOVE002', child=student, thing=source_thing, term=self.term,
+            status=6, expect_time=self.term.expect_time, return_time=self.term.return_time,
+        )
+        self.save_rule([self.spike])
+
+        response = self.client.post(
+            '/CSAA/admin/dailyAdjustment/saveBatch',
+            {
+                'lesson_date': '2026-09-08',
+                'actions': json.dumps([{
+                    'type': 'move',
+                    'student_id': student.id,
+                    'source_lesson_id': source_lesson.id,
+                    'target_room_id': self.room.id,
+                    'target_time_id': self.time.id,
+                }]),
+            },
+            **self.headers,
+        ).json()
+
+        self.assertEqual(response['code'], 1)
+        self.assertIn('not allowed', response['msg'])
+        self.assertFalse(Thing.objects.filter(title='Python', tag=self.room).exists())
+        self.assertFalse(DailyStudentAdjustment.objects.exists())
 
     def test_initialize_current_permissions_previews_and_merges(self):
         args = ['--as-of', '2026-09-08', '--allow', 'Room 3=Scratch']

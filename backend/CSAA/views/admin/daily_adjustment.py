@@ -17,7 +17,11 @@ from CSAA.models import (
     DailyStudentAdjustment,
     Lesson,
     Order,
+    RoomCoursePermission,
     StudentLessonNote,
+    Tag,
+    Thing,
+    Time,
     TrialRequest,
 )
 from CSAA.serializers import is_dashboard_test_student
@@ -59,6 +63,58 @@ def _same_room_slot(left, right):
         left_thing.day == right_thing.day and
         left_thing.time_id == right_thing.time_id
     )
+
+
+def _allowed_target_candidate(action, source_lesson, source_order, target_lesson_date):
+    """Build an existing or unsaved target for a room-permitted course."""
+    room_id = action.get('target_room_id')
+    time_id = action.get('target_time_id')
+    course_title = str(source_lesson.thing.title or '').strip()
+    if not room_id or not time_id or not course_title or not source_order.term_id:
+        return None, 'Select a valid target class or room slot'
+
+    try:
+        room = Tag.objects.select_for_update().get(pk=room_id)
+        target_time = Time.objects.get(pk=time_id)
+    except (Tag.DoesNotExist, Time.DoesNotExist, ValueError, TypeError):
+        return None, 'Target room or time does not exist'
+
+    allowed = RoomCoursePermission.objects.filter(
+        room=room,
+        term_id=source_order.term_id,
+        courses__title__iexact=course_title,
+        courses__active=True,
+    ).exists()
+    if not allowed:
+        term_title = source_order.term.title or 'this term'
+        return None, f'{course_title} is not allowed in {room.title} for {term_title}'
+
+    expected_day = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][target_lesson_date.weekday()]
+    slot_filter = {
+        'tag': room,
+        'day': expected_day,
+        'time': target_time,
+        'title__iexact': course_title,
+    }
+    if Thing.objects.filter(status='1', **slot_filter).exists():
+        return None, f'{course_title} is unavailable in {room.title} at {target_time.time}'
+
+    target_thing = Thing.objects.filter(status='0', **slot_filter).order_by('id').first()
+    if not target_thing:
+        target_thing = Thing(
+            title=course_title,
+            tag=room,
+            day=expected_day,
+            time=target_time,
+            status='0',
+        )
+    target_lesson = (
+        Lesson.objects.filter(thing=target_thing).order_by('id').first()
+        if target_thing.pk else None
+    )
+    if not target_lesson:
+        target_lesson = Lesson(thing=target_thing)
+    return target_lesson, None
 
 
 def _occupied_count(lesson, lesson_date, include_admin_trial=True):
@@ -252,14 +308,24 @@ def save_batch(request):
             return APIResponse(code=1, msg=f'{source_order.child.name} already has a daily adjustment')
 
         if adjustment_type == 'move':
-            try:
-                target_lesson = Lesson.objects.select_related(
-                    'thing',
-                    'thing__time',
-                    'thing__tag',
-                ).get(id=target_lesson_id, thing__status='0')
-            except Lesson.DoesNotExist:
-                return APIResponse(code=1, msg='Target class does not exist')
+            if target_lesson_id:
+                try:
+                    target_lesson = Lesson.objects.select_related(
+                        'thing',
+                        'thing__time',
+                        'thing__tag',
+                    ).get(id=target_lesson_id, thing__status='0')
+                except Lesson.DoesNotExist:
+                    return APIResponse(code=1, msg='Target class does not exist')
+            else:
+                target_lesson, target_error = _allowed_target_candidate(
+                    action,
+                    source_lesson,
+                    source_order,
+                    target_lesson_date,
+                )
+                if target_error:
+                    return APIResponse(code=1, msg=target_error)
             expected_day = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][target_lesson_date.weekday()]
             if target_lesson.thing.day != expected_day:
                 return APIResponse(code=1, msg='Target class is not available on this date')
@@ -282,6 +348,11 @@ def save_batch(request):
             )
             if conflict:
                 return APIResponse(code=1, msg=conflict)
+            if not target_lesson.pk:
+                target_thing = target_lesson.thing
+                if not target_thing.pk:
+                    target_thing.save()
+                target_lesson, _ = Lesson.objects.get_or_create(thing=target_thing)
             if can_retarget_existing_move:
                 record = existing_adjustment
                 old_target_lesson = record.target_lesson

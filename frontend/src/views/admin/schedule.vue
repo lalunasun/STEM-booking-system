@@ -97,6 +97,7 @@
             <strong>{{ action.student_name }}</strong>
             {{ action.type === 'sick_leave' ? 'Sick leave' : 'Move' }} · {{ action.source_class }}
             <template v-if="action.target_class"> → {{ action.target_class }}</template>
+            <template v-if="action.target_room"> · {{ action.target_room }} · {{ action.target_time }}</template>
           </span>
           <a-button size="small" :title="`Remove ${action.student_name}'s unsaved change`" @click="removeDraftAction(index)">
             <close-outlined />
@@ -277,6 +278,7 @@
                   :class="{ 'empty-cell': !getCellLessons(room.id, slot.id).length && !getContinuingLessons(room.id, slot.id).length && !getContinuingTrials(room.id, slot.id).length }"
                   @dragover.prevent
                   @drop.self="dropStudentToCell(room, slot)"
+                  @click.self="dropStudentToCell(room, slot)"
                 >
                   <template v-if="getCellLessons(room.id, slot.id).length || getContinuingLessons(room.id, slot.id).length || getContinuingTrials(room.id, slot.id).length">
                     <div
@@ -690,6 +692,10 @@ interface DraftAction {
   target_lesson_id?: number;
   target_lesson_date?: string;
   target_class?: string;
+  target_room_id?: number;
+  target_time_id?: number;
+  target_room?: string;
+  target_time?: string;
   reason?: string;
   deduct_lesson?: boolean;
   term_title?: string;
@@ -1688,16 +1694,50 @@ const dropStudentToCell = (room: RoomItem, slot: TimeItem) => {
   if (!adjustmentMode.value || !draggedStudent.value) {
     return;
   }
+  stopAutoScroll();
+  const dragged = draggedStudent.value;
+  if (draftActions.value.some((action) => action.student_id === dragged.student.studentId)) {
+    message.warning('This student already has an unsaved adjustment');
+    return;
+  }
   const targetLessons = getRawCellLessons(room.id, slot.id);
-  if (targetLessons.length === 1) {
-    dropStudent(targetLessons[0]);
+  const sourceClass = String(dragged.lesson.class_name || '').trim();
+  const matchingLesson = targetLessons.find((lesson) =>
+    String(lesson.class_name || '').trim().toLowerCase() === sourceClass.toLowerCase()
+  );
+  if (matchingLesson) {
+    dropStudent(matchingLesson);
     return;
   }
-  if (targetLessons.length > 1) {
-    message.info('Choose the specific course block in this room and time');
+
+  const sourceIsThisCell = dragged.sourceDate === selectedDate.value.format('YYYY-MM-DD') &&
+    Number(dragged.lesson.room_id) === Number(room.id) &&
+    Math.floor(getTimeRange(dragged.lesson.time).start / 60) * 60 === getTimeMinutes(slot.time);
+  if (sourceIsThisCell) {
+    message.warning('Choose a different room or time');
     return;
   }
-  message.warning('No course is configured in this room and time. Add a course first.');
+  if (isCellFull(room.id, slot.id)) {
+    message.error('Target room slot is full');
+    return;
+  }
+
+  draftActions.value.push({
+    type: 'move',
+    student_id: dragged.student.studentId,
+    student_name: dragged.student.name,
+    source_lesson_id: Number(dragged.lesson.lesson_id || dragged.lesson.id),
+    source_lesson_date: dragged.sourceDate,
+    source_class: sourceClass || 'Untitled class',
+    target_lesson_date: selectedDate.value.format('YYYY-MM-DD'),
+    target_class: sourceClass || 'Untitled class',
+    target_room_id: room.id,
+    target_time_id: slot.id,
+    target_room: room.title,
+    target_time: slot.time,
+    term_title: dragged.student.title,
+  });
+  draggedStudent.value = null;
 };
 
 const openSickLeave = (lesson: LessonItem, student: DisplayStudent) => {
