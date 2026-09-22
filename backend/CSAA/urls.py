@@ -22,6 +22,7 @@ urlpatterns = [
     path('admin/studentLessonNote', views.admin.student_lesson_note.list_or_save),
     path('admin/studentAttendance/markAbsent', views.admin.student_attendance.mark_absent),
     path('admin/dailyAdjustment/list', views.admin.daily_adjustment.list_api),
+    path('admin/dailyAdjustment/targetOption', views.admin.daily_adjustment.target_option),
     path('admin/dailyAdjustment/saveBatch', views.admin.daily_adjustment.save_batch),
     path('admin/dailyAdjustment/revert', views.admin.daily_adjustment.revert),
     path('admin/permanentCourseChange/options', views.admin.permanent_course_change.options),

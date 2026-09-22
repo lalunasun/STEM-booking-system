@@ -65,7 +65,13 @@ def _same_room_slot(left, right):
     )
 
 
-def _allowed_target_candidate(action, source_lesson, source_order, target_lesson_date):
+def _allowed_target_candidate(
+    action,
+    source_lesson,
+    source_order,
+    target_lesson_date,
+    lock_room=True,
+):
     """Build an existing or unsaved target for a room-permitted course."""
     room_id = action.get('target_room_id')
     time_id = action.get('target_time_id')
@@ -74,7 +80,8 @@ def _allowed_target_candidate(action, source_lesson, source_order, target_lesson
         return None, 'Select a valid target class or room slot'
 
     try:
-        room = Tag.objects.select_for_update().get(pk=room_id)
+        room_query = Tag.objects.select_for_update() if lock_room else Tag.objects
+        room = room_query.get(pk=room_id)
         target_time = Time.objects.get(pk=time_id)
     except (Tag.DoesNotExist, Time.DoesNotExist, ValueError, TypeError):
         return None, 'Target room or time does not exist'
@@ -256,6 +263,47 @@ def list_api(request):
 
 @api_view(['POST'])
 @authentication_classes([AdminTokenAuthtication])
+def target_option(request):
+    source_lesson_date = parse_date(str(request.data.get('source_lesson_date', '')))
+    target_lesson_date = parse_date(str(request.data.get('target_lesson_date', '')))
+    student_id = request.data.get('student_id')
+    try:
+        source_lesson = Lesson.objects.select_related(
+            'thing',
+            'thing__time',
+            'thing__tag',
+        ).get(pk=request.data.get('source_lesson_id'), thing__status='0')
+    except (Lesson.DoesNotExist, ValueError, TypeError):
+        return APIResponse(code=1, msg='Source class does not exist')
+    if not source_lesson_date or not target_lesson_date:
+        return APIResponse(code=1, msg='A valid source and target lesson date are required')
+
+    existing_move = _active_move_into(student_id, source_lesson, source_lesson_date)
+    source_order = _active_order(student_id, source_lesson, source_lesson_date)
+    if not source_order and existing_move:
+        source_order = existing_move.source_order
+    if not source_order:
+        return APIResponse(code=1, msg='Student is not scheduled in the source class on this date')
+
+    target_lesson, target_error = _allowed_target_candidate(
+        request.data,
+        source_lesson,
+        source_order,
+        target_lesson_date,
+        lock_room=False,
+    )
+    if target_error:
+        return APIResponse(code=1, msg=target_error)
+    return APIResponse(code=0, msg='Target room slot is allowed', data={
+        'target_lesson_id': target_lesson.pk,
+        'target_class': target_lesson.thing.title,
+        'target_room': target_lesson.thing.tag.title,
+        'target_time': target_lesson.thing.time.time,
+    })
+
+
+@api_view(['POST'])
+@authentication_classes([AdminTokenAuthtication])
 @transaction.atomic
 def save_batch(request):
     lesson_date = parse_date(str(request.data.get('lesson_date', '')))
@@ -308,7 +356,7 @@ def save_batch(request):
             return APIResponse(code=1, msg=f'{source_order.child.name} already has a daily adjustment')
 
         if adjustment_type == 'move':
-            if target_lesson_id:
+            if target_lesson_id and not action.get('preserve_course'):
                 try:
                     target_lesson = Lesson.objects.select_related(
                         'thing',

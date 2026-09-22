@@ -2,6 +2,7 @@ import { get, post } from '/@/utils/http/axios';
 
 enum URL {
   list = '/CSAA/admin/dailyAdjustment/list',
+  targetOption = '/CSAA/admin/dailyAdjustment/targetOption',
   saveBatch = '/CSAA/admin/dailyAdjustment/saveBatch',
   revert = '/CSAA/admin/dailyAdjustment/revert',
 }
@@ -17,6 +18,14 @@ const saveBatchApi = async (data: any) =>
     headers: { 'Content-Type': 'multipart/form-data;charset=utf-8' },
   });
 
+const targetOptionApi = async (data: any) =>
+  post<any>({
+    url: URL.targetOption,
+    params: {},
+    data,
+    headers: { 'Content-Type': 'multipart/form-data;charset=utf-8' },
+  });
+
 const revertApi = async (data: any) =>
   post<any>({
     url: URL.revert,
@@ -25,4 +34,4 @@ const revertApi = async (data: any) =>
     headers: { 'Content-Type': 'multipart/form-data;charset=utf-8' },
   });
 
-export { listApi, saveBatchApi, revertApi };
+export { listApi, targetOptionApi, saveBatchApi, revertApi };

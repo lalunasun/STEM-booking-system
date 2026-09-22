@@ -132,6 +132,22 @@ class RoomPermissionTests(TestCase):
         )
         self.save_rule([self.spike, python])
 
+        preview = self.client.post(
+            '/CSAA/admin/dailyAdjustment/targetOption',
+            {
+                'student_id': student.id,
+                'source_lesson_id': source_lesson.id,
+                'source_lesson_date': '2026-09-08',
+                'target_lesson_date': '2026-09-08',
+                'target_room_id': self.room.id,
+                'target_time_id': self.time.id,
+            },
+            **self.headers,
+        ).json()
+        self.assertEqual(preview['code'], 0)
+        self.assertIsNone(preview['data']['target_lesson_id'])
+        self.assertFalse(Thing.objects.filter(title='Python', tag=self.room).exists())
+
         response = self.client.post(
             '/CSAA/admin/dailyAdjustment/saveBatch',
             {
@@ -170,6 +186,21 @@ class RoomPermissionTests(TestCase):
             status=6, expect_time=self.term.expect_time, return_time=self.term.return_time,
         )
         self.save_rule([self.spike])
+
+        preview = self.client.post(
+            '/CSAA/admin/dailyAdjustment/targetOption',
+            {
+                'student_id': student.id,
+                'source_lesson_id': source_lesson.id,
+                'source_lesson_date': '2026-09-08',
+                'target_lesson_date': '2026-09-08',
+                'target_room_id': self.room.id,
+                'target_time_id': self.time.id,
+            },
+            **self.headers,
+        ).json()
+        self.assertEqual(preview['code'], 1)
+        self.assertIn('not allowed', preview['msg'])
 
         response = self.client.post(
             '/CSAA/admin/dailyAdjustment/saveBatch',

@@ -280,8 +280,30 @@
                   @drop.self="dropStudentToCell(room, slot)"
                   @click.self="dropStudentToCell(room, slot)"
                 >
+                  <button
+                    v-if="adjustmentMode && adjustmentScope === 'date' && draggedStudent"
+                    type="button"
+                    class="slot-summary slot-move-target"
+                    :class="{
+                      blocked: !canAcceptCellTarget(room, slot),
+                      checking: validatingTargetKey === getCellTargetKey(room, slot),
+                    }"
+                    :title="getCellTargetTitle(room, slot)"
+                    @dragenter.prevent.stop
+                    @dragover.prevent.stop
+                    @drop.stop="dropStudentToCell(room, slot)"
+                    @click.stop="dropStudentToCell(room, slot)"
+                  >
+                    <span>
+                      {{ validatingTargetKey === getCellTargetKey(room, slot)
+                        ? 'Checking...'
+                        : `Move ${selectedMoveCourse} here` }}
+                    </span>
+                    <strong>{{ getCellPresentStudentCount(room.id, slot.id) }}/{{ getCellCapacity(room.id, slot.id) }}</strong>
+                  </button>
                   <template v-if="getCellLessons(room.id, slot.id).length || getContinuingLessons(room.id, slot.id).length || getContinuingTrials(room.id, slot.id).length">
                     <div
+                      v-if="!draggedStudent"
                       class="slot-summary"
                       :class="{ full: isCellFull(room.id, slot.id) }"
                     >
@@ -301,12 +323,12 @@
                       :title="getDropTargetTitle(lesson)"
                       @dragenter.prevent
                       @dragover.prevent
-                      @drop="dropStudent(lesson)"
+                      @drop.stop="dropStudentToLessonCell(lesson)"
                     >
                       <button
                         type="button"
                         class="lesson-heading"
-                        @click="adjustmentMode && draggedStudent ? dropStudent(lesson) : toDetailPage(lesson)"
+                        @click="adjustmentMode && draggedStudent ? dropStudentToLessonCell(lesson) : toDetailPage(lesson)"
                       >
                         <span class="lesson-title-line">
                           <strong>{{ lesson.class_name || 'Untitled class' }}</strong>
@@ -565,6 +587,7 @@ import {
   listApi as listAdjustmentsApi,
   revertApi as revertAdjustmentApi,
   saveBatchApi,
+  targetOptionApi,
 } from '/@/api/admin/daily-adjustment';
 import {
   createApi as createPermanentApi,
@@ -696,6 +719,7 @@ interface DraftAction {
   target_time_id?: number;
   target_room?: string;
   target_time?: string;
+  preserve_course?: boolean;
   reason?: string;
   deduct_lesson?: boolean;
   term_title?: string;
@@ -758,6 +782,7 @@ const studentNotes = ref<Record<string, string>>({});
 const adjustmentMode = ref(false);
 const adjustmentScope = ref('date');
 const draftActions = ref<DraftAction[]>([]);
+const validatingTargetKey = ref('');
 const savedAdjustments = ref<SavedAdjustment[]>([]);
 const showSavedAdjustments = ref(false);
 const revertingAdjustmentId = ref<number | null>(null);
@@ -827,6 +852,9 @@ const inlineTeacherDraft = ref('');
 const savingInlineTeacherRoomId = ref<number | null>(null);
 const savingAttendanceKey = ref('');
 const canManageSchedule = computed(() => localStorage.getItem(ADMIN_USER_ROLE) !== '2');
+const selectedMoveCourse = computed(() =>
+  String(draggedStudent.value?.lesson.class_name || 'Course').trim()
+);
 
 const visibleDates = computed(() => {
   const daysSinceSaturday = (selectedDate.value.day() + 1) % 7;
@@ -1651,46 +1679,32 @@ const endStudentDrag = () => {
   draggedStudent.value = null;
 };
 
-const dropStudent = (targetLesson: LessonItem) => {
-  stopAutoScroll();
-  if (!canManageSchedule.value) {
-    return;
-  }
+const getCellTargetKey = (room: RoomItem, slot: TimeItem) => `${room.id}:${slot.id}`;
+
+const isSelectedSourceCell = (room: RoomItem, slot: TimeItem) => {
   const dragged = draggedStudent.value;
-  if (!adjustmentMode.value || !dragged) {
-    return;
-  }
-  const sourceLessonId = Number(dragged.lesson.lesson_id || dragged.lesson.id);
-  const targetLessonId = Number(targetLesson.lesson_id || targetLesson.id);
-  if (sourceLessonId === targetLessonId) {
-    message.warning('Choose a different class');
-    return;
-  }
-  if (draftActions.value.some((action) => action.student_id === dragged.student.studentId)) {
-    message.warning('This student already has an unsaved adjustment');
-    return;
-  }
-  const capacity = getLessonCapacity(targetLesson);
-  if (capacity > 0 && !isSameRoomSlot(dragged.lesson, targetLesson) && getRoomSlotPresentStudentCount(targetLesson) >= capacity) {
-    message.error('Target room slot is full');
-    return;
-  }
-  draftActions.value.push({
-    type: 'move',
-    student_id: dragged.student.studentId,
-    student_name: dragged.student.name,
-    source_lesson_id: sourceLessonId,
-    source_lesson_date: dragged.sourceDate,
-    source_class: dragged.lesson.class_name || 'Untitled class',
-    target_lesson_id: targetLessonId,
-    target_lesson_date: selectedDate.value.format('YYYY-MM-DD'),
-    target_class: targetLesson.class_name || 'Untitled class',
-    term_title: dragged.student.title,
-  });
-  draggedStudent.value = null;
+  return !!dragged && dragged.sourceDate === selectedDate.value.format('YYYY-MM-DD') &&
+    Number(dragged.lesson.room_id) === Number(room.id) &&
+    Math.floor(getTimeRange(dragged.lesson.time).start / 60) * 60 === getTimeMinutes(slot.time);
 };
 
-const dropStudentToCell = (room: RoomItem, slot: TimeItem) => {
+const canAcceptCellTarget = (room: RoomItem, slot: TimeItem) =>
+  !!draggedStudent.value &&
+  !isSelectedSourceCell(room, slot) &&
+  !isCellFull(room.id, slot.id) &&
+  !draftActions.value.some((action) => action.student_id === draggedStudent.value?.student.studentId);
+
+const getCellTargetTitle = (room: RoomItem, slot: TimeItem) => {
+  if (isSelectedSourceCell(room, slot)) {
+    return 'This is the current room and time';
+  }
+  if (isCellFull(room.id, slot.id)) {
+    return 'This room slot is full';
+  }
+  return `Keep ${selectedMoveCourse.value} and move the student to ${room.title} at ${slot.time}`;
+};
+
+const dropStudentToCell = async (room: RoomItem, slot: TimeItem) => {
   if (!adjustmentMode.value || !draggedStudent.value) {
     return;
   }
@@ -1700,20 +1714,7 @@ const dropStudentToCell = (room: RoomItem, slot: TimeItem) => {
     message.warning('This student already has an unsaved adjustment');
     return;
   }
-  const targetLessons = getRawCellLessons(room.id, slot.id);
-  const sourceClass = String(dragged.lesson.class_name || '').trim();
-  const matchingLesson = targetLessons.find((lesson) =>
-    String(lesson.class_name || '').trim().toLowerCase() === sourceClass.toLowerCase()
-  );
-  if (matchingLesson) {
-    dropStudent(matchingLesson);
-    return;
-  }
-
-  const sourceIsThisCell = dragged.sourceDate === selectedDate.value.format('YYYY-MM-DD') &&
-    Number(dragged.lesson.room_id) === Number(room.id) &&
-    Math.floor(getTimeRange(dragged.lesson.time).start / 60) * 60 === getTimeMinutes(slot.time);
-  if (sourceIsThisCell) {
+  if (isSelectedSourceCell(room, slot)) {
     message.warning('Choose a different room or time');
     return;
   }
@@ -1722,22 +1723,67 @@ const dropStudentToCell = (room: RoomItem, slot: TimeItem) => {
     return;
   }
 
-  draftActions.value.push({
-    type: 'move',
-    student_id: dragged.student.studentId,
-    student_name: dragged.student.name,
-    source_lesson_id: Number(dragged.lesson.lesson_id || dragged.lesson.id),
-    source_lesson_date: dragged.sourceDate,
-    source_class: sourceClass || 'Untitled class',
-    target_lesson_date: selectedDate.value.format('YYYY-MM-DD'),
-    target_class: sourceClass || 'Untitled class',
-    target_room_id: room.id,
-    target_time_id: slot.id,
-    target_room: room.title,
-    target_time: slot.time,
-    term_title: dragged.student.title,
-  });
-  draggedStudent.value = null;
+  const targetKey = getCellTargetKey(room, slot);
+  if (validatingTargetKey.value) {
+    return;
+  }
+  validatingTargetKey.value = targetKey;
+  try {
+    const response = await targetOptionApi({
+      student_id: dragged.student.studentId,
+      source_lesson_id: Number(dragged.lesson.lesson_id || dragged.lesson.id),
+      source_lesson_date: dragged.sourceDate,
+      target_lesson_date: selectedDate.value.format('YYYY-MM-DD'),
+      target_room_id: room.id,
+      target_time_id: slot.id,
+    });
+    if (response.code !== 0) {
+      message.error(response.msg || `${selectedMoveCourse.value} is not allowed in ${room.title}`);
+      return;
+    }
+    if (
+      !draggedStudent.value ||
+      draggedStudent.value.student.studentId !== dragged.student.studentId
+    ) {
+      return;
+    }
+    const sourceClass = String(dragged.lesson.class_name || '').trim();
+    draftActions.value.push({
+      type: 'move',
+      student_id: dragged.student.studentId,
+      student_name: dragged.student.name,
+      source_lesson_id: Number(dragged.lesson.lesson_id || dragged.lesson.id),
+      source_lesson_date: dragged.sourceDate,
+      source_class: sourceClass || 'Untitled class',
+      target_lesson_id: response.data?.target_lesson_id || undefined,
+      target_lesson_date: selectedDate.value.format('YYYY-MM-DD'),
+      target_class: response.data?.target_class || sourceClass || 'Untitled class',
+      target_room_id: room.id,
+      target_time_id: slot.id,
+      target_room: response.data?.target_room || room.title,
+      target_time: response.data?.target_time || slot.time,
+      preserve_course: true,
+      term_title: dragged.student.title,
+    });
+    draggedStudent.value = null;
+  } catch (error: any) {
+    message.error(error?.msg || `Unable to move ${selectedMoveCourse.value} to ${room.title}`);
+  } finally {
+    validatingTargetKey.value = '';
+  }
+};
+
+const dropStudentToLessonCell = (lesson: LessonItem) => {
+  const room = rooms.value.find((item) => Number(item.id) === Number(lesson.room_id));
+  const lessonStart = Math.floor(getTimeRange(lesson.time).start / 60) * 60;
+  const slot = timeSlots.value.find((item) =>
+    isStandardHourTime(item.time) && getTimeMinutes(item.time) === lessonStart
+  );
+  if (!room || !slot) {
+    message.error('Unable to identify this room slot');
+    return;
+  }
+  dropStudentToCell(room, slot);
 };
 
 const openSickLeave = (lesson: LessonItem, student: DisplayStudent) => {
@@ -2512,6 +2558,33 @@ const selectNextDay = () => {
 
 .slot-summary.full strong {
   color: #b42318;
+}
+
+.slot-move-target {
+  width: 100%;
+  min-height: 38px;
+  border: 1px dashed #1570ef;
+  background: #eff8ff;
+  color: #175cd3;
+  cursor: pointer;
+  font-weight: 700;
+  text-align: left;
+}
+
+.slot-move-target:hover {
+  border-style: solid;
+  background: #dbeafe;
+}
+
+.slot-move-target.blocked {
+  border-color: #d0d5dd;
+  background: #f2f4f7;
+  color: #98a2b3;
+  cursor: not-allowed;
+}
+
+.slot-move-target.checking {
+  cursor: wait;
 }
 
 .slot-continuation {
