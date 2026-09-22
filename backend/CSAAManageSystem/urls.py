@@ -10,6 +10,6 @@ urlpatterns = [
     path('django-admin/', admin.site.urls),
     path('CSAA/', include('CSAA.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT) + [
-    re_path(r'^(?P<path>(assets|images)/.*)$', serve_frontend_asset),
+    re_path(r'^(?P<path>(assets|images|downloads)/.*)$', serve_frontend_asset),
     re_path(r'^(?P<path>.*)$', serve_frontend_app),
 ]

@@ -5,6 +5,14 @@
         <img class="header-logo" :src="logo">
         <span class="header-title">CSAA Manage System</span>
         <div class="empty"></div>
+        <a
+          class="guide-link"
+          href="/downloads/CSAA_Manage_System_User_Guide.pdf"
+          download="CSAA_Manage_System_User_Guide.pdf"
+        >
+          <download-outlined />
+          <span>User Guide</span>
+        </a>
         <a class="preview-link" href="/index/portal" target="_blank" rel="noopener noreferrer">Link</a>
         <span>{{ adminRoleLabel }}[{{ userStore.admin_user_name }}]</span>
         <a class="header-quit" @click="handleLogout">Log out</a>
@@ -55,6 +63,10 @@
           <a-menu-item key="student">
             <team-outlined/>
             <span>Student</span>
+          </a-menu-item>
+          <a-menu-item key="userGuide">
+            <download-outlined/>
+            <span>User Guide</span>
           </a-menu-item>
           <a-menu-item v-if="isAdminRole" key="term">
             <calendar-outlined/>
@@ -139,7 +151,8 @@ import {
   SettingOutlined,
   ClockCircleOutlined,
   CalendarOutlined,
-  TabletOutlined
+  TabletOutlined,
+  DownloadOutlined
 } from '@ant-design/icons-vue';
 
 import {computed, ref, watch, onMounted, onUnmounted, nextTick} from 'vue';
@@ -168,6 +181,14 @@ const route = useRoute()
 
 const handleClick = ({item, key, keyPath}) => {
   console.log('点击路由===>', key)
+  if (key === 'userGuide') {
+    const link = document.createElement('a')
+    link.href = '/downloads/CSAA_Manage_System_User_Guide.pdf'
+    link.download = 'CSAA_Manage_System_User_Guide.pdf'
+    link.click()
+    selectedKeys.value = [route.name]
+    return
+  }
   if (isTeacherRole.value && !teacherAllowedRoutes.has(String(key))) {
     router.push({ name: 'schedule' })
     return
@@ -276,19 +297,25 @@ const handleLogout = () => {
     flex: 1;
   }
 
+  .guide-link,
   .preview-link {
     display: inline-flex;
     align-items: center;
     height: 32px;
     padding: 0 16px;
-    margin-right: 24px;
+    margin-right: 12px;
     color: #111827;
     border: 1px solid #d9d9d9;
     background: #fff;
     line-height: 30px;
   }
 
-.preview-link:hover {
+  .guide-link {
+    gap: 6px;
+  }
+
+  .guide-link:hover,
+  .preview-link:hover {
     color: #1890ff;
     border-color: #1890ff;
   }
@@ -354,6 +381,7 @@ const handleLogout = () => {
       white-space: nowrap;
     }
 
+    .guide-link,
     .preview-link {
       display: none;
     }
