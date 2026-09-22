@@ -1,4 +1,6 @@
-from CSAA.models import Course, RoomCoursePermission, Thing
+from datetime import date
+
+from CSAA.models import Course, RoomCoursePermission, Term, Thing
 
 
 def course_allowed(room_id, term, title):
@@ -40,3 +42,34 @@ def candidate_classes(term, title, day='', time_id=None):
         elif allowed is not None and key not in slots and key not in closed:
             slots[key] = Thing(title=title, tag=thing.tag, day=thing.day, time=thing.time, status='0')
     return sorted(slots.values(), key=lambda item: (item.day, item.time.time, item.tag.title))
+
+
+def protected_class_instances(things, as_of=None):
+    """Return current class instances that are still backed by room permissions."""
+    things = list(things)
+    room_ids = {thing.tag_id for thing in things if thing.tag_id}
+    if not room_ids:
+        return []
+
+    as_of = as_of or date.today()
+    active_terms = Term.objects.filter(
+        expect_time__date__lte=as_of,
+        return_time__date__gte=as_of,
+    )
+    allowed_by_room = {}
+    rules = RoomCoursePermission.objects.filter(
+        room_id__in=room_ids,
+        term__in=active_terms,
+    ).prefetch_related('courses')
+    for rule in rules:
+        allowed_by_room.setdefault(rule.room_id, set()).update(
+            course.title.strip().casefold()
+            for course in rule.courses.all()
+            if course.active and course.title
+        )
+
+    return [
+        thing for thing in things
+        if thing.title
+        and thing.title.strip().casefold() in allowed_by_room.get(thing.tag_id, set())
+    ]

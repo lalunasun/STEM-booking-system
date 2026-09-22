@@ -4,6 +4,7 @@ from CSAA import utils
 from CSAA.auth.authentication import AdminTokenAuthtication
 from CSAA.handler import APIResponse
 from CSAA.models import Classification, Course, Thing, Tag
+from CSAA.room_permissions import protected_class_instances
 from CSAA.serializers import ThingSerializer, UpdateThingSerializer
 
 from django.db.models import Case, When, IntegerField
@@ -107,10 +108,32 @@ def update(request):
 @api_view(['POST'])
 @authentication_classes([AdminTokenAuthtication])
 def delete(request):
+    ids = request.GET.get('ids', '')
+    ids_arr = [value for value in ids.split(',') if value]
     try:
-        ids = request.GET.get('ids')
-        ids_arr = ids.split(',')
-        Thing.objects.filter(id__in=ids_arr).delete()
-    except Thing.DoesNotExist:
-        return APIResponse(code=1, msg='课程不存在')
+        requested_ids = {int(value) for value in ids_arr}
+    except (TypeError, ValueError):
+        return APIResponse(code=1, msg='Invalid class instance selection')
+    things = list(Thing.objects.filter(id__in=requested_ids).select_related('tag', 'time'))
+    if not things or len(things) != len(requested_ids):
+        return APIResponse(code=1, msg='Class instance not found')
+
+    protected = protected_class_instances(things)
+    if protected:
+        labels = []
+        for thing in protected[:5]:
+            room = thing.tag.title if thing.tag else 'No room'
+            time = thing.time.time if thing.time else 'No time'
+            labels.append(f'{room} {thing.day or "No day"} {time} {thing.title}')
+        suffix = '...' if len(protected) > 5 else ''
+        return APIResponse(
+            code=1,
+            msg=(
+                'Cannot delete current class slots allowed by Room course permissions. '
+                'Set the class to Unavailable or update the room permissions first: '
+                + '; '.join(labels) + suffix
+            ),
+        )
+
+    Thing.objects.filter(id__in=[thing.id for thing in things]).delete()
     return APIResponse(code=0, msg='删除成功')

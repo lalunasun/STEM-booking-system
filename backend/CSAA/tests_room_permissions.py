@@ -127,3 +127,27 @@ class RoomPermissionTests(TestCase):
         self.assertEqual(Thing.objects.count(), 1)
         call_command('initialize_current_room_permissions', *args, '--apply', stdout=StringIO())
         self.assertEqual(RoomCoursePermission.objects.count(), 1)
+
+    def test_current_allowed_class_instance_cannot_be_deleted(self):
+        self.save_rule([self.spike, self.scratch])
+
+        response = self.client.post(
+            f'/CSAA/admin/thing/delete?ids={self.thing.id}',
+            **self.headers,
+        ).json()
+
+        self.assertEqual(response['code'], 1)
+        self.assertIn('Room course permissions', response['msg'])
+        self.assertTrue(Thing.objects.filter(pk=self.thing.pk).exists())
+
+    def test_class_instance_can_be_deleted_after_permission_is_removed(self):
+        self.save_rule([self.spike])
+        self.save_rule([self.scratch])
+
+        response = self.client.post(
+            f'/CSAA/admin/thing/delete?ids={self.thing.id}',
+            **self.headers,
+        ).json()
+
+        self.assertEqual(response['code'], 0)
+        self.assertFalse(Thing.objects.filter(pk=self.thing.pk).exists())
