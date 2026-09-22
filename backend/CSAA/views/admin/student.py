@@ -3,6 +3,7 @@ import io
 import json
 from datetime import datetime, time, timedelta
 import re
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.db import transaction
@@ -19,6 +20,18 @@ from CSAA.models import Child, CourseAdjustment, Lesson, OpLog, Order, StudentAt
 from CSAA.room_permissions import candidate_classes, course_allowed
 from CSAA.serializers import AdminStudentSerializer
 from CSAA.student_creation_audit import STUDENT_CREATED_EVENT, record_student_created
+
+
+STUDENT_AUDIT_SOURCE_TIMEZONE = ZoneInfo('Asia/Shanghai')
+STUDENT_AUDIT_DISPLAY_TIMEZONE = ZoneInfo('America/Toronto')
+
+
+def _format_student_audit_time(value):
+    if not value:
+        return ''
+    if timezone.is_naive(value):
+        value = value.replace(tzinfo=STUDENT_AUDIT_SOURCE_TIMEZONE)
+    return value.astimezone(STUDENT_AUDIT_DISPLAY_TIMEZONE).strftime('%Y-%m-%d %H:%M')
 
 
 @api_view(['GET'])
@@ -84,7 +97,7 @@ def creation_log(request):
         student = students.get(student_id)
         rows.append({
             'id': f'created-{event.id}',
-            'created_time': event.re_time.strftime('%Y-%m-%d %H:%M'),
+            'created_time': _format_student_audit_time(event.re_time),
             'student_id': student_id,
             'student_name': student.name if student else None,
             'source': payload.get('source', 'other'),
@@ -107,7 +120,7 @@ def creation_log(request):
             legacy_name = None
         rows.append({
             'id': f'legacy-{entry.id}',
-            'created_time': entry.re_time.strftime('%Y-%m-%d %H:%M'),
+            'created_time': _format_student_audit_time(entry.re_time),
             'student_id': None,
             'student_name': legacy_name if isinstance(legacy_name, str) else None,
             'source': (

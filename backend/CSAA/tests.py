@@ -7,6 +7,7 @@ from django.test import TestCase
 from CSAA.models import AdminTrialSession, Child, Classification, Course, CourseAdjustment, DailyStudentAdjustment, Lesson, OpLog, Order, PermanentCourseChange, RoomCoursePermission, StudentAttendance, StudentComment, StudentLessonNote, Tag, Term, Thing, Time, TrialRequest, User
 from CSAA.serializers import AdminStudentSerializer, LessonDetailSerializer, LessonSerializer
 from CSAA.course_conflicts import selected_slot_conflict, student_slot_conflict_on_date
+from CSAA.student_creation_audit import STUDENT_CREATED_EVENT
 from CSAA.utils import md5value
 from CSAA.views.admin.course_adjustment import _recommend_makeup_options
 from CSAA.views.camp_checkin import _student_display_name
@@ -1329,6 +1330,30 @@ class QuickStudentEnrollmentTests(TestCase):
         self.assertIsNone(OpLog.objects.filter(
             re_url='/CSAA/admin/student/quickCreate',
         ).latest('id').re_content)
+
+    def test_creation_log_displays_toronto_time(self):
+        student = Child.objects.create(name='Timezone Student')
+        event = OpLog.objects.create(
+            re_url=STUDENT_CREATED_EVENT,
+            re_method='EVENT',
+            re_content=json.dumps({
+                'student_id': student.id,
+                'source': 'admin_quick',
+                'actor_id': self.admin.id,
+            }),
+        )
+        OpLog.objects.filter(pk=event.pk).update(
+            re_time=datetime.datetime(2026, 9, 22, 2, 41),
+        )
+
+        response = self.client.get(
+            '/CSAA/admin/student/creationLog',
+            HTTP_ADMINTOKEN=self.admin.admin_token,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        row = next(item for item in response.json()['data'] if item['student_id'] == student.id)
+        self.assertEqual(row['created_time'], '2026-09-21 14:41')
 
     def test_creation_log_is_admin_only_and_records_other_create_paths(self):
         self.assertEqual(self.client.get('/CSAA/admin/student/creationLog').status_code, 403)

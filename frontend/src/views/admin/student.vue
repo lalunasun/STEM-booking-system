@@ -809,7 +809,7 @@ const cancelTrialBooking = async (packageKey: string) => {
 };
 
 const creationLogColumns = [
-  { title: 'Server time', dataIndex: 'created_time', key: 'created_time', width: 145 },
+  { title: 'Toronto time', dataIndex: 'created_time', key: 'created_time', width: 145 },
   { title: 'Student', key: 'student', width: 160 },
   { title: 'Source', key: 'source', width: 105 },
   { title: 'Result', key: 'status', width: 110 },
