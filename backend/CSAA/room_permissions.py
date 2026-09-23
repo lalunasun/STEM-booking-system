@@ -1,15 +1,76 @@
 from datetime import date
 
-from CSAA.models import Course, RoomCoursePermission, Term, Thing
+from django.db.models import Q
+
+from CSAA.models import AdminTrialSession, Course, Order, RoomCoursePermission, Term, Thing
+
+DAY_CODES = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
 
 
-def course_allowed(room_id, term, title):
+def blocked_day_codes(rule):
+    if not rule or not rule.blocked_days:
+        return set()
+    return {item for item in rule.blocked_days.split(',') if item in DAY_CODES}
+
+
+def room_day_allowed(room_id, term, day):
+    rule = RoomCoursePermission.objects.filter(room_id=room_id, term=term).first()
+    return rule is None or day not in blocked_day_codes(rule)
+
+
+def room_day_allowed_for_date(room_id, class_date):
+    day = DAY_CODES[class_date.weekday()]
+    rules = list(RoomCoursePermission.objects.filter(
+        room_id=room_id,
+        term__expect_time__date__lte=class_date,
+        term__return_time__date__gte=class_date,
+    ))
+    return not rules or any(day not in blocked_day_codes(rule) for rule in rules)
+
+
+def rooms_blocked_for_date(class_date):
+    day = DAY_CODES[class_date.weekday()]
+    rules = RoomCoursePermission.objects.filter(
+        term__expect_time__date__lte=class_date,
+        term__return_time__date__gte=class_date,
+    )
+    rules_by_room = {}
+    for rule in rules:
+        rules_by_room.setdefault(rule.room_id, []).append(rule)
+    blocked = {
+        room_id for room_id, room_rules in rules_by_room.items()
+        if room_rules and all(day in blocked_day_codes(rule) for rule in room_rules)
+    }
+    if not blocked:
+        return blocked
+    occupied_room_ids = set(Order.objects.filter(
+        thing__tag_id__in=blocked,
+        thing__day=day,
+        child__isnull=False,
+        status__in=[2, 6],
+        expect_time__date__lte=class_date,
+        return_time__date__gte=class_date,
+    ).values_list('thing__tag_id', flat=True))
+    trial_rooms = AdminTrialSession.objects.filter(
+        Q(room_id__in=blocked) | Q(room__isnull=True, lesson__thing__tag_id__in=blocked),
+        session_date=class_date,
+        status='active',
+    ).values_list('room_id', 'lesson__thing__tag_id')
+    occupied_room_ids.update(
+        room_id or lesson_room_id for room_id, lesson_room_id in trial_rooms
+    )
+    return blocked - occupied_room_ids
+
+
+def course_allowed(room_id, term, title, day=''):
     catalog = Course.objects.filter(title__iexact=title).first()
     if catalog and not catalog.active:
         return False
     rule = RoomCoursePermission.objects.filter(room_id=room_id, term=term).first()
     if rule is None:
         return True
+    if day and day in blocked_day_codes(rule):
+        return False
     return rule.courses.filter(title__iexact=title, active=True).exists()
 
 
@@ -24,7 +85,10 @@ def candidate_classes(term, title, day='', time_id=None):
     if time_id:
         existing = existing.filter(time_id=time_id)
     rules = {
-        rule.room_id: {course.title.casefold() for course in rule.courses.all() if course.active}
+        rule.room_id: (
+            {course.title.casefold() for course in rule.courses.all() if course.active},
+            blocked_day_codes(rule),
+        )
         for rule in RoomCoursePermission.objects.filter(term=term).prefetch_related('courses')
     }
     slots = {}
@@ -32,7 +96,10 @@ def candidate_classes(term, title, day='', time_id=None):
     for thing in existing.order_by('id'):
         if not thing.tag_id or not thing.time_id or not thing.day:
             continue
-        allowed = rules.get(thing.tag_id)
+        rule_data = rules.get(thing.tag_id)
+        if rule_data is not None and thing.day in rule_data[1]:
+            continue
+        allowed = rule_data[0] if rule_data is not None else None
         if allowed is not None and title.casefold() not in allowed:
             continue
         key = (thing.tag_id, thing.day, thing.time_id)

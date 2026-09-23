@@ -20,10 +20,12 @@ class RoomPermissionTests(TestCase):
         self.scratch = Course.objects.create(title='Scratch')
         self.thing = Thing.objects.create(title='Spike', tag=self.room, time=self.time, day='Tue')
 
-    def save_rule(self, courses):
+    def save_rule(self, courses, blocked_days=None):
         return self.client.post('/CSAA/admin/tag/coursePermissions', {
             'room': self.room.id, 'term': self.term.id,
-            'course_ids': [course.id for course in courses], 'note': 'School confirmed',
+            'course_ids': [course.id for course in courses],
+            'blocked_days': blocked_days or [],
+            'note': 'School confirmed',
         }, content_type='application/json', **self.headers)
 
     def slots(self):
@@ -117,6 +119,63 @@ class RoomPermissionTests(TestCase):
         result = self.client.get('/CSAA/admin/lesson/list', {'date': '2026-09-08'}).json()
         lesson = next(item for item in result['data'] if item['class_name'] == 'Scratch')
         self.assertEqual(lesson['scheduled_students'][0]['name'], 'New student')
+
+    def test_blocked_weekday_is_saved_and_hidden_from_enrollment_and_schedule(self):
+        Lesson.objects.create(thing=self.thing)
+        response = self.save_rule([self.spike, self.scratch], ['Tue']).json()
+        self.assertEqual(response['code'], 0)
+        self.assertEqual(response['data']['blocked_days'], ['Tue'])
+        self.assertEqual(self.slots(), [])
+
+        schedule = self.client.get('/CSAA/admin/lesson/list', {
+            'date': '2026-09-08',
+        }).json()['data']
+        self.assertEqual(schedule, [])
+
+    def test_cannot_block_weekday_with_active_enrollment(self):
+        self.save_rule([self.spike])
+        student = Child.objects.create(name='Existing student')
+        Order.objects.create(
+            order_number='BLOCK001', child=student, thing=self.thing, term=self.term,
+            status=6, expect_time=self.term.expect_time, return_time=self.term.return_time,
+        )
+
+        response = self.save_rule([self.spike], ['Tue']).json()
+
+        self.assertEqual(response['code'], 1)
+        self.assertIn('active students or trials', response['msg'])
+        self.assertEqual(RoomCoursePermission.objects.get().blocked_days, '')
+
+    def test_daily_move_rejects_a_blocked_room_weekday(self):
+        python = Course.objects.create(title='Python')
+        source_room = Tag.objects.create(title='Python Source Room', seat=4)
+        source_thing = Thing.objects.create(
+            title='Python', tag=source_room, time=self.time, day='Tue', status='0',
+        )
+        source_lesson = Lesson.objects.create(thing=source_thing)
+        student = Child.objects.create(name='Blocked weekday student')
+        Order.objects.create(
+            order_number='BLOCKMOVE001', child=student, thing=source_thing, term=self.term,
+            status=6, expect_time=self.term.expect_time, return_time=self.term.return_time,
+        )
+        self.save_rule([self.spike, python], ['Tue'])
+
+        response = self.client.post(
+            '/CSAA/admin/dailyAdjustment/targetOption',
+            {
+                'student_id': student.id,
+                'source_lesson_id': source_lesson.id,
+                'source_lesson_date': '2026-09-08',
+                'target_lesson_date': '2026-09-08',
+                'target_room_id': self.room.id,
+                'target_time_id': self.time.id,
+            },
+            **self.headers,
+        ).json()
+
+        self.assertEqual(response['code'], 1)
+        self.assertIn('no classes on Tuesday', response['msg'])
+        self.assertFalse(Thing.objects.filter(title='Python', tag=self.room).exists())
 
     def test_daily_move_materializes_same_course_in_an_allowed_room(self):
         python = Course.objects.create(title='Python')

@@ -115,6 +115,7 @@ class RoomCoursePermission(models.Model):
     room = models.ForeignKey(Tag, on_delete=models.CASCADE)
     term = models.ForeignKey(Term, on_delete=models.CASCADE)
     courses = models.ManyToManyField(Course, blank=True)
+    blocked_days = models.CharField(max_length=64, blank=True, default='')
     note = models.CharField(max_length=500, blank=True, default='')
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)

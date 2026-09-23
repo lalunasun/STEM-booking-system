@@ -10,6 +10,7 @@ from rest_framework.decorators import api_view, authentication_classes
 from CSAA.auth.authentication import AdminTokenAuthtication
 from CSAA.course_conflicts import student_slot_conflict_on_date
 from CSAA.handler import APIResponse
+from CSAA.room_permissions import blocked_day_codes
 from CSAA.models import (
     AdminTrialSession,
     ClassPassBooking,
@@ -86,17 +87,21 @@ def _allowed_target_candidate(
     except (Tag.DoesNotExist, Time.DoesNotExist, ValueError, TypeError):
         return None, 'Target room or time does not exist'
 
-    allowed = RoomCoursePermission.objects.filter(
+    rule = RoomCoursePermission.objects.filter(
         room=room,
         term_id=source_order.term_id,
-        courses__title__iexact=course_title,
-        courses__active=True,
+    ).prefetch_related('courses').first()
+    allowed = rule and rule.courses.filter(
+        title__iexact=course_title,
+        active=True,
     ).exists()
     if not allowed:
         term_title = source_order.term.title or 'this term'
         return None, f'{course_title} is not allowed in {room.title} for {term_title}'
 
     expected_day = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][target_lesson_date.weekday()]
+    if expected_day in blocked_day_codes(rule):
+        return None, f'{room.title} has no classes on {target_lesson_date.strftime("%A")}'
     slot_filter = {
         'tag': room,
         'day': expected_day,

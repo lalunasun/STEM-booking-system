@@ -10,6 +10,7 @@ from CSAA.auth.authentication import AdminTokenAuthtication
 from CSAA.course_conflicts import student_slot_conflict_on_date
 from CSAA.handler import APIResponse
 from CSAA.models import Child, ClassPass, ClassPassBooking, Lesson, Order, Thing
+from CSAA.room_permissions import room_day_allowed_for_date
 from CSAA.serializers import ClassPassBookingSerializer, ClassPassSerializer
 
 
@@ -229,6 +230,8 @@ def booking_review(request):
             expected_day = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][booking.requested_date.weekday()]
             if thing.day.lower() != expected_day.lower():
                 return APIResponse(code=1, msg=f'This class meets on {thing.day}, not {expected_day}')
+        if thing.tag_id and not room_day_allowed_for_date(thing.tag_id, booking.requested_date):
+            return APIResponse(code=1, msg=f'{thing.tag.title} has no classes on this weekday')
         if thing.tag and thing.tag.seat is not None:
             if _active_room_count(thing, booking.requested_date, exclude_booking_id=booking.id) >= int(thing.tag.seat):
                 return APIResponse(code=1, msg='This room/time is full on the requested date')

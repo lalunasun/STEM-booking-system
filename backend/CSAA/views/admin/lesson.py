@@ -8,6 +8,7 @@ from CSAA import utils
 from CSAA.auth.authentication import AdminTokenAuthtication
 from CSAA.handler import APIResponse
 from CSAA.models import AdminTrialSession, Classification, Thing, Tag, Lesson, Order, CourseAdjustment, TrialRequest, DailyStudentAdjustment, StudentComment, StudentAttendance, ClassPassBooking
+from CSAA.room_permissions import rooms_blocked_for_date
 from CSAA.serializers import ThingSerializer, UpdateThingSerializer, LessonSerializer, LessonDetailSerializer, DailyLessonSerializer
 
 
@@ -37,7 +38,9 @@ def list_api(request):
         )
         if class_date:
             day_code = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][class_date.weekday()]
-            lessons = lessons.filter(thing__day=day_code)
+            lessons = lessons.filter(thing__day=day_code).exclude(
+                thing__tag_id__in=rooms_blocked_for_date(class_date),
+            )
 
         if not class_date:
             serializer = LessonSerializer(lessons, many=True)

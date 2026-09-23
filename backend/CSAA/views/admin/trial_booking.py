@@ -22,6 +22,7 @@ from CSAA.models import (
     User,
 )
 from CSAA.student_creation_audit import record_student_created
+from CSAA.room_permissions import blocked_day_codes, room_day_allowed_for_date
 from CSAA.views.admin.daily_adjustment import _occupied_count
 
 
@@ -88,12 +89,14 @@ def _active_terms(session_date):
 
 def _flexible_rooms(subject, session_date):
     course_titles = SUBJECT_COURSES.get(subject, set())
-    return Tag.objects.filter(
-        seat__gt=0,
-        roomcoursepermission__term__in=_active_terms(session_date),
-        roomcoursepermission__courses__active=True,
-        roomcoursepermission__courses__title__in=course_titles,
-    ).distinct().order_by('title')
+    day = DAY_CODES[session_date.weekday()]
+    rules = RoomCoursePermission.objects.filter(
+        term__in=_active_terms(session_date),
+        courses__active=True,
+        courses__title__in=course_titles,
+    ).select_related('room').distinct()
+    room_ids = {rule.room_id for rule in rules if day not in blocked_day_codes(rule)}
+    return Tag.objects.filter(id__in=room_ids, seat__gt=0).order_by('title')
 
 
 def _parse_thing_range(thing):
@@ -246,6 +249,8 @@ def options(request):
     ).select_related('thing__tag', 'thing__time').order_by('thing__time__time', 'thing__tag__title')
     data = []
     for lesson in lessons:
+        if not room_day_allowed_for_date(lesson.thing.tag_id, session_date):
+            continue
         time_range = _time_range(lesson)
         if not time_range:
             continue
@@ -352,6 +357,8 @@ def create(request):
             return APIResponse(code=1, msg='Selected trial class does not exist')
         if not session_date or lesson.thing.day != DAY_CODES[session_date.weekday()]:
             return APIResponse(code=1, msg='Class weekday does not match the selected date')
+        if not room_day_allowed_for_date(lesson.thing.tag_id, session_date):
+            return APIResponse(code=1, msg=f'{lesson.thing.tag.title} has no classes on this weekday')
         if not any(lesson.thing.title in courses for courses in SUBJECT_COURSES.values()):
             return APIResponse(code=1, msg='This course is not in the trial package')
         time_range = _time_range(lesson)

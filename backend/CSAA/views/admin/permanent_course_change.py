@@ -10,6 +10,7 @@ from CSAA.auth.authentication import AdminTokenAuthtication
 from CSAA.course_conflicts import student_slot_conflict_on_date
 from CSAA.handler import APIResponse
 from CSAA.models import Lesson, Order, PermanentCourseChange
+from CSAA.room_permissions import course_allowed
 from CSAA.views.admin.daily_adjustment import _occupied_count
 
 
@@ -84,15 +85,22 @@ def options(request):
         rows = Lesson.objects.filter(
             thing__status='0', thing__time__isnull=False,
             thing__tag__isnull=False, thing__day__isnull=False,
-        ).exclude(id=source_lesson_id).values_list('thing__title', 'thing__day').distinct()
+        ).exclude(id=source_lesson_id).values_list(
+            'thing__title', 'thing__day', 'thing__tag_id',
+        ).distinct()
         end_date = source_order.return_time.date()
         data = []
-        for title, day in rows:
+        seen = set()
+        for title, day, room_id in rows:
+            if not course_allowed(room_id, source_order.term, title, day):
+                continue
             day_index = DAY_INDEX.get(day)
             if day_index is None:
                 continue
             first_date = effective_date + datetime.timedelta(days=(day_index - effective_date.weekday()) % 7)
-            if first_date and first_date <= end_date:
+            key = (title.casefold(), day)
+            if first_date and first_date <= end_date and key not in seen:
+                seen.add(key)
                 data.append({
                     'class_name': title, 'day': day,
                     'first_class_date': first_date.strftime('%Y-%m-%d'),
@@ -115,6 +123,10 @@ def options(request):
 
     data = []
     for lesson in lessons:
+        if not course_allowed(
+            lesson.thing.tag_id, source_order.term, lesson.thing.title, lesson.thing.day,
+        ):
+            continue
         first_date = _first_class_date(lesson.thing, effective_date)
         if not first_date or first_date > source_order.return_time.date():
             continue
@@ -180,6 +192,13 @@ def create(request):
         return APIResponse(code=1, msg='Source or target class does not exist')
     if source_lesson.id == target_lesson.id:
         return APIResponse(code=1, msg='Source and target classes are the same')
+    if not course_allowed(
+        target_lesson.thing.tag_id,
+        source_order.term,
+        target_lesson.thing.title,
+        target_lesson.thing.day,
+    ):
+        return APIResponse(code=1, msg=f'{target_lesson.thing.tag.title} has no classes on this weekday')
 
     first_target_date = _first_class_date(target_lesson.thing, effective_date)
     if not first_target_date or first_target_date > source_order.return_time.date():

@@ -3,9 +3,11 @@ from rest_framework.decorators import api_view, authentication_classes
 from CSAA import utils
 from CSAA.auth.authentication import AdminTokenAuthtication
 from CSAA.handler import APIResponse
-from CSAA.models import Tag, Term, Course, Thing, RoomCoursePermission
+from CSAA.models import AdminTrialSession, Order, Tag, Term, Course, Thing, RoomCoursePermission
 from django.db import transaction
+from django.db.models import Q
 from CSAA.serializers import TagSerializer
+from CSAA.room_permissions import DAY_CODES, blocked_day_codes
 
 
 # Room列表
@@ -20,9 +22,13 @@ def course_permissions(request):
         return APIResponse(code=1, msg='Select a valid room and term')
     if request.method == 'POST':
         ids = params.get('course_ids')
+        blocked_days = params.get('blocked_days', [])
         note = str(params.get('note') or '').strip()
-        if not isinstance(ids, list) or len(note) > 500:
+        if not isinstance(ids, list) or not isinstance(blocked_days, list) or len(note) > 500:
             return APIResponse(code=1, msg='Invalid courses or note')
+        blocked_days = {str(value) for value in blocked_days}
+        if not blocked_days.issubset(DAY_CODES):
+            return APIResponse(code=1, msg='Select valid unavailable weekdays')
         try:
             ids = {int(value) for value in ids}
         except (ValueError, TypeError):
@@ -32,11 +38,45 @@ def course_permissions(request):
             return APIResponse(code=1, msg='Select active courses')
         with transaction.atomic():
             Tag.objects.select_for_update().get(pk=room.pk)
-            rule, _ = RoomCoursePermission.objects.get_or_create(room=room, term=term)
+            rule, rule_created = RoomCoursePermission.objects.get_or_create(room=room, term=term)
+            newly_blocked = blocked_days - blocked_day_codes(rule)
+            enrolled = Order.objects.filter(
+                thing__tag=room,
+                thing__day__in=newly_blocked,
+                status__in=[2, 6],
+                child__isnull=False,
+            )
+            if term.expect_time and term.return_time:
+                enrolled = enrolled.filter(
+                    expect_time__date__lte=term.return_time.date(),
+                    return_time__date__gte=term.expect_time.date(),
+                )
+            else:
+                enrolled = enrolled.filter(term=term)
+            enrolled_days = set(enrolled.values_list('thing__day', flat=True))
+            trial_days = set()
+            if newly_blocked and term.expect_time and term.return_time:
+                trials = AdminTrialSession.objects.filter(
+                    Q(room=room) | Q(room__isnull=True, lesson__thing__tag=room),
+                    session_date__gte=term.expect_time.date(),
+                    session_date__lte=term.return_time.date(),
+                    status='active',
+                ).values_list('session_date', flat=True)
+                trial_days = {DAY_CODES[item.weekday()] for item in trials if DAY_CODES[item.weekday()] in newly_blocked}
+            conflicts = sorted(enrolled_days | trial_days, key=DAY_CODES.index)
+            if conflicts:
+                if rule_created:
+                    rule.delete()
+                labels = ', '.join(conflicts)
+                return APIResponse(
+                    code=1,
+                    msg=f'Cannot block {labels}: this room already has active students or trials',
+                )
             rule.courses.set(courses)
+            rule.blocked_days = ','.join(day for day in DAY_CODES if day in blocked_days)
             rule.note = note
             rule.updated_by = request.user
-            rule.save()
+            rule.save(update_fields=['blocked_days', 'note', 'updated_by', 'updated_at'])
     rule = RoomCoursePermission.objects.filter(room=room, term=term).first()
     titles = Thing.objects.filter(tag=room, status='0').values_list('title', flat=True)
     inferred = {str(title).casefold() for title in titles}
@@ -45,6 +85,7 @@ def course_permissions(request):
         'configured': rule is not None,
         'course_ids': list(rule.courses.values_list('id', flat=True)) if rule else [],
         'suggested_course_ids': suggested,
+        'blocked_days': sorted(blocked_day_codes(rule), key=DAY_CODES.index),
         'note': rule.note if rule else '',
         'updated_at': rule.updated_at.isoformat() if rule else None,
     })

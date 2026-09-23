@@ -70,6 +70,15 @@
               <template #icon><import-outlined /></template>
               Use existing courses
             </a-button>
+            <a-form-item label="No classes on" style="margin-top: 16px">
+              <a-checkbox-group
+                v-model:value="permissions.blockedDays"
+                class="day-options"
+                :disabled="permissions.loading || permissions.saving"
+                :options="dayOptions"
+              />
+              <div class="field-help">Applies to the entire room for the selected term.</div>
+            </a-form-item>
             <a-form-item label="Note" style="margin-top: 16px">
               <a-textarea v-model:value="permissions.note" :maxlength="500" :rows="3" show-count />
             </a-form-item>
@@ -125,8 +134,17 @@
     visible: false, loading: false, saving: false, failed: false, configured: false,
     room: null as any, term: undefined as number | undefined,
     terms: [] as any[], courses: [] as any[], courseIds: [] as number[],
-    suggested: [] as number[], note: '',
+    suggested: [] as number[], blockedDays: [] as string[], note: '',
   });
+  const dayOptions = [
+    { value: 'Mon', label: 'Monday' },
+    { value: 'Tue', label: 'Tuesday' },
+    { value: 'Wed', label: 'Wednesday' },
+    { value: 'Thu', label: 'Thursday' },
+    { value: 'Fri', label: 'Friday' },
+    { value: 'Sat', label: 'Saturday' },
+    { value: 'Sun', label: 'Sunday' },
+  ];
   let permissionRequest = 0;
   const loadPermissions = async () => {
     const request = ++permissionRequest;
@@ -134,6 +152,7 @@
     permissions.failed = false;
     permissions.courseIds = [];
     permissions.suggested = [];
+    permissions.blockedDays = [];
     permissions.note = '';
     try {
       const response = await permissionsApi({room: permissions.room.id, term: permissions.term});
@@ -141,6 +160,7 @@
       permissions.configured = response.data.configured;
       permissions.courseIds = response.data.course_ids;
       permissions.suggested = response.data.suggested_course_ids;
+      permissions.blockedDays = response.data.blocked_days || [];
       permissions.note = response.data.note;
     } catch (err: any) {
       if (request === permissionRequest) {
@@ -176,10 +196,12 @@
     try {
       await savePermissionsApi({
         room: permissions.room.id, term: permissions.term,
-        course_ids: permissions.courseIds, note: permissions.note,
+        course_ids: permissions.courseIds,
+        blocked_days: permissions.blockedDays,
+        note: permissions.note,
       });
       notifyScheduleDataChanged();
-      message.success('Room courses saved');
+      message.success('Room rules saved');
       permissions.visible = false;
     } catch (err: any) { message.error(err.msg || 'Could not save permissions'); }
     finally { permissions.saving = false; }
@@ -382,8 +404,13 @@
 <style scoped lang="less">
   .course-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .course-options :deep(.ant-checkbox-wrapper) { margin-left: 0; overflow-wrap: anywhere; }
+  .day-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .day-options :deep(.ant-checkbox-wrapper) { margin-left: 0; }
+  .field-help { margin-top: 8px; color: #667085; font-size: 12px; }
   .permission-status { color: #627d98; margin-top: 16px; }
-  @media (max-width: 480px) { .course-options { grid-template-columns: 1fr; } }
+  @media (max-width: 480px) {
+    .course-options, .day-options { grid-template-columns: 1fr; }
+  }
   .page-view {
     min-height: 100%;
     background: #fff;

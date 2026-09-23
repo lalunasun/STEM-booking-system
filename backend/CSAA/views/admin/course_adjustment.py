@@ -9,6 +9,7 @@ from rest_framework.decorators import api_view
 from CSAA.course_conflicts import student_slot_conflict_on_date
 from CSAA.handler import APIResponse
 from CSAA.models import CourseAdjustment, Lesson, Order, Thing, User
+from CSAA.room_permissions import room_day_allowed
 from CSAA.serializers import CourseAdjustmentSerializer
 
 
@@ -198,6 +199,8 @@ def _recommend_makeup_options(adjustment, limit=2):
     seen_options = set()
     for term_range in term_ranges:
         for thing in candidates:
+            if not room_day_allowed(thing.tag_id, term_range['term_id'], thing.day):
+                continue
             for class_date in _class_dates(
                 thing.day,
                 term_range['start_date'],

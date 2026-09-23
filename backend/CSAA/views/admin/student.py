@@ -497,7 +497,7 @@ def _resolve_enrollment_selection(params):
     if error:
         return None, error
     start, end = window
-    if not course_allowed(room_id, term, thing.title):
+    if not course_allowed(room_id, term, thing.title, thing.day):
         return None, 'This course is no longer allowed in this room for the selected term'
     return (term, thing, start, end), None
 
