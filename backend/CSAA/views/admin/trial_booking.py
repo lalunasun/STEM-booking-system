@@ -36,7 +36,7 @@ SUBJECT_COURSES = {
     'Spark Maths': {'Spark Maths'},
 }
 DAY_CODES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-FLEXIBLE_SUBJECTS = {'AI', '3D', 'VEX IQ', 'VEX V5'}
+FLEXIBLE_SUBJECTS = set(SUBJECT_COURSES)
 
 
 def _time_range(lesson):
@@ -112,6 +112,7 @@ def _parse_thing_range(thing):
 
 def _flexible_start_times(session_date):
     starts = set()
+    ranges = []
     things = Thing.objects.filter(
         day=DAY_CODES[session_date.weekday()], status='0', time__isnull=False,
     ).select_related('time')
@@ -119,6 +120,18 @@ def _flexible_start_times(session_date):
         time_range = _parse_thing_range(thing)
         if time_range:
             starts.add(time_range[0])
+            ranges.append(time_range)
+    if ranges:
+        earliest = min(item[0] for item in ranges)
+        latest_end = max(item[1] for item in ranges)
+        cursor = datetime.datetime.combine(session_date, earliest)
+        if cursor.minute not in (0, 30):
+            minutes = 30 - (cursor.minute % 30)
+            cursor += datetime.timedelta(minutes=minutes)
+        finish = datetime.datetime.combine(session_date, latest_end)
+        while cursor + datetime.timedelta(minutes=90) <= finish:
+            starts.add(cursor.time())
+            cursor += datetime.timedelta(minutes=30)
     return sorted(starts)
 
 
@@ -232,7 +245,7 @@ def options(request):
     mode = request.GET.get('mode', 'existing')
     if mode == 'flexible':
         if subject not in FLEXIBLE_SUBJECTS:
-            return APIResponse(code=1, msg='Flexible trial slots are only available for AI, 3D, VEX IQ and VEX V5')
+            return APIResponse(code=1, msg='Flexible trial slots are not available for this subject')
         return APIResponse(code=0, msg='Query successful', data=_flexible_options(subject, session_date))
     student = None
     if request.GET.get('student_id'):

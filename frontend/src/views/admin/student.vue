@@ -789,7 +789,7 @@ const trialBooking = reactive({
 const selectedTrialOption = (session: TrialSessionForm) =>
   session.options.find((item) => item.option_key === session.selectedKey);
 
-const flexibleTrialSubjects = new Set(['AI', '3D', 'VEX IQ', 'VEX V5']);
+const flexibleTrialSubjects = new Set(trialSubjects.map((item) => item.value));
 const supportsFlexibleTrial = (subject: string) => flexibleTrialSubjects.has(subject);
 
 const trialTimesOverlap = (first: any, second: any) =>

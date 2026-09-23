@@ -1693,3 +1693,40 @@ class AdminTrialBookingTests(TestCase):
         }, HTTP_ADMINTOKEN=self.admin.admin_token).json()['data']
         full = next(item for item in full_options if item['room_id'] == ai_room.id and item['start'] == '16:00')
         self.assertEqual(full['remaining'], 0)
+
+    def test_robotics_flexible_trial_can_start_on_the_half_hour(self):
+        creator, _ = Course.objects.get_or_create(title='Creator')
+        permission = RoomCoursePermission.objects.create(
+            room=self.room, term=self.term, updated_by=self.admin,
+        )
+        permission.courses.add(creator)
+
+        options = self.client.get('/CSAA/admin/trialBooking/options', {
+            'subject': 'Robotics', 'date': '2026-09-22', 'mode': 'flexible',
+        }, HTTP_ADMINTOKEN=self.admin.admin_token).json()
+
+        self.assertEqual(options['code'], 0)
+        half_hour = next(
+            item for item in options['data']
+            if item['room_id'] == self.room.id and item['start'] == '16:30'
+        )
+        self.assertEqual(half_hour['end'], '18:00')
+        self.assertEqual(half_hour['remaining'], 1)
+
+        created = self.client.post('/CSAA/admin/trialBooking/create', json.dumps({
+            'student_name': 'Half Hour Trial Student',
+            'sessions': [
+                {
+                    'mode': 'flexible', 'subject': 'Robotics', 'date': '2026-09-22',
+                    'room_id': self.room.id, 'start': '16:30',
+                },
+                {'mode': 'existing', 'lesson_id': self.coding.id, 'date': '2026-09-23'},
+            ],
+        }), content_type='application/json', HTTP_ADMINTOKEN=self.admin.admin_token).json()
+
+        self.assertEqual(created['code'], 0)
+        session = AdminTrialSession.objects.get(
+            student_id=created['data']['student_id'], booking_mode='flexible',
+        )
+        self.assertEqual(session.starts_at, datetime.time(16, 30))
+        self.assertEqual(session.ends_at, datetime.time(18, 0))
