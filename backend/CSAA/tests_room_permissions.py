@@ -120,6 +120,37 @@ class RoomPermissionTests(TestCase):
         lesson = next(item for item in result['data'] if item['class_name'] == 'Scratch')
         self.assertEqual(lesson['scheduled_students'][0]['name'], 'New student')
 
+    def test_admin_class_session_creates_schedule_lesson_and_rejects_duplicates(self):
+        vex = Course.objects.get(title='VEX IQ')
+        payload = {
+            'title': vex.title,
+            'tag': self.room.id,
+            'day': 'Fri',
+            'time': self.time.id,
+            'status': '0',
+        }
+
+        response = self.client.post('/CSAA/admin/thing/create', payload, **self.headers).json()
+
+        self.assertEqual(response['code'], 0)
+        thing = Thing.objects.get(title='VEX IQ', tag=self.room, day='Fri', time=self.time)
+        self.assertTrue(Lesson.objects.filter(thing=thing).exists())
+        duplicate = self.client.post('/CSAA/admin/thing/create', payload, **self.headers).json()
+        self.assertEqual(duplicate['code'], 1)
+        self.assertIn('already exists', duplicate['msg'])
+
+    def test_admin_class_session_requires_a_catalog_course(self):
+        response = self.client.post('/CSAA/admin/thing/create', {
+            'title': 'Unknown course',
+            'tag': self.room.id,
+            'day': 'Fri',
+            'time': self.time.id,
+            'status': '0',
+        }, **self.headers).json()
+
+        self.assertEqual(response['code'], 1)
+        self.assertFalse(Thing.objects.filter(title='Unknown course').exists())
+
     def test_blocked_weekday_is_saved_and_hidden_from_enrollment_and_schedule(self):
         Lesson.objects.create(thing=self.thing)
         response = self.save_rule([self.spike, self.scratch], ['Tue']).json()

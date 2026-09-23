@@ -4,7 +4,7 @@
     <div class="page-view">
       <div class="table-operations">
         <a-space>
-          <a-button type="primary" @click="handleAdd">New</a-button>
+          <a-button type="primary" @click="handleAdd">Add class session</a-button>
           <a-button  danger @click="handleBatchDelete">Mass Delete</a-button>
           <a-input-search addon-before="Title" enter-button @search="onSearch" @change="onSearchChange" />
         </a-space>
@@ -56,8 +56,17 @@
           <a-form ref="myform" :label-col="{ style: { width: '120px' } }" :model="modal.form" :rules="modal.rules">
             <a-row :gutter="24">
               <a-col span="24">
-                <a-form-item label="Class Name" name="title">
-                  <a-input placeholder="Please enter" v-model:value="modal.form.title"></a-input>
+                <a-form-item label="Course" name="title">
+                  <a-select
+                    v-model:value="modal.form.title"
+                    show-search
+                    placeholder="Select a course"
+                    :options="modal.courseData.map(item => ({
+                      value: item.title,
+                      label: item.active ? item.title : `${item.title} (Inactive)`,
+                      disabled: !item.active,
+                    }))"
+                  />
                 </a-form-item>
               </a-col>
               <a-col span="12">
@@ -119,6 +128,7 @@
               <a-col span="12">
                 <a-form-item label="day" name="day">
                   <a-select placeholder="Please select" v-model:value="modal.form.day" style="width: 100%;">
+                    <a-select-option value="Mon">Monday</a-select-option>
                     <a-select-option value="Tue">Tuesday</a-select-option>
                     <a-select-option value="Wed">Wednesday</a-select-option>
                     <a-select-option value="Thu">Thursday</a-select-option>
@@ -158,6 +168,7 @@
 <script setup lang="ts">
 import { FormInstance, message, SelectProps } from 'ant-design-vue';
 import { createApi, listApi, updateApi, deleteApi } from '/@/api/admin/thing';
+import { listApi as listCourseApi } from '/@/api/admin/course';
 import {listApi as listClassificationApi} from '/@/api/admin/classification'
 import {listApi as listTagApi} from '/@/api/admin/tag'
 import {listApi as listTimeApi} from '/@/api/admin/time'
@@ -253,6 +264,7 @@ const modal = reactive({
   editFlag: false,
   title: '',
   cData: [],
+  courseData: [] as any[],
   timeData: [],
   tagData: [{}],
   form: {
@@ -270,7 +282,7 @@ const modal = reactive({
     imageFile: undefined
   },
   rules: {
-    title: [{ required: true, message: 'Please enter the Title', trigger: 'change' }],
+    title: [{ required: true, message: 'Please select a course', trigger: 'change' }],
     classification: [{ required: true, message: 'Please select the Classification', trigger: 'change' }],
     tag: [{ required: true, message: 'Please select a Room to teach', trigger: 'change'}],
     price: [{ required: true, message: 'Please enter the Price', trigger: 'change' }],
@@ -285,6 +297,7 @@ const myform = ref<FormInstance>();
 
 onMounted(() => {
   getDataList();
+  getCourseDataList();
   getCDataList();
   getTimeDataList();
   getTagDataList();
@@ -314,6 +327,11 @@ const getDataList = () => {
 const getCDataList = () => {
   listClassificationApi({}).then(res => {
     modal.cData = res.data
+  })
+}
+const getCourseDataList = () => {
+  listCourseApi({}).then(res => {
+    modal.courseData = res.data || []
   })
 }
 const getTimeDataList = () => {
@@ -350,7 +368,7 @@ const handleAdd = () => {
   resetModal();
   modal.visile = true;
   modal.editFlag = false;
-  modal.title = 'New';
+  modal.title = 'Add class session';
   // 重置
   for (const key in modal.form) {
     modal.form[key] = savedFormData[key];
@@ -361,7 +379,7 @@ const handleEdit = (record: any) => {
   resetModal();
   modal.visile = true;
   modal.editFlag = true;
-  modal.title = 'Edit';
+  modal.title = 'Edit class session';
   // 重置
   for (const key in modal.form) {
     modal.form[key] = undefined;

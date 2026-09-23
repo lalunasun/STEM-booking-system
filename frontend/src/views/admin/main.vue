@@ -85,6 +85,10 @@
               <database-outlined/>
               <span>Courses</span>
             </a-menu-item>
+            <a-menu-item key="thing">
+              <schedule-outlined/>
+              <span>Class Sessions</span>
+            </a-menu-item>
             <a-menu-item key="classification">
               <layout-outlined/>
               <span>Categories</span>

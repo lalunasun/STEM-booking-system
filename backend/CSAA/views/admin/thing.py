@@ -3,10 +3,11 @@ from rest_framework.decorators import api_view, authentication_classes
 from CSAA import utils
 from CSAA.auth.authentication import AdminTokenAuthtication
 from CSAA.handler import APIResponse
-from CSAA.models import Classification, Course, Thing, Tag
+from CSAA.models import Classification, Course, Lesson, Thing, Tag
 from CSAA.room_permissions import protected_class_instances
 from CSAA.serializers import ThingSerializer, UpdateThingSerializer
 
+from django.db import transaction
 from django.db.models import Case, When, IntegerField
 day_order = {
     'Mon': 1,
@@ -68,17 +69,27 @@ def detail(request):
 # 创建课程
 @api_view(['POST'])  # 直接受post请求
 @authentication_classes([AdminTokenAuthtication])  # 管理员身份验证
+@transaction.atomic
 def create(request):
+    title = str(request.data.get('title') or '').strip()
+    if not Course.objects.filter(title__iexact=title, active=True).exists():
+        return APIResponse(code=1, msg='Select an active course from the course catalog')
+    if Thing.objects.filter(
+        title__iexact=title,
+        tag_id=request.data.get('tag'),
+        day=request.data.get('day'),
+        time_id=request.data.get('time'),
+    ).exists():
+        return APIResponse(code=1, msg='This class session already exists. Edit the existing session instead')
     serializer = ThingSerializer(data=request.data)
     if serializer.is_valid():
         thing = serializer.save()
-        if thing.title:
-            Course.objects.get_or_create(title=str(thing.title).strip())
-        return APIResponse(code=0, msg='创建成功', data=serializer.data)
+        Lesson.objects.get_or_create(thing=thing)
+        return APIResponse(code=0, msg='Class session created', data=serializer.data)
     else:
         print(serializer.errors)
         utils.log_error(request, '输入课程参数错误')
-    return APIResponse(code=1, msg='创建失败')
+    return APIResponse(code=1, msg='Could not create class session')
 
 
 # 修改课程
@@ -94,6 +105,7 @@ def update(request):
     serializer = UpdateThingSerializer(thing, data=request.data)
     if serializer.is_valid():
         thing = serializer.save()
+        Lesson.objects.get_or_create(thing=thing)
         if thing.title:
             Course.objects.get_or_create(title=str(thing.title).strip())
         return APIResponse(code=0, msg='查询成功', data=serializer.data)
