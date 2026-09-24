@@ -674,7 +674,7 @@ interface ClassPassStudent {
 interface LessonItem {
   id: number;
   lesson_id?: number;
-  thing: number;
+  thing?: number | null;
   thing_id?: number;
   class_name?: string;
   day?: string;
@@ -691,6 +691,7 @@ interface LessonItem {
   moved_students?: AdjustmentStudent[];
   sick_leave_students?: AdjustmentStudent[];
   virtual_trial?: boolean;
+  virtual_allowed?: boolean;
   teacher_confirmation_required?: boolean;
 }
 
@@ -1624,6 +1625,12 @@ const canAcceptDrop = (targetLesson: LessonItem) => {
   if (!adjustmentMode.value || !dragged) {
     return false;
   }
+  if (
+    String(targetLesson.class_name || '').trim().toLocaleLowerCase() !==
+    String(dragged.lesson.class_name || '').trim().toLocaleLowerCase()
+  ) {
+    return false;
+  }
   const sourceLessonId = Number(dragged.lesson.lesson_id || dragged.lesson.id);
   const targetLessonId = Number(targetLesson.lesson_id || targetLesson.id);
   if (sourceLessonId === targetLessonId) {
@@ -1643,6 +1650,12 @@ const getDropTargetTitle = (targetLesson: LessonItem) => {
   const dragged = draggedStudent.value;
   if (!adjustmentMode.value || !dragged) {
     return '';
+  }
+  if (
+    String(targetLesson.class_name || '').trim().toLocaleLowerCase() !==
+    String(dragged.lesson.class_name || '').trim().toLocaleLowerCase()
+  ) {
+    return `This target is for ${targetLesson.class_name || 'another course'}`;
   }
   const sourceLessonId = Number(dragged.lesson.lesson_id || dragged.lesson.id);
   const targetLessonId = Number(targetLesson.lesson_id || targetLesson.id);
@@ -1783,6 +1796,10 @@ const dropStudentToCell = async (room: RoomItem, slot: TimeItem) => {
 };
 
 const dropStudentToLessonCell = (lesson: LessonItem) => {
+  if (draggedStudent.value && !canAcceptDrop(lesson)) {
+    message.warning(getDropTargetTitle(lesson));
+    return;
+  }
   const room = rooms.value.find((item) => Number(item.id) === Number(lesson.room_id));
   const lessonStart = Math.floor(getTimeRange(lesson.time).start / 60) * 60;
   const slot = timeSlots.value.find((item) =>

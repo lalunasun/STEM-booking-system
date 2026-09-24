@@ -7,9 +7,111 @@ from rest_framework.decorators import api_view, authentication_classes
 from CSAA import utils
 from CSAA.auth.authentication import AdminTokenAuthtication
 from CSAA.handler import APIResponse
-from CSAA.models import AdminTrialSession, Classification, Thing, Tag, Lesson, Order, CourseAdjustment, TrialRequest, DailyStudentAdjustment, StudentComment, StudentAttendance, ClassPassBooking
-from CSAA.room_permissions import rooms_blocked_for_date
+from CSAA.models import AdminTrialSession, Classification, Thing, Tag, Lesson, Order, CourseAdjustment, TrialRequest, DailyStudentAdjustment, StudentComment, StudentAttendance, ClassPassBooking, RoomCoursePermission, Time
+from CSAA.room_permissions import blocked_day_codes, rooms_blocked_for_date
 from CSAA.serializers import ThingSerializer, UpdateThingSerializer, LessonSerializer, LessonDetailSerializer, DailyLessonSerializer
+
+
+def _time_range_minutes(value):
+    try:
+        start_value, end_value = str(value or '').split('-', 1)
+        start_hour, start_minute = [int(part) for part in start_value.strip().split(':', 1)]
+        end_hour, end_minute = [int(part) for part in end_value.strip().split(':', 1)]
+    except (TypeError, ValueError):
+        return None
+    return start_hour * 60 + start_minute, end_hour * 60 + end_minute
+
+
+def _visible_schedule_times(day_code):
+    if day_code == 'Mon':
+        return []
+
+    visible = []
+    seen_starts = set()
+    for slot in Time.objects.all().order_by('id'):
+        minutes = _time_range_minutes(slot.time)
+        if not minutes:
+            continue
+        start, end = minutes
+        if start % 60 or end - start != 60:
+            continue
+        if day_code in ('Sat', 'Sun'):
+            if start < 9 * 60 or start >= 18 * 60 or start == 12 * 60:
+                continue
+        elif start < 16 * 60 or start >= 20 * 60:
+            continue
+        if start in seen_starts:
+            continue
+        seen_starts.add(start)
+        visible.append((slot, start))
+    return visible
+
+
+def _allowed_course_cards(class_date, serialized_lessons):
+    day_code = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][class_date.weekday()]
+    slots = _visible_schedule_times(day_code)
+    if not slots:
+        return []
+
+    rules = RoomCoursePermission.objects.filter(
+        term__expect_time__date__lte=class_date,
+        term__return_time__date__gte=class_date,
+    ).select_related('room').prefetch_related('courses')
+    blocked_room_ids = rooms_blocked_for_date(class_date)
+    allowed_by_room = {}
+    rooms_by_id = {}
+    for rule in rules:
+        if rule.room_id in blocked_room_ids or day_code in blocked_day_codes(rule):
+            continue
+        rooms_by_id[rule.room_id] = rule.room
+        allowed_by_room.setdefault(rule.room_id, {})
+        for course in rule.courses.all():
+            if course.active and course.title:
+                allowed_by_room[rule.room_id][course.title.strip().casefold()] = course.title.strip()
+
+    existing = set()
+    for lesson in serialized_lessons:
+        minutes = _time_range_minutes(lesson.get('time'))
+        if not minutes or not lesson.get('class_name') or not lesson.get('room_id'):
+            continue
+        existing.add((
+            int(lesson.get('room_id')),
+            lesson['class_name'].strip().casefold(),
+            minutes[0] // 60 * 60,
+        ))
+
+    cards = []
+    virtual_id = -1000000
+    for room_id in sorted(allowed_by_room):
+        room = rooms_by_id[room_id]
+        for slot, start in slots:
+            for normalized_title, title in sorted(allowed_by_room[room_id].items()):
+                key = (room_id, normalized_title, start)
+                if key in existing:
+                    continue
+                cards.append({
+                    'id': virtual_id,
+                    'lesson_id': None,
+                    'thing': None,
+                    'thing_id': None,
+                    'class_name': title,
+                    'day': day_code,
+                    'time': slot.time,
+                    'room_id': room.id,
+                    'room_name': room.title,
+                    'room_capacity': room.seat,
+                    'scheduled_students': [],
+                    'canceled_students': [],
+                    'scheduled_reschedule_students': [],
+                    'scheduled_trial_students': [],
+                    'continuing_trial_students': [],
+                    'scheduled_class_pass_students': [],
+                    'moved_students': [],
+                    'sick_leave_students': [],
+                    'virtual_allowed': True,
+                })
+                virtual_id -= 1
+    return cards
 
 
 # 查询课程数据
@@ -259,7 +361,13 @@ def list_api(request):
                 'absent_keys': absent_keys,
             },
         )
-        return APIResponse(code=0, msg='查询成功', data=list(serializer.data) + list(flexible_trial_cards.values()))
+        serialized_lessons = list(serializer.data)
+        allowed_course_cards = _allowed_course_cards(class_date, serialized_lessons)
+        return APIResponse(
+            code=0,
+            msg='查询成功',
+            data=serialized_lessons + allowed_course_cards + list(flexible_trial_cards.values()),
+        )
 
 
 # 课程详情
