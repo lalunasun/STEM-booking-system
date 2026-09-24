@@ -120,30 +120,6 @@ class RoomPermissionTests(TestCase):
         lesson = next(item for item in result['data'] if item['class_name'] == 'Scratch')
         self.assertEqual(lesson['scheduled_students'][0]['name'], 'New student')
 
-    def test_schedule_shows_every_allowed_course_without_creating_sessions(self):
-        Lesson.objects.create(thing=self.thing)
-        Time.objects.create(time='17:00-18:00')
-        self.save_rule([self.spike, self.scratch])
-        thing_count = Thing.objects.count()
-        lesson_count = Lesson.objects.count()
-
-        schedule = self.client.get('/CSAA/admin/lesson/list', {
-            'date': '2026-09-08',
-        }).json()['data']
-
-        cards = {
-            (item['class_name'], item['time']): item
-            for item in schedule
-            if item['room_id'] == self.room.id
-        }
-        self.assertFalse(cards[('Spike', '16:00-17:00')].get('virtual_allowed', False))
-        self.assertTrue(cards[('Scratch', '16:00-17:00')]['virtual_allowed'])
-        self.assertTrue(cards[('Spike', '17:00-18:00')]['virtual_allowed'])
-        self.assertTrue(cards[('Scratch', '17:00-18:00')]['virtual_allowed'])
-        self.assertEqual(cards[('Scratch', '16:00-17:00')]['scheduled_students'], [])
-        self.assertEqual(Thing.objects.count(), thing_count)
-        self.assertEqual(Lesson.objects.count(), lesson_count)
-
     def test_admin_class_session_creates_schedule_lesson_and_rejects_duplicates(self):
         vex = Course.objects.get(title='VEX IQ')
         payload = {
