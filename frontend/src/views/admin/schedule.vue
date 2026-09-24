@@ -248,7 +248,7 @@
                     v-if="canManageSchedule"
                     type="button"
                     class="teacher-edit-btn"
-                    :title="`Edit ${room.title} teacher`"
+                    :title="`Edit ${room.title} teacher for every ${selectedDate.format('dddd')}`"
                     @click.stop="startTeacherEdit(room.id)"
                   >
                     <edit-outlined />
@@ -981,10 +981,14 @@ const saveInlineTeacher = async (roomId: number) => {
     return;
   }
 
-  const nextAssignments = {
-    ...teacherAssignments.value,
-    [String(roomId)]: inlineTeacherDraft.value.trim() || getTeacherFallback(roomId),
-  };
+  const assignmentKey = getTeacherAssignmentKey(roomId);
+  const nextAssignments = { ...teacherAssignments.value };
+  const teacherName = inlineTeacherDraft.value.trim();
+  if (teacherName) {
+    nextAssignments[assignmentKey] = teacherName;
+  } else {
+    delete nextAssignments[assignmentKey];
+  }
 
   savingInlineTeacherRoomId.value = roomId;
   try {
@@ -998,7 +1002,7 @@ const saveInlineTeacher = async (roomId: number) => {
     teacherAssignments.value = response.data?.value || {};
     editingTeacherRoomId.value = null;
     inlineTeacherDraft.value = '';
-    message.success('Teacher saved');
+    message.success(`Teacher saved for every ${selectedDate.value.format('dddd')}`);
   } catch (error: any) {
     message.error(error?.msg || 'Failed to save teacher');
   } finally {
@@ -1406,8 +1410,13 @@ const getTeacherFallback = (roomId: number) => {
   return teacherNames[roomIndex % teacherNames.length];
 };
 
+const getTeacherAssignmentKey = (roomId: number, dayCode = selectedDayCode.value) =>
+  `${roomId}:${dayCode}`;
+
 const getTeacherPreset = (roomId: number) => {
-  return teacherAssignments.value[String(roomId)] || getTeacherFallback(roomId);
+  return teacherAssignments.value[getTeacherAssignmentKey(roomId)]
+    || teacherAssignments.value[String(roomId)]
+    || getTeacherFallback(roomId);
 };
 
 const runAutoScroll = () => {
