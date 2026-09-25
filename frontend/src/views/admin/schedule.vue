@@ -1952,6 +1952,15 @@ const loadPermanentOptions = async () => {
   }
 };
 
+watch(adjustmentScope, (scope) => {
+  if (scope !== 'future' || !draggedStudent.value) {
+    return;
+  }
+  const selected = draggedStudent.value;
+  draggedStudent.value = null;
+  openPermanentChange(selected.lesson, selected.student);
+});
+
 const onPermanentCourseChange = () => {
   permanentModal.firstClassDate = null;
   permanentModal.targetLessonId = undefined;
