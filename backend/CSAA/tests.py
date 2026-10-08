@@ -788,7 +788,7 @@ class LessonDetailDateFilterTests(TestCase):
         self.assertEqual(response.json()['code'], 0)
         source_order.refresh_from_db()
         record = PermanentCourseChange.objects.get()
-        self.assertEqual(source_order.return_time.date(), datetime.date(2026, 6, 30))
+        self.assertEqual(source_order.return_time.date(), datetime.date(2026, 6, 28))
         self.assertEqual(source_order.num, 0)
         self.assertEqual(record.target_order.thing_id, target_thing.id)
         self.assertEqual(record.target_order.num, 7)
@@ -805,6 +805,80 @@ class LessonDetailDateFilterTests(TestCase):
         self.assertEqual(source_order.return_time.date(), datetime.date(2026, 8, 31))
         self.assertEqual(source_order.num, 7)
         self.assertEqual(record.target_order.status, 7)
+
+    def test_permanent_change_can_create_allowed_course_in_an_existing_room_slot(self):
+        admin = User.objects.create(
+            username='permanent_virtual_slot_admin',
+            password='unused',
+            role='0',
+            admin_token='permanent-virtual-slot-token',
+        )
+        source_order = Order.objects.get(order_number='DATEFILTER001')
+        course = Course.objects.create(title=self.thing.title)
+        target_room = Tag.objects.create(title='Allowed Target Room', seat=4)
+        target_time = Time.objects.create(time='17:00-18:00')
+        Thing.objects.create(
+            title='Different Existing Course',
+            tag=target_room,
+            time=target_time,
+            day='Thu',
+            status='0',
+        )
+        permission = RoomCoursePermission.objects.create(
+            room=target_room,
+            term=source_order.term,
+            updated_by=admin,
+        )
+        permission.courses.add(course)
+
+        catalog = self.client.get(
+            '/CSAA/admin/permanentCourseChange/options',
+            {
+                'student_id': self.current_child.id,
+                'source_lesson_id': self.lesson.id,
+                'effective_date': '2026-07-01',
+            },
+            HTTP_ADMINTOKEN=admin.admin_token,
+        ).json()
+        self.assertTrue(any(
+            item['class_name'] == self.thing.title and item['day'] == 'Thu'
+            for item in catalog['data']
+        ))
+
+        choices = self.client.get(
+            '/CSAA/admin/permanentCourseChange/options',
+            {
+                'student_id': self.current_child.id,
+                'source_lesson_id': self.lesson.id,
+                'effective_date': '2026-07-02',
+                'course': self.thing.title,
+            },
+            HTTP_ADMINTOKEN=admin.admin_token,
+        ).json()
+        target = next(item for item in choices['data'] if item['room_id'] == target_room.id)
+        self.assertIsNone(target['lesson_id'])
+        self.assertEqual(target['time'], '17:00-18:00')
+
+        response = self.client.post(
+            '/CSAA/admin/permanentCourseChange/create',
+            {
+                'student_id': self.current_child.id,
+                'source_lesson_id': self.lesson.id,
+                'target_room_id': target['room_id'],
+                'target_time_id': target['time_id'],
+                'course': self.thing.title,
+                'effective_date': '2026-07-02',
+                'reason': 'Move to an allowed empty course slot',
+            },
+            HTTP_ADMINTOKEN=admin.admin_token,
+        )
+
+        self.assertEqual(response.json()['code'], 0)
+        record = PermanentCourseChange.objects.get()
+        self.assertEqual(record.target_lesson.thing.title, self.thing.title)
+        self.assertEqual(record.target_lesson.thing.tag, target_room)
+        self.assertEqual(record.target_lesson.thing.time, target_time)
+        self.assertEqual(record.target_lesson.thing.day, 'Thu')
 
     def test_lesson_detail_separates_absent_student_for_selected_date(self):
         current_order = Order.objects.get(order_number='DATEFILTER001')
@@ -1297,6 +1371,57 @@ class QuickStudentEnrollmentTests(TestCase):
         self.assertEqual(order.term, self.term)
         self.assertEqual(order.status, 6)
 
+    def test_quick_add_can_materialize_a_room_permitted_course(self):
+        permitted_course = Course.objects.create(title='Permitted Quick Course')
+        permission = RoomCoursePermission.objects.create(room=self.room, term=self.term)
+        permission.courses.add(permitted_course)
+
+        slots_response = self.client.get(
+            '/CSAA/admin/student/availableSlots',
+            {
+                'term': self.term.id,
+                'course': permitted_course.title,
+                'day': self.thing.day,
+                'time': self.time.id,
+                'start_date': '2026-09-08',
+                'end_date': '2027-02-02',
+            },
+            HTTP_ADMINTOKEN=self.admin.admin_token,
+        )
+
+        self.assertEqual(slots_response.json()['code'], 0)
+        slots = slots_response.json()['data']
+        self.assertEqual(len(slots), 1)
+        self.assertIsNone(slots[0]['id'])
+        self.assertTrue(slots[0]['new_class'])
+        self.assertEqual(slots[0]['room_id'], self.room.id)
+
+        create_response = self.client.post(
+            '/CSAA/admin/student/quickCreate',
+            {
+                'name': 'Permitted Slot Student',
+                'term': self.term.id,
+                'course': permitted_course.title,
+                'room': self.room.id,
+                'day': self.thing.day,
+                'time': self.time.id,
+                'start_date': '2026-09-08',
+                'end_date': '2027-02-02',
+            },
+            HTTP_ADMINTOKEN=self.admin.admin_token,
+        )
+
+        self.assertEqual(create_response.json()['code'], 0)
+        created_class = Thing.objects.get(
+            title=permitted_course.title,
+            tag=self.room,
+            day=self.thing.day,
+            time=self.time,
+        )
+        student = Child.objects.get(name='Permitted Slot Student')
+        self.assertTrue(Order.objects.filter(child=student, thing=created_class, status=6).exists())
+        self.assertTrue(Lesson.objects.filter(thing=created_class).exists())
+
     def test_admin_can_add_course_to_existing_student(self):
         student = Child.objects.create(parent=self.parent, name='Existing Student')
 
@@ -1576,7 +1701,7 @@ class AdminTrialBookingTests(TestCase):
 
     def test_trial_occupies_both_room_slots_and_can_be_canceled(self):
         created = self._book('New Trial Student')
-        self.assertEqual(created['code'], 0)
+        self.assertEqual(created['code'], 0, created)
         new_student = Child.objects.get(id=created['data']['student_id'])
         self.assertEqual(new_student.name, 'New Trial Student')
         self.assertTrue(OpLog.objects.filter(re_url='student_created', re_content__contains='admin_trial').exists())
@@ -1586,7 +1711,7 @@ class AdminTrialBookingTests(TestCase):
         first = next(item for item in schedule if item['id'] == self.robotics.id)
         second = next(item for item in schedule if item['id'] == self.following.id)
         self.assertEqual(first['scheduled_trial_students'][0]['name'], new_student.name)
-        self.assertEqual(second['continuing_trial_students'][0]['name'], new_student.name)
+        self.assertEqual(second['continuing_trial_students'], [])
         self.assertEqual(self.client.get('/CSAA/admin/lesson/detail', {
             'lesson_id': self.robotics.id, 'date': '2026-09-22',
         }).json()['data']['try_students'][0]['name'], new_student.name)
@@ -1616,6 +1741,77 @@ class AdminTrialBookingTests(TestCase):
                                  HTTP_ADMINTOKEN=self.admin.admin_token).json()['data']
         self.assertEqual(detail['trial_packages'][0]['status'], 'canceled')
         self.assertEqual(self._book('Second New Trial Student')['code'], 0)
+
+    def test_trial_continuation_is_never_attached_to_other_courses(self):
+        Lesson.objects.create(thing=Thing.objects.create(
+            title='Spike', tag=self.room, time=self.following.thing.time,
+            day='Tue', status='0',
+        ))
+        Lesson.objects.create(thing=Thing.objects.create(
+            title='Python', tag=self.room, time=self.following.thing.time,
+            day='Tue', status='0',
+        ))
+
+        created = self._book('Single Continue Trial')
+        self.assertEqual(created['code'], 0, created)
+        schedule = self.client.get(
+            '/CSAA/admin/lesson/list', {'date': '2026-09-22'},
+        ).json()['data']
+
+        continuations = [
+            student
+            for lesson in schedule
+            for student in lesson.get('continuing_trial_students', [])
+            if student['name'] == 'Single Continue Trial'
+        ]
+        self.assertEqual(continuations, [])
+        following = next(item for item in schedule if item['id'] == self.following.id)
+        self.assertEqual(following['continuing_trial_students'], [])
+
+    def test_roblox_trial_continues_only_on_one_matching_next_slot_card(self):
+        source_time = Time.objects.create(time='17:00-18:00')
+        overlapping_time = Time.objects.create(time='17:00-18:30')
+        next_time = Time.objects.create(time='18:00-19:00')
+        source = Lesson.objects.create(thing=Thing.objects.create(
+            title='Roblox', tag=self.room, time=source_time, day='Thu', status='0',
+        ))
+        Lesson.objects.create(thing=Thing.objects.create(
+            title='Scratch', tag=self.room, time=overlapping_time, day='Thu', status='0',
+        ))
+        Lesson.objects.create(thing=Thing.objects.create(
+            title='Spike', tag=self.room, time=overlapping_time, day='Thu', status='0',
+        ))
+        next_roblox = Lesson.objects.create(thing=Thing.objects.create(
+            title='Roblox', tag=self.room, time=next_time, day='Thu', status='0',
+        ))
+        Lesson.objects.create(thing=Thing.objects.create(
+            title='Python', tag=self.room, time=next_time, day='Thu', status='0',
+        ))
+        Lesson.objects.create(thing=Thing.objects.create(
+            title='Spike', tag=self.room, time=next_time, day='Thu', status='0',
+        ))
+
+        created = self.client.post('/CSAA/admin/trialBooking/create', json.dumps({
+            'student_name': 'Austin Regression',
+            'sessions': [
+                {'mode': 'existing', 'lesson_id': source.id, 'date': '2026-10-08'},
+                {'mode': 'existing', 'lesson_id': self.coding.id, 'date': '2026-09-23'},
+            ],
+        }), content_type='application/json', HTTP_ADMINTOKEN=self.admin.admin_token).json()
+        self.assertEqual(created['code'], 0, created)
+
+        schedule = self.client.get(
+            '/CSAA/admin/lesson/list', {'date': '2026-10-08'},
+        ).json()['data']
+        continuation_cards = [
+            lesson for lesson in schedule
+            if any(
+                student['name'] == 'Austin Regression'
+                for student in lesson.get('continuing_trial_students', [])
+            )
+        ]
+        self.assertEqual([item['id'] for item in continuation_cards], [next_roblox.id])
+        self.assertEqual(continuation_cards[0]['time'], '18:00-19:00')
 
     def test_trial_rejects_overlapping_sessions_and_parent_identity_mismatch(self):
         bad = self.client.post('/CSAA/admin/trialBooking/create', json.dumps({
@@ -1669,7 +1865,7 @@ class AdminTrialBookingTests(TestCase):
             'sessions': [
                 {
                     'mode': 'flexible', 'subject': 'AI', 'date': '2026-09-22',
-                    'room_id': ai_room.id, 'start': '16:00',
+                    'course': 'AI', 'room_id': ai_room.id, 'start': '16:00',
                 },
                 {'mode': 'existing', 'lesson_id': self.coding.id, 'date': '2026-09-23'},
             ],
@@ -1718,7 +1914,7 @@ class AdminTrialBookingTests(TestCase):
             'sessions': [
                 {
                     'mode': 'flexible', 'subject': 'Robotics', 'date': '2026-09-22',
-                    'room_id': self.room.id, 'start': '16:30',
+                    'course': 'Creator', 'room_id': self.room.id, 'start': '16:30',
                 },
                 {'mode': 'existing', 'lesson_id': self.coding.id, 'date': '2026-09-23'},
             ],
@@ -1730,3 +1926,312 @@ class AdminTrialBookingTests(TestCase):
         )
         self.assertEqual(session.starts_at, datetime.time(16, 30))
         self.assertEqual(session.ends_at, datetime.time(18, 0))
+
+    def test_existing_trial_can_start_on_the_half_hour(self):
+        late_lesson = Lesson.objects.create(thing=Thing.objects.create(
+            title='Spike', tag=self.room, time=self.following.thing.time,
+            day='Tue', status='0',
+        ))
+        options = self.client.get('/CSAA/admin/trialBooking/options', {
+            'subject': 'Robotics', 'date': '2026-09-22', 'mode': 'existing',
+        }, HTTP_ADMINTOKEN=self.admin.admin_token).json()
+
+        self.assertEqual(options['code'], 0)
+        half_hour = next(
+            item for item in options['data']
+            if item['lesson_id'] == self.robotics.id and item['start'] == '16:30'
+        )
+        self.assertEqual(half_hour['end'], '18:00')
+        self.assertEqual(
+            half_hour['option_key'],
+            f'existing:{self.robotics.id}:16:30',
+        )
+        late_half_hour = next(
+            item for item in options['data']
+            if item['lesson_id'] == late_lesson.id and item['start'] == '17:30'
+        )
+        self.assertEqual(late_half_hour['end'], '19:00')
+
+        invalid = self.client.post('/CSAA/admin/trialBooking/create', json.dumps({
+            'student_name': 'Invalid Quarter Hour',
+            'sessions': [
+                {
+                    'mode': 'existing', 'lesson_id': self.robotics.id,
+                    'date': '2026-09-22', 'start': '16:15',
+                },
+                {'mode': 'existing', 'lesson_id': self.coding.id, 'date': '2026-09-23'},
+            ],
+        }), content_type='application/json', HTTP_ADMINTOKEN=self.admin.admin_token).json()
+        self.assertNotEqual(invalid['code'], 0)
+        self.assertFalse(Child.objects.filter(name='Invalid Quarter Hour').exists())
+
+        created = self.client.post('/CSAA/admin/trialBooking/create', json.dumps({
+            'student_name': 'Existing Half Hour Trial',
+            'sessions': [
+                {
+                    'mode': 'existing', 'lesson_id': self.robotics.id,
+                    'date': '2026-09-22', 'start': '16:30',
+                },
+                {'mode': 'existing', 'lesson_id': self.coding.id, 'date': '2026-09-23'},
+            ],
+        }), content_type='application/json', HTTP_ADMINTOKEN=self.admin.admin_token).json()
+
+        self.assertEqual(created['code'], 0, created)
+        session = AdminTrialSession.objects.get(
+            student_id=created['data']['student_id'], session_index=1,
+        )
+        self.assertEqual(session.booking_mode, 'existing')
+        self.assertEqual(session.starts_at, datetime.time(16, 30))
+        self.assertEqual(session.ends_at, datetime.time(18, 0))
+
+    def test_trial_course_permissions_are_applied_per_course_and_room(self):
+        room_five = Tag.objects.create(title='Room 5', seat=4)
+        creator, _ = Course.objects.get_or_create(title='Creator')
+        wedo, _ = Course.objects.get_or_create(title='WeDo')
+        creator_rule = RoomCoursePermission.objects.create(
+            room=self.room, term=self.term, updated_by=self.admin,
+        )
+        creator_rule.courses.add(creator)
+        wedo_rule = RoomCoursePermission.objects.create(
+            room=room_five, term=self.term, updated_by=self.admin,
+        )
+        wedo_rule.courses.add(wedo)
+
+        flexible = self.client.get('/CSAA/admin/trialBooking/options', {
+            'subject': 'Robotics', 'date': '2026-09-22', 'mode': 'flexible',
+        }, HTTP_ADMINTOKEN=self.admin.admin_token).json()['data']
+
+        pairs = {(item['course'], item['room']) for item in flexible}
+        self.assertIn(('Creator', self.room.title), pairs)
+        self.assertIn(('WeDo', room_five.title), pairs)
+        self.assertNotIn(('WeDo', self.room.title), pairs)
+        self.assertNotIn(('Creator', room_five.title), pairs)
+
+        existing = self.client.get('/CSAA/admin/trialBooking/options', {
+            'subject': 'Robotics', 'date': '2026-09-22', 'mode': 'existing',
+        }, HTTP_ADMINTOKEN=self.admin.admin_token).json()['data']
+        self.assertEqual(
+            [(item['course'], item['start']) for item in existing],
+            [('Creator', '16:00'), ('Creator', '16:30')],
+        )
+
+        rejected = self.client.post('/CSAA/admin/trialBooking/create', json.dumps({
+            'student_name': 'Wrong Room Trial Student',
+            'sessions': [
+                {
+                    'mode': 'flexible', 'subject': 'Robotics', 'course': 'WeDo',
+                    'date': '2026-09-22', 'room_id': self.room.id, 'start': '16:00',
+                },
+                {'mode': 'existing', 'lesson_id': self.coding.id, 'date': '2026-09-23'},
+            ],
+        }), content_type='application/json', HTTP_ADMINTOKEN=self.admin.admin_token).json()
+        self.assertNotEqual(rejected['code'], 0)
+        self.assertFalse(Child.objects.filter(name='Wrong Room Trial Student').exists())
+
+    def test_trial_package_templates_and_creator_three_session_package(self):
+        templates = self.client.get(
+            '/CSAA/admin/trialBooking/templates',
+            HTTP_ADMINTOKEN=self.admin.admin_token,
+        ).json()
+
+        self.assertEqual(templates['code'], 0)
+        by_key = {item['key']: item for item in templates['data']}
+        self.assertEqual(set(by_key), {'standard', 'creator', 'vex_v5'})
+        self.assertEqual(
+            [item['duration'] for item in by_key['creator']['sessions']],
+            [60, 60, 60],
+        )
+
+        options = self.client.get('/CSAA/admin/trialBooking/options', {
+            'subject': 'Robotics', 'course': 'Creator', 'duration': 60,
+            'date': '2026-09-22', 'mode': 'existing',
+        }, HTTP_ADMINTOKEN=self.admin.admin_token).json()
+        self.assertEqual(options['code'], 0)
+        self.assertEqual({item['course'] for item in options['data']}, {'Creator'})
+        half_hour = next(item for item in options['data'] if item['start'] == '16:30')
+        self.assertEqual(half_hour['end'], '17:30')
+
+        created = self.client.post('/CSAA/admin/trialBooking/create', json.dumps({
+            'student_name': 'Creator Package Student',
+            'package_type': 'creator',
+            'sessions': [
+                {
+                    'mode': 'existing', 'subject': 'Robotics',
+                    'lesson_id': self.robotics.id, 'date': '2026-09-22', 'start': '16:00',
+                },
+                {
+                    'mode': 'existing', 'subject': 'Robotics',
+                    'lesson_id': self.robotics.id, 'date': '2026-09-29', 'start': '16:30',
+                },
+                {
+                    'mode': 'existing', 'subject': 'Robotics',
+                    'lesson_id': self.robotics.id, 'date': '2026-10-06', 'start': '16:00',
+                },
+            ],
+        }), content_type='application/json', HTTP_ADMINTOKEN=self.admin.admin_token).json()
+
+        self.assertEqual(created['code'], 0, created)
+        sessions = list(AdminTrialSession.objects.filter(
+            student_id=created['data']['student_id'],
+        ).order_by('session_index'))
+        self.assertEqual(len(sessions), 3)
+        self.assertTrue(all(item.course_name == 'Creator' for item in sessions))
+        self.assertTrue(all(
+            datetime.datetime.combine(item.session_date, item.ends_at)
+            - datetime.datetime.combine(item.session_date, item.starts_at)
+            == datetime.timedelta(minutes=60)
+            for item in sessions
+        ))
+
+        detail = self.client.get(
+            '/CSAA/admin/student/detail', {'id': created['data']['student_id']},
+            HTTP_ADMINTOKEN=self.admin.admin_token,
+        ).json()['data']
+        self.assertEqual(detail['trial_packages'][0]['package_type'], 'creator')
+
+    def test_vex_v5_package_uses_two_hour_v5_and_one_hour_coding(self):
+        vex_room = Tag.objects.create(title='VEX V5 Room', seat=3)
+        vex_time = Time.objects.create(time='17:00-19:00')
+        vex_lesson = Lesson.objects.create(thing=Thing.objects.create(
+            title='VEX V5', tag=vex_room, time=vex_time, day='Tue', status='0',
+        ))
+
+        vex_options = self.client.get('/CSAA/admin/trialBooking/options', {
+            'subject': 'VEX V5', 'course': 'VEX V5', 'duration': 120,
+            'date': '2026-09-22', 'mode': 'existing',
+        }, HTTP_ADMINTOKEN=self.admin.admin_token).json()
+        self.assertEqual(vex_options['code'], 0)
+        self.assertEqual(
+            [(item['start'], item['end']) for item in vex_options['data']],
+            [('17:00', '19:00')],
+        )
+
+        created = self.client.post('/CSAA/admin/trialBooking/create', json.dumps({
+            'student_name': 'VEX V5 Package Student',
+            'package_type': 'vex_v5',
+            'sessions': [
+                {
+                    'mode': 'existing', 'subject': 'VEX V5',
+                    'lesson_id': vex_lesson.id, 'date': '2026-09-22', 'start': '17:00',
+                },
+                {
+                    'mode': 'existing', 'subject': 'Coding',
+                    'lesson_id': self.coding.id, 'date': '2026-09-23', 'start': '16:30',
+                },
+            ],
+        }), content_type='application/json', HTTP_ADMINTOKEN=self.admin.admin_token).json()
+
+        self.assertEqual(created['code'], 0, created)
+        sessions = list(AdminTrialSession.objects.filter(
+            student_id=created['data']['student_id'],
+        ).order_by('session_index'))
+        durations = [
+            int((
+                datetime.datetime.combine(item.session_date, item.ends_at)
+                - datetime.datetime.combine(item.session_date, item.starts_at)
+            ).total_seconds() // 60)
+            for item in sessions
+        ]
+        self.assertEqual([item.course_name for item in sessions], ['VEX V5', 'Scratch'])
+        self.assertEqual(durations, [120, 60])
+
+        detail = self.client.get(
+            '/CSAA/admin/student/detail', {'id': created['data']['student_id']},
+            HTTP_ADMINTOKEN=self.admin.admin_token,
+        ).json()['data']
+        self.assertEqual(detail['trial_packages'][0]['package_type'], 'vex_v5')
+
+    def test_creator_package_rejects_non_creator_course(self):
+        rejected = self.client.post('/CSAA/admin/trialBooking/create', json.dumps({
+            'student_name': 'Invalid Creator Package',
+            'package_type': 'creator',
+            'sessions': [
+                {
+                    'mode': 'existing', 'subject': 'Robotics',
+                    'lesson_id': self.following.id, 'date': '2026-09-22', 'start': '17:00',
+                },
+                {
+                    'mode': 'existing', 'subject': 'Robotics',
+                    'lesson_id': self.robotics.id, 'date': '2026-09-29', 'start': '16:00',
+                },
+                {
+                    'mode': 'existing', 'subject': 'Robotics',
+                    'lesson_id': self.robotics.id, 'date': '2026-10-06', 'start': '16:00',
+                },
+            ],
+        }), content_type='application/json', HTTP_ADMINTOKEN=self.admin.admin_token).json()
+
+        self.assertNotEqual(rejected['code'], 0)
+        self.assertFalse(Child.objects.filter(name='Invalid Creator Package').exists())
+
+
+class InternalAssistantQueryTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create(
+            username='assistant_admin', role='0', status='0', admin_token='assistant-token',
+        )
+        self.parent = User.objects.create(username='assistant_parent', role='1', status='0')
+        self.student = Child.objects.create(parent=self.parent, name='Query Student-Z2020')
+        today = datetime.date.today()
+        self.term = Term.objects.create(
+            title='Assistant Current Term',
+            expect_time=datetime.datetime.combine(today - datetime.timedelta(days=30), datetime.time.min),
+            return_time=datetime.datetime.combine(today + datetime.timedelta(days=90), datetime.time.max),
+        )
+        self.room = Tag.objects.create(title='Assistant Room 3', seat=3)
+        self.time = Time.objects.create(time='16:00-17:00')
+        self.thing = Thing.objects.create(
+            title='Scratch Assistant', day='Sat', time=self.time, tag=self.room, status='0',
+        )
+        Order.objects.create(
+            order_number='ASSIST001', user=self.parent, child=self.student,
+            thing=self.thing, term=self.term, status=6, num=7,
+            expect_time=self.term.expect_time, return_time=self.term.return_time,
+        )
+
+    def _ask(self, question):
+        response = self.client.post(
+            '/CSAA/admin/assistant/query',
+            json.dumps({'question': question}),
+            content_type='application/json',
+            HTTP_ADMINTOKEN=self.admin.admin_token,
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['code'], 0)
+        return payload['data']
+
+    def test_availability_uses_shared_room_capacity(self):
+        other_course = Thing.objects.create(
+            title='Spike Assistant', day='Sat', time=self.time, tag=self.room, status='0',
+        )
+        second_student = Child.objects.create(parent=self.parent, name='Second Query Student')
+        Order.objects.create(
+            order_number='ASSIST002', user=self.parent, child=second_student,
+            thing=other_course, term=self.term, status=6, num=4,
+            expect_time=self.term.expect_time, return_time=self.term.return_time,
+        )
+
+        result = self._ask('Which Scratch Assistant classes have seats on Saturday?')
+
+        self.assertEqual(result['intent'], 'availability')
+        self.assertEqual(len(result['items']), 1)
+        self.assertEqual(result['items'][0]['enrolled_count'], 2)
+        self.assertEqual(result['items'][0]['available_seats'], 1)
+
+    def test_remaining_lessons_come_from_active_enrollment(self):
+        result = self._ask('How many lessons does Query Student-Z2020 have left?')
+
+        self.assertEqual(result['intent'], 'student_remaining')
+        self.assertIn('7 remaining lessons', result['answer'])
+        self.assertEqual(result['items'][0]['remaining_lessons'], 7)
+        self.assertEqual(result['items'][0]['course'], 'Scratch Assistant')
+
+    def test_legacy_zero_balance_is_labeled_as_calendar_estimate(self):
+        Order.objects.filter(child=self.student).update(num=0)
+
+        result = self._ask('How many lessons does Query Student-Z2020 have left?')
+
+        self.assertIn('no tracked remaining-lesson balance', result['answer'])
+        self.assertGreater(result['items'][0]['calendar_estimate'], 0)
+        self.assertEqual(result['items'][0]['balance_source'], 'calendar_estimate')

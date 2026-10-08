@@ -1,8 +1,11 @@
 import datetime
 import json
+from zoneinfo import ZoneInfo
 
 from django.db.models import Q
 from rest_framework import serializers
+from CSAA.time_slots import normalized_time_range
+from CSAA.trial_packages import infer_trial_package_type, trial_package_label
 
 from CSAA.models import Thing, Classification, Course, Tag, User, Comment, LoginLog, Order, OpLog, \
     Ad, Notice, ErrorLog, Lesson, Time, Term, Child, CourseAdjustment, TrialRequest, AdminTrialSession, StudentLessonNote, SystemSetting, DailyStudentAdjustment, StudentComment, ClassPass, ClassPassBooking
@@ -189,6 +192,19 @@ class TagSerializer(serializers.ModelSerializer):
 
 # 上课时间序列化
 class TimeSerializer(serializers.ModelSerializer):
+    def validate_time(self, value):
+        normalized = normalized_time_range(value)
+        if not normalized:
+            raise serializers.ValidationError('Use a valid start-end time, such as 09:00-10:00')
+        others = Time.objects.all()
+        if self.instance:
+            others = others.exclude(pk=self.instance.pk)
+            if normalized == normalized_time_range(self.instance.time):
+                return normalized
+        if any(normalized_time_range(item.time) == normalized for item in others):
+            raise serializers.ValidationError('This time slot already exists')
+        return normalized
+
     class Meta:
         model = Time
         fields = '__all__'
@@ -898,11 +914,26 @@ class AdminStudentSerializer(serializers.ModelSerializer):
 
     def _active_orders(self, obj):
         if hasattr(obj, 'prefetched_active_orders'):
-            return obj.prefetched_active_orders
-        return Order.objects.filter(
-            child=obj,
-            status__in=[2, 6],
-        ).select_related('thing', 'thing__time', 'thing__tag', 'term')
+            orders = obj.prefetched_active_orders
+        else:
+            orders = Order.objects.filter(
+                child=obj,
+                status__in=[2, 6],
+            ).select_related('thing', 'thing__time', 'thing__tag', 'term')
+        today = self.context.get('as_of_date') or datetime.datetime.now(ZoneInfo('America/Toronto')).date()
+        result = []
+        for order in orders:
+            if not order.thing_id:
+                continue
+            start = order.expect_time or (order.term.expect_time if order.term else None)
+            end = order.return_time or (order.term.return_time if order.term else None)
+            next_date = max(today, start.date()) if start else today
+            days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+            if order.thing.day in days:
+                next_date += datetime.timedelta(days=(days.index(order.thing.day) - next_date.weekday()) % 7)
+            if end is None or next_date <= end.date():
+                result.append(order)
+        return result
 
     def _course_orders(self, obj):
         return Order.objects.filter(
@@ -912,6 +943,7 @@ class AdminStudentSerializer(serializers.ModelSerializer):
 
     def get_active_classes(self, obj):
         classes = []
+        today = self.context.get('as_of_date') or datetime.datetime.now(ZoneInfo('America/Toronto')).date()
         for order in self._active_orders(obj):
             if not order.thing:
                 continue
@@ -920,9 +952,11 @@ class AdminStudentSerializer(serializers.ModelSerializer):
             if order.thing.day:
                 class_parts.append(order.thing.day)
             if order.thing.time:
-                class_parts.append(order.thing.time.time)
+                class_parts.append(normalized_time_range(order.thing.time.time) or order.thing.time.time)
             if order.thing.tag:
                 class_parts.append(order.thing.tag.title)
+            if order.expect_time and order.expect_time.date() > today:
+                class_parts.append(f'From {order.expect_time.date().isoformat()}')
 
             class_label = ' | '.join(class_parts)
             if class_label not in classes:
@@ -1012,6 +1046,8 @@ class AdminStudentSerializer(serializers.ModelSerializer):
         legacy_packages = [
             {
                 'trial_request_id': request.id,
+                'package_type': 'standard',
+                'package_label': trial_package_label('standard'),
                 'status': request.status,
                 'order_id': request.package_order_id,
                 'created_time': (
@@ -1043,6 +1079,7 @@ class AdminStudentSerializer(serializers.ModelSerializer):
             room = session.room or (thing.tag if thing else None)
             course_name = session.course_name or (thing.title if thing else 'Trial')
             package['courses'].append({
+                'session_index': session.session_index,
                 'category': course_name,
                 'configured': True,
                 'class_name': course_name,
@@ -1053,6 +1090,18 @@ class AdminStudentSerializer(serializers.ModelSerializer):
                 'booking_mode': session.booking_mode,
                 'teacher_confirmation_required': session.teacher_confirmation_required,
             })
+        for package in admin_packages.values():
+            package['courses'].sort(key=lambda course: course['session_index'])
+            signatures = []
+            for course in package['courses']:
+                start_label, end_label = course['time'].split('-', 1)
+                base_date = datetime.date.today()
+                start = datetime.datetime.combine(base_date, datetime.time.fromisoformat(start_label))
+                end = datetime.datetime.combine(base_date, datetime.time.fromisoformat(end_label))
+                signatures.append((course['class_name'], int((end - start).total_seconds() // 60)))
+            package_type = infer_trial_package_type(signatures)
+            package['package_type'] = package_type
+            package['package_label'] = trial_package_label(package_type)
         return list(admin_packages.values()) + legacy_packages
 
     def get_absence_records(self, obj):

@@ -415,7 +415,7 @@ def _active_enrollment_count(thing, term, start_date=None, end_date=None, orders
         ).select_related('thing__time', 'term')
     intervals = []
     for order in orders:
-        if order.thing.tag_id != thing.tag_id or order.thing.day != thing.day:
+        if not order.thing_id or order.thing.tag_id != thing.tag_id or order.thing.day != thing.day:
             continue
         span = minutes(order.thing.time.time) if order.thing.time else None
         if target and span:
@@ -533,7 +533,7 @@ def _ensure_class_saved(thing):
 @api_view(['GET'])
 @authentication_classes([AdminTokenAuthtication])
 def available_slots(request):
-    """Return existing class instances that match the administrator's preferences."""
+    """Return permitted existing or not-yet-materialized class slots."""
     term_id = request.GET.get('term')
     course = str(request.GET.get('course') or '').strip()
     day = str(request.GET.get('day') or '').strip()
@@ -558,6 +558,9 @@ def available_slots(request):
         return APIResponse(code=1, msg='Invalid time')
     capacity_orders = list(Order.objects.filter(
         child__isnull=False,
+        thing__isnull=False,
+        thing__tag_id__in={thing.tag_id for thing in things},
+        thing__day__in={thing.day for thing in things},
         status__in=[2, 6],
         trial_package_requests__isnull=True,
     ).select_related('thing__tag', 'thing__time', 'term'))

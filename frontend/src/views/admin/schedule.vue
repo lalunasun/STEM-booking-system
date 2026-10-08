@@ -311,7 +311,7 @@
                       <strong>{{ getCellPresentStudentCount(room.id, slot.id) }}/{{ getCellCapacity(room.id, slot.id) }}</strong>
                     </div>
                     <article
-                      v-for="lesson in getCellLessons(room.id, slot.id)"
+                      v-for="{ head: lesson, members } in getCellLessonGroups(room.id, slot.id)"
                       :key="lesson.id"
                       class="lesson-block"
                       :class="{
@@ -328,6 +328,7 @@
                       <button
                         type="button"
                         class="lesson-heading"
+                        :disabled="members.length > 1 && !draggedStudent"
                         @click="adjustmentMode && draggedStudent ? dropStudentToLessonCell(lesson) : toDetailPage(lesson)"
                       >
                         <span class="lesson-title-line">
@@ -337,6 +338,7 @@
                       </button>
 
                       <div class="student-list">
+                        <template v-for="lesson in members" :key="lesson.id">
                         <div
                           v-for="student in getVisibleStudents(lesson)"
                           :key="`${lesson.id}-${student.type}-${student.id || student.name}`"
@@ -427,9 +429,7 @@
                             <edit-outlined />
                           </button>
                         </div>
-                        <span v-if="!getVisibleStudents(lesson).length" class="no-students">
-                          No students
-                        </span>
+                        </template>
                       </div>
                     </article>
                     <div
@@ -503,6 +503,15 @@
           <span>Current class: {{ permanentModal.sourceClass }}</span>
         </div>
         <a-form layout="vertical">
+          <a-form-item label="Replace original class from">
+            <a-date-picker
+              v-model:value="permanentModal.earliestDate"
+              :allow-clear="false"
+              :disabled-date="(date) => date.day() !== permanentModal.sourceWeekday"
+              style="width: 100%"
+              @change="onPermanentSourceDateChange"
+            />
+          </a-form-item>
           <a-form-item label="Course">
             <a-select
               v-model:value="permanentModal.courseName"
@@ -525,7 +534,7 @@
           </a-form-item>
           <a-form-item label="Time and room">
             <a-select
-              v-model:value="permanentModal.targetLessonId"
+              v-model:value="permanentModal.targetOptionKey"
               placeholder="Select time and room"
               :disabled="!permanentModal.firstClassDate"
               :loading="permanentModal.loadingTargets"
@@ -608,6 +617,7 @@ import { listApi as listTimesApi } from '/@/api/admin/time';
 import { ADMIN_USER_ID, ADMIN_USER_ROLE } from '/@/store/constants';
 import { compareRoomNames } from '/@/utils/room-order';
 import { notifyScheduleDataChanged } from '/@/utils/schedule-sync';
+import { groupCourseSlots, uniqueTimeSlots } from '/@/utils/time-slots';
 
 interface RoomItem {
   id: number;
@@ -821,13 +831,14 @@ const permanentModal = reactive({
   studentName: '',
   sourceLessonId: 0,
   sourceClass: '',
+  sourceWeekday: 0,
   earliestDate: dayjs(),
   courseName: undefined as string | undefined,
   firstClassDate: null as Dayjs | null,
-  targetLessonId: undefined as number | undefined,
+  targetOptionKey: undefined as string | undefined,
   reason: '',
-  options: [] as Array<{ lesson_id: number; class_name: string; day: string; time: string; room: string; first_class_date: string; enrollment_end_date: string; remaining: number | null }>,
-  targetOptions: [] as Array<{ lesson_id: number; class_name: string; day: string; time: string; room: string; first_class_date: string; enrollment_end_date: string; remaining: number | null }>,
+  options: [] as Array<{ lesson_id: number | null; room_id: number; time_id: number; class_name: string; day: string; time: string; room: string; first_class_date: string; enrollment_end_date: string; remaining: number | null }>,
+  targetOptions: [] as Array<{ lesson_id: number | null; room_id: number; time_id: number; class_name: string; day: string; time: string; room: string; first_class_date: string; enrollment_end_date: string; remaining: number | null }>,
 });
 const permanentCourseOptions = computed(() => [...new Set(permanentModal.options.map((item) => item.class_name))]
   .sort((left, right) => left.localeCompare(right))
@@ -836,7 +847,7 @@ const permanentTargetOptions = computed(() => permanentModal.targetOptions
   .filter((item) => item.class_name === permanentModal.courseName &&
     item.first_class_date === permanentModal.firstClassDate?.format('YYYY-MM-DD'))
   .map((item) => ({
-    value: item.lesson_id,
+    value: item.lesson_id ? `lesson:${item.lesson_id}` : `slot:${item.room_id}:${item.time_id}`,
     label: `${item.time} · ${item.room}${item.remaining === null ? '' : ` · ${item.remaining} left`}`,
     disabled: item.remaining === 0,
   })));
@@ -868,7 +879,7 @@ const boardGridStyle = computed(() => ({
 
 const displayedTimeSlots = computed(() => {
   const dayCode = selectedDayCode.value;
-  return timeSlots.value.filter((slot) => {
+  return uniqueTimeSlots(timeSlots.value).filter((slot) => {
     const minutes = getTimeMinutes(slot.time);
     if (dayCode === 'Mon') {
       return false;
@@ -1058,9 +1069,13 @@ const selectedDayCode = computed(() => dayCodes[selectedDate.value.day()]);
 
 const getCellLessons = (roomId: number, timeId: number) => {
   return getRawCellLessons(roomId, timeId)
+    .filter((lesson) => getVisibleStudents(lesson).length > 0)
     .filter((lesson) => matchesStudentSearch(lesson))
     .sort((a, b) => String(a.class_name || '').localeCompare(String(b.class_name || '')));
 };
+
+const getCellLessonGroups = (roomId: number, timeId: number) =>
+  groupCourseSlots(getCellLessons(roomId, timeId));
 
 const getRawCellLessons = (roomId: number, timeId: number) => {
   const slot = timeSlots.value.find((item) => Number(item.id) === Number(timeId));
@@ -1920,10 +1935,11 @@ const openPermanentChange = (lesson: LessonItem, student: DisplayStudent) => {
   permanentModal.studentName = student.name;
   permanentModal.sourceLessonId = Number(lesson.lesson_id || lesson.id);
   permanentModal.sourceClass = lesson.class_name || 'Untitled class';
+  permanentModal.sourceWeekday = selectedDate.value.day();
   permanentModal.earliestDate = selectedDate.value;
   permanentModal.courseName = undefined;
   permanentModal.firstClassDate = null;
-  permanentModal.targetLessonId = undefined;
+  permanentModal.targetOptionKey = undefined;
   permanentModal.reason = '';
   permanentModal.options = [];
   permanentModal.targetOptions = [];
@@ -1941,9 +1957,13 @@ const loadPermanentOptions = async () => {
       student_id: permanentModal.studentId,
       source_lesson_id: permanentModal.sourceLessonId,
       effective_date: permanentModal.earliestDate.format('YYYY-MM-DD'),
+      source_date: permanentModal.earliestDate.format('YYYY-MM-DD'),
     });
     if (response.code !== 0) throw new Error(response.msg || 'No classes available on this date');
     permanentModal.options = response.data || [];
+    if (!permanentModal.courseName && permanentCourseOptions.value.some((item) => item.value === permanentModal.sourceClass)) {
+      permanentModal.courseName = permanentModal.sourceClass;
+    }
   } catch (error: any) {
     permanentModal.options = [];
     message.error(error?.msg || 'Failed to load available classes');
@@ -1963,8 +1983,14 @@ watch(adjustmentScope, (scope) => {
 
 const onPermanentCourseChange = () => {
   permanentModal.firstClassDate = null;
-  permanentModal.targetLessonId = undefined;
+  permanentModal.targetOptionKey = undefined;
   permanentModal.targetOptions = [];
+};
+
+const onPermanentSourceDateChange = () => {
+  onPermanentCourseChange();
+  permanentModal.options = [];
+  loadPermanentOptions();
 };
 
 const isPermanentDateDisabled = (date: Dayjs) => {
@@ -1976,7 +2002,7 @@ const isPermanentDateDisabled = (date: Dayjs) => {
 };
 
 const onPermanentDateChange = async () => {
-  permanentModal.targetLessonId = undefined;
+  permanentModal.targetOptionKey = undefined;
   permanentModal.targetOptions = [];
   if (!permanentModal.firstClassDate || !permanentModal.courseName) return;
   const course = permanentModal.courseName;
@@ -1987,6 +2013,7 @@ const onPermanentDateChange = async () => {
       student_id: permanentModal.studentId,
       source_lesson_id: permanentModal.sourceLessonId,
       effective_date: date,
+      source_date: permanentModal.earliestDate.format('YYYY-MM-DD'),
       course,
     });
     if (response.code !== 0) throw new Error(response.msg || 'No classes available on this date');
@@ -2004,8 +2031,16 @@ const savePermanentChange = async () => {
   if (!canManageSchedule.value) {
     return;
   }
-  if (!permanentModal.firstClassDate || !permanentModal.targetLessonId) {
+  if (!permanentModal.firstClassDate || !permanentModal.targetOptionKey) {
     message.warning('Select the first class date, time and room');
+    return;
+  }
+  const selectedTarget = permanentModal.targetOptions.find((item) =>
+    (item.lesson_id ? `lesson:${item.lesson_id}` : `slot:${item.room_id}:${item.time_id}`) ===
+      permanentModal.targetOptionKey
+  );
+  if (!selectedTarget) {
+    message.warning('Select an available time and room');
     return;
   }
   permanentModal.saving = true;
@@ -2013,8 +2048,12 @@ const savePermanentChange = async () => {
     const response = await createPermanentApi({
       student_id: permanentModal.studentId,
       source_lesson_id: permanentModal.sourceLessonId,
-      target_lesson_id: permanentModal.targetLessonId,
+      target_lesson_id: selectedTarget.lesson_id,
+      target_room_id: selectedTarget.room_id,
+      target_time_id: selectedTarget.time_id,
+      course: selectedTarget.class_name,
       effective_date: permanentModal.firstClassDate.format('YYYY-MM-DD'),
+      source_date: permanentModal.earliestDate.format('YYYY-MM-DD'),
       reason: permanentModal.reason,
     });
     if (response.code !== 0) {

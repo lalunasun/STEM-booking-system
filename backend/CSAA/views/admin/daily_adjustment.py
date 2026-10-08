@@ -26,6 +26,7 @@ from CSAA.models import (
     TrialRequest,
 )
 from CSAA.serializers import is_dashboard_test_student
+from CSAA.time_slots import equivalent_time_ids, time_slot_key
 
 
 def _active_order(student_id, lesson, lesson_date):
@@ -62,7 +63,7 @@ def _same_room_slot(left, right):
     return (
         left_thing.tag_id == right_thing.tag_id and
         left_thing.day == right_thing.day and
-        left_thing.time_id == right_thing.time_id
+        time_slot_key(left_thing.time) == time_slot_key(right_thing.time)
     )
 
 
@@ -105,7 +106,7 @@ def _allowed_target_candidate(
     slot_filter = {
         'tag': room,
         'day': expected_day,
-        'time': target_time,
+        'time_id__in': equivalent_time_ids(target_time),
         'title__iexact': course_title,
     }
     if Thing.objects.filter(status='1', **slot_filter).exists():
@@ -133,7 +134,7 @@ def _occupied_count(lesson, lesson_date, include_admin_trial=True):
     same_room_things = Lesson.objects.filter(
         thing__tag=lesson.thing.tag,
         thing__day=lesson.thing.day,
-        thing__time=lesson.thing.time,
+        thing__time_id__in=equivalent_time_ids(lesson.thing.time),
         thing__status='0',
     ).values_list('thing_id', flat=True)
     same_room_lessons = Lesson.objects.filter(

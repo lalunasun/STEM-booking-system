@@ -24,3 +24,4 @@ from CSAA.views.admin.student_attendance import *
 from CSAA.views.admin.class_pass import *
 from CSAA.views.admin.course import *
 from CSAA.views.admin.trial_booking import *
+from CSAA.views.admin.assistant import *

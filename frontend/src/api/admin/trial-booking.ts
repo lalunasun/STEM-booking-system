@@ -1,6 +1,8 @@
 import { get, post } from '/@/utils/http/axios';
 
-const optionsApi = async (params: { subject: string; date: string; mode?: 'existing' | 'flexible' }) =>
+const templatesApi = async () =>
+  get<any>({ url: '/CSAA/admin/trialBooking/templates', params: {}, data: {}, headers: {} });
+const optionsApi = async (params: { subject: string; date: string; mode?: 'existing' | 'flexible'; duration?: number; course?: string }) =>
   get<any>({ url: '/CSAA/admin/trialBooking/options', params, data: {}, headers: {} });
 const listApi = async (studentId: number) =>
   get<any>({ url: '/CSAA/admin/trialBooking/list', params: { student_id: studentId }, data: {}, headers: {} });
@@ -9,4 +11,4 @@ const createApi = async (data: any) =>
 const cancelApi = async (packageKey: string) =>
   post<any>({ url: '/CSAA/admin/trialBooking/cancel', params: {}, data: { package_key: packageKey }, headers: {} });
 
-export { optionsApi, listApi, createApi, cancelApi };
+export { templatesApi, optionsApi, listApi, createApi, cancelApi };

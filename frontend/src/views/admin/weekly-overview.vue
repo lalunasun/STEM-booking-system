@@ -18,6 +18,10 @@
             Next
             <right-outlined />
           </a-button>
+          <a-button class="assistant-button" title="Open quick query" @click="assistantOpen = true">
+            <message-outlined />
+            Quick Query
+          </a-button>
           <a-date-picker
             :value="selectedWeek"
             picker="week"
@@ -165,6 +169,111 @@
           </div>
         </section>
       </div>
+
+      <a-drawer
+        title="Quick Query"
+        placement="right"
+        :visible="assistantOpen"
+        :width="520"
+        :body-style="{ padding: '16px' }"
+        @close="assistantOpen = false"
+      >
+        <div class="assistant-panel">
+          <p class="assistant-intro">
+            Ask about recurring class availability or a student's remaining lessons.
+            Results are read-only and calculated from current system data.
+          </p>
+
+          <div class="assistant-examples">
+            <button v-for="example in assistantExamples" :key="example" type="button" @click="askAssistant(example)">
+              {{ example }}
+            </button>
+          </div>
+
+          <div v-if="!assistantMessages.length" class="assistant-empty">
+            Try a sample question or enter your own below.
+          </div>
+          <div v-else class="assistant-history">
+            <section v-for="(message, index) in assistantMessages" :key="index" class="assistant-exchange">
+              <div class="assistant-question">{{ message.question }}</div>
+              <div class="assistant-answer" :class="{ error: message.error }">
+                <template v-if="message.loading">
+                  <a-spin size="small" />
+                  <span>Checking current data...</span>
+                </template>
+                <template v-else-if="message.error">
+                  {{ message.error }}
+                </template>
+                <template v-else-if="message.result">
+                  <div class="assistant-answer-heading">
+                    <strong>{{ message.result.answer }}</strong>
+                    <a-tag v-if="message.result.interpreter === 'ai'" color="blue">AI interpreted</a-tag>
+                    <a-tag v-else>Local query</a-tag>
+                  </div>
+
+                  <div v-if="message.result.intent === 'availability'" class="assistant-results">
+                    <article v-for="item in message.result.items" :key="`${item.term}-${item.class_id}`" class="assistant-result-row">
+                      <div>
+                        <strong>{{ item.course }}</strong>
+                        <span>{{ item.day }} {{ item.time }} · {{ item.room }}</span>
+                        <small>{{ item.term }}</small>
+                      </div>
+                      <b>{{ item.available_seats }} / {{ item.capacity }} left</b>
+                    </article>
+                  </div>
+
+                  <div v-else class="assistant-results">
+                    <article
+                      v-for="item in message.result.items"
+                      :key="`${item.type || 'student'}-${item.order_id || item.class_pass_id || item.student_id}`"
+                      class="assistant-result-row"
+                    >
+                      <div v-if="item.type">
+                        <strong>{{ item.course }}</strong>
+                        <span v-if="item.type === 'enrollment'">
+                          {{ item.day }} {{ item.time }}<template v-if="item.room"> · {{ item.room }}</template>
+                        </span>
+                        <small>{{ item.term || item.type.replace('_', ' ') }}</small>
+                      </div>
+                      <div v-else>
+                        <strong>{{ item.student_name }} #{{ item.student_id }}</strong>
+                        <span v-if="item.parent">Parent: {{ item.parent }}</span>
+                      </div>
+                      <b v-if="item.balance_source === 'calendar_estimate' && item.calendar_estimate">
+                        ~{{ item.calendar_estimate }} dates
+                      </b>
+                      <b v-else-if="item.remaining_lessons !== undefined">{{ item.remaining_lessons }} left</b>
+                    </article>
+                  </div>
+
+                  <p v-if="message.result.interpreter === 'local_fallback'" class="assistant-note">
+                    The AI service did not respond, so this answer used the local query parser.
+                  </p>
+                </template>
+              </div>
+            </section>
+          </div>
+
+          <div class="assistant-composer">
+            <a-textarea
+              v-model:value="assistantQuestion"
+              :rows="3"
+              :maxlength="500"
+              placeholder="Example: Which Scratch classes have seats on Saturday?"
+              @keydown.ctrl.enter.prevent="askAssistant()"
+            />
+            <a-button
+              type="primary"
+              :loading="assistantLoading"
+              :disabled="!assistantQuestion.trim()"
+              @click="askAssistant()"
+            >
+              <send-outlined />
+              Ask
+            </a-button>
+          </div>
+        </div>
+      </a-drawer>
     </div>
   </a-config-provider>
 </template>
@@ -174,13 +283,16 @@ import {
   FullscreenExitOutlined,
   FullscreenOutlined,
   LeftOutlined,
+  MessageOutlined,
   RightOutlined,
+  SendOutlined,
   ZoomInOutlined,
   ZoomOutOutlined,
 } from '@ant-design/icons-vue';
 import enUS from 'ant-design-vue/es/locale/en_US';
 import dayjs, { Dayjs } from 'dayjs';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { queryApi as queryAssistantApi } from '/@/api/admin/assistant';
 import { listApi as listLessonsApi } from '/@/api/admin/lesson';
 import { listApi as listRoomsApi } from '/@/api/admin/tag';
 import { listApi as listTimesApi } from '/@/api/admin/time';
@@ -218,12 +330,35 @@ interface DayBlock {
   timeRows: TimeRow[];
 }
 
+interface AssistantResult {
+  intent: 'availability' | 'student_remaining';
+  answer: string;
+  items: any[];
+  interpreter: 'ai' | 'local' | 'local_fallback';
+}
+
+interface AssistantMessage {
+  question: string;
+  loading?: boolean;
+  error?: string;
+  result?: AssistantResult;
+}
+
 const selectedWeek = ref<Dayjs>(dayjs());
 const rooms = ref<RoomItem[]>([]);
 const timeSlots = ref<string[]>([]);
 const dayBlocks = ref<DayBlock[]>([]);
 const loading = ref(false);
 const isFullscreen = ref(false);
+const assistantOpen = ref(false);
+const assistantQuestion = ref('');
+const assistantLoading = ref(false);
+const assistantMessages = ref<AssistantMessage[]>([]);
+const assistantExamples = [
+  'Which Scratch classes have seats on Saturday?',
+  'What classes still have seats on Tuesday?',
+  'How many lessons does Leon-Z2019 have left?',
+];
 const overviewZoomSteps = [0.55, 0.7, 0.85, 1];
 const overviewZoom = ref(1);
 let unsubscribeScheduleSync: (() => void) | undefined;
@@ -441,6 +576,25 @@ const selectWeek = (date: Dayjs | null) => {
   }
 };
 
+const askAssistant = async (preset?: string) => {
+  const question = String(preset || assistantQuestion.value || '').trim();
+  if (!question || assistantLoading.value) return;
+  assistantOpen.value = true;
+  assistantQuestion.value = '';
+  assistantLoading.value = true;
+  const message: AssistantMessage = { question, loading: true };
+  assistantMessages.value.push(message);
+  try {
+    const response = await queryAssistantApi(question);
+    message.result = response.data as AssistantResult;
+  } catch (error: any) {
+    message.error = String(error?.msg || error?.message || 'The query could not be completed.');
+  } finally {
+    message.loading = false;
+    assistantLoading.value = false;
+  }
+};
+
 const changeOverviewZoom = (direction: number) => {
   const currentIndex = overviewZoomSteps.indexOf(overviewZoom.value);
   const nextIndex = Math.min(
@@ -508,6 +662,154 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.assistant-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 104px);
+}
+
+.assistant-intro {
+  margin: 0 0 12px;
+  color: #52667a;
+  line-height: 1.5;
+}
+
+.assistant-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 16px;
+}
+
+.assistant-examples button {
+  padding: 5px 9px;
+  border: 1px solid #b8c7d9;
+  border-radius: 4px;
+  background: #fff;
+  color: #245b9e;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+
+.assistant-examples button:hover {
+  border-color: #2f80ed;
+  background: #f2f7ff;
+}
+
+.assistant-empty {
+  flex: 1;
+  padding: 56px 18px;
+  border: 1px dashed #c8d4e2;
+  color: #718096;
+  text-align: center;
+}
+
+.assistant-history {
+  flex: 1;
+  min-height: 160px;
+  max-height: calc(100vh - 390px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.assistant-exchange + .assistant-exchange {
+  margin-top: 18px;
+}
+
+.assistant-question {
+  max-width: 88%;
+  margin-left: auto;
+  padding: 8px 10px;
+  border-radius: 6px 6px 2px 6px;
+  background: #1f6feb;
+  color: #fff;
+  line-height: 1.4;
+}
+
+.assistant-answer {
+  margin-top: 8px;
+  padding: 11px;
+  border: 1px solid #d5dee9;
+  border-radius: 2px 6px 6px 6px;
+  background: #f8fafc;
+  color: #243b53;
+}
+
+.assistant-answer.error {
+  border-color: #efb4b4;
+  background: #fff5f5;
+  color: #a61b1b;
+}
+
+.assistant-answer > span {
+  margin-left: 8px;
+}
+
+.assistant-answer-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  line-height: 1.45;
+}
+
+.assistant-results {
+  margin-top: 10px;
+  border-top: 1px solid #d9e2ec;
+}
+
+.assistant-result-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid #e7edf4;
+}
+
+.assistant-result-row > div {
+  min-width: 0;
+}
+
+.assistant-result-row strong,
+.assistant-result-row span,
+.assistant-result-row small {
+  display: block;
+}
+
+.assistant-result-row span,
+.assistant-result-row small {
+  color: #627d98;
+  font-size: 12px;
+}
+
+.assistant-result-row b {
+  flex: none;
+  color: #17633a;
+  font-size: 12px;
+}
+
+.assistant-note {
+  margin: 10px 0 0;
+  color: #7b8794;
+  font-size: 12px;
+}
+
+.assistant-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #d9e2ec;
+}
+
+.assistant-composer .ant-btn {
+  height: 64px;
 }
 
 .overview-zoom {

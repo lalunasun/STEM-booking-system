@@ -10,6 +10,7 @@ from CSAA.handler import APIResponse
 from CSAA.models import AdminTrialSession, Classification, Thing, Tag, Lesson, Order, CourseAdjustment, TrialRequest, DailyStudentAdjustment, StudentComment, StudentAttendance, ClassPassBooking
 from CSAA.room_permissions import rooms_blocked_for_date
 from CSAA.serializers import ThingSerializer, UpdateThingSerializer, LessonSerializer, LessonDetailSerializer, DailyLessonSerializer
+from CSAA.time_slots import time_slot_key
 
 
 # 查询课程数据
@@ -166,8 +167,19 @@ def list_api(request):
                 continue
             if trial.lesson_id in lesson_ids:
                 trials_by_thing[thing.id].append(start_item)
+            try:
+                _, source_end_label = thing.time.time.split('-', 1)
+                continuation_start = datetime.time.fromisoformat(source_end_label.strip().zfill(5))
+            except (AttributeError, ValueError):
+                continuation_start = trial.starts_at
+            if continuation_start >= trial.ends_at:
+                continue
+
+            continuation_slots = {}
             for lesson in lessons:
                 if lesson.id == trial.lesson_id or lesson.thing.tag_id != room.id:
+                    continue
+                if (lesson.thing.title or '').strip().casefold() != course_name.strip().casefold():
                     continue
                 try:
                     start_label, end_label = lesson.thing.time.time.split('-', 1)
@@ -175,8 +187,15 @@ def list_api(request):
                     lesson_end = datetime.time.fromisoformat(end_label.strip().zfill(5))
                 except (AttributeError, ValueError):
                     continue
-                if lesson_start < trial.ends_at and lesson_end > trial.starts_at:
-                    continuing_trials_by_lesson[lesson.id].append({**start_item, 'continuing': True})
+                if lesson_start >= trial.ends_at or lesson_end <= continuation_start:
+                    continue
+                slot = time_slot_key(lesson.thing.time)
+                current = continuation_slots.get(slot)
+                priority = lesson.id
+                if current is None or priority < current[0]:
+                    continuation_slots[slot] = (priority, lesson)
+            for _, lesson in continuation_slots.values():
+                continuing_trials_by_lesson[lesson.id].append({**start_item, 'continuing': True})
 
         adjusted_out_by_lesson = defaultdict(set)
         moved_in_by_lesson = defaultdict(list)

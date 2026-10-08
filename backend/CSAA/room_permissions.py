@@ -2,7 +2,8 @@ from datetime import date
 
 from django.db.models import Q
 
-from CSAA.models import AdminTrialSession, Course, Order, RoomCoursePermission, Term, Thing
+from CSAA.models import AdminTrialSession, Course, Order, RoomCoursePermission, Term, Thing, Time
+from CSAA.time_slots import equivalent_time_ids, time_slot_key
 
 DAY_CODES = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
 
@@ -83,7 +84,10 @@ def candidate_classes(term, title, day='', time_id=None):
     if day:
         existing = existing.filter(day=day)
     if time_id:
-        existing = existing.filter(time_id=time_id)
+        selected_time = Time.objects.filter(pk=time_id).first()
+        if not selected_time:
+            return []
+        existing = existing.filter(time_id__in=equivalent_time_ids(selected_time))
     rules = {
         rule.room_id: (
             {course.title.casefold() for course in rule.courses.all() if course.active},
@@ -92,7 +96,10 @@ def candidate_classes(term, title, day='', time_id=None):
         for rule in RoomCoursePermission.objects.filter(term=term).prefetch_related('courses')
     }
     slots = {}
-    closed = set(Thing.objects.filter(title__iexact=title, status='1').values_list('tag_id', 'day', 'time_id'))
+    closed = {
+        (thing.tag_id, thing.day, time_slot_key(thing.time))
+        for thing in Thing.objects.filter(title__iexact=title, status='1').select_related('time')
+    }
     for thing in existing.order_by('id'):
         if not thing.tag_id or not thing.time_id or not thing.day:
             continue
@@ -102,13 +109,13 @@ def candidate_classes(term, title, day='', time_id=None):
         allowed = rule_data[0] if rule_data is not None else None
         if allowed is not None and title.casefold() not in allowed:
             continue
-        key = (thing.tag_id, thing.day, thing.time_id)
+        key = (thing.tag_id, thing.day, time_slot_key(thing.time))
         if (thing.title or '').casefold() == title.casefold():
             if key not in slots or slots[key].pk is None:
                 slots[key] = thing
         elif allowed is not None and key not in slots and key not in closed:
             slots[key] = Thing(title=title, tag=thing.tag, day=thing.day, time=thing.time, status='0')
-    return sorted(slots.values(), key=lambda item: (item.day, item.time.time, item.tag.title))
+    return sorted(slots.values(), key=lambda item: (item.day, time_slot_key(item.time), item.tag.title))
 
 
 def protected_class_instances(things, as_of=None):

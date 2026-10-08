@@ -255,31 +255,35 @@
         </div>
         <a-button block :loading="quick.searching" @click="findAvailableSlots">Find Available Slots</a-button>
 
-        <div v-if="quick.results.length" class="quick-results">
-          <div class="quick-results-title">Available rooms and times</div>
-          <button
-            v-for="slot in quick.results"
-            :key="slot.slot_key"
-            type="button"
-            class="quick-slot"
-            :class="{ selected: quick.selectedSlot?.slot_key === slot.slot_key, full: !isQuickSlotAvailable(slot) }"
-            :disabled="!isQuickSlotAvailable(slot)"
-            @click="selectQuickSlot(slot)"
-          >
-            <span class="quick-slot-main">
-              <strong>{{ slot.title }}</strong>
-              <small v-if="slot.new_class">New class</small>
-              <span>{{ dayLabel(slot.day) }} {{ slot.time || '-' }} · {{ slot.room || 'Room TBD' }}</span>
-            </span>
-            <span class="quick-slot-capacity">
-              {{ slot.enrolled_count }}/{{ slot.capacity ?? '-' }}
-              <small v-if="slot.available_seats !== null && slot.available_seats !== undefined">
-                {{ isQuickSlotAvailable(slot) ? `${slot.available_seats} left` : 'Full' }}
-              </small>
-            </span>
-          </button>
+        <div v-if="quick.searched" ref="quickResultsSection" class="quick-search-results" aria-live="polite">
+          <div v-if="quick.results.length" class="quick-results">
+            <div class="quick-results-title">
+              {{ quick.results.length }} available room/time {{ quick.results.length === 1 ? 'option' : 'options' }}
+            </div>
+            <button
+              v-for="slot in quick.results"
+              :key="slot.slot_key"
+              type="button"
+              class="quick-slot"
+              :class="{ selected: quick.selectedSlot?.slot_key === slot.slot_key, full: !isQuickSlotAvailable(slot) }"
+              :disabled="!isQuickSlotAvailable(slot)"
+              @click="selectQuickSlot(slot)"
+            >
+              <span class="quick-slot-main">
+                <strong>{{ slot.title }}</strong>
+                <small v-if="slot.new_class">New class</small>
+                <span>{{ dayLabel(slot.day) }} {{ slot.time || '-' }} · {{ slot.room || 'Room TBD' }}</span>
+              </span>
+              <span class="quick-slot-capacity">
+                {{ slot.enrolled_count }}/{{ slot.capacity ?? '-' }}
+                <small v-if="slot.available_seats !== null && slot.available_seats !== undefined">
+                  {{ isQuickSlotAvailable(slot) ? `${slot.available_seats} left` : 'Full' }}
+                </small>
+              </span>
+            </button>
+          </div>
+          <a-empty v-else description="No matching class found" />
         </div>
-        <a-empty v-else-if="quick.searched" description="No matching class found" />
       </a-form>
 
       <template #footer>
@@ -559,13 +563,13 @@
               class="trial-package-item"
             >
               <div class="trial-package-head">
-                <strong>Trial</strong>
+                <strong>{{ trialPackage.package_label || 'Trial' }}</strong>
                 <a-tag :color="getTrialStatusColor(trialPackage.status)">
                   {{ formatTrialStatus(trialPackage.status) }}
                 </a-tag>
                 <a-popconfirm
                   v-if="canManageStudents && trialPackage.source === 'admin' && trialPackage.status === 'active'"
-                  title="Cancel both trial sessions?"
+                  title="Cancel this trial package?"
                   ok-text="Cancel package"
                   cancel-text="Keep"
                   @confirm="cancelTrialBooking(trialPackage.trial_request_id)"
@@ -696,11 +700,19 @@
       <a-form-item label="Parent account" extra="Optional. Link a parent account later if needed.">
         <a-select v-model:value="trialBooking.parentId" :options="quick.parentData" show-search option-filter-prop="label" allow-clear placeholder="Select parent" />
       </a-form-item>
+      <a-form-item label="Trial package" required>
+        <a-select
+          v-model:value="trialBooking.packageType"
+          :options="trialPackageTemplates.map((item) => ({ value: item.key, label: item.label }))"
+          :loading="trialTemplatesLoading"
+          @change="applyTrialPackageTemplate"
+        />
+      </a-form-item>
       <div v-for="(session, index) in trialBooking.sessions" :key="index" class="trial-booking-session">
-        <strong>Session {{ index + 1 }} · 90 minutes</strong>
+        <strong>Session {{ index + 1 }} · {{ session.label }} · {{ session.duration }} minutes</strong>
         <div class="trial-booking-fields">
           <a-form-item label="Subject">
-            <a-select v-model:value="session.subject" :options="trialSubjects" @change="onTrialSubjectChange(index)" />
+            <a-select v-model:value="session.subject" :options="trialSubjects" :disabled="session.subjectLocked" @change="onTrialSubjectChange(index)" />
           </a-form-item>
           <a-form-item label="Date">
             <a-date-picker v-model:value="session.date" style="width: 100%" @change="loadTrialOptions(index)" />
@@ -722,7 +734,7 @@
               label: getTrialOptionLabel(index, item),
               disabled: item.remaining < 1 || trialOptionConflicts(index, item),
             }))"
-            :placeholder="session.mode === 'flexible' ? 'Select a 90-minute time and room' : 'Select an available class'"
+            :placeholder="session.mode === 'flexible' ? `Select a ${session.duration}-minute time and room` : 'Select an available class'"
             @change="onTrialClassChange(index)"
           />
           <div v-if="session.loaded && !session.loading && session.date && !session.options.length" class="trial-empty-help">
@@ -732,6 +744,9 @@
             <template v-else>
               No {{ session.subject }} class is configured for {{ session.date.format('dddd') }}. Choose another date or use a flexible trial slot.
             </template>
+          </div>
+          <div v-else-if="trialUnavailableMessage(index)" class="trial-empty-help">
+            {{ trialUnavailableMessage(index) }}
           </div>
           <div v-if="selectedTrialOption(session)?.teacher_confirmation_required" class="trial-teacher-warning">
             No regular class is running in this room at that time. Teacher confirmation is needed.
@@ -753,10 +768,11 @@ import { listApi as listCourseCatalogApi } from '/@/api/admin/course';
 import { listApi as listUserApi } from '/@/api/admin/user';
 import { listApi as listTermApi } from '/@/api/admin/term';
 import { listApi as listThingApi } from '/@/api/admin/thing';
-import { optionsApi as trialOptionsApi, createApi as createTrialApi, cancelApi as cancelTrialApi } from '/@/api/admin/trial-booking';
+import { templatesApi as trialTemplatesApi, optionsApi as trialOptionsApi, createApi as createTrialApi, cancelApi as cancelTrialApi } from '/@/api/admin/trial-booking';
 import { ADMIN_USER_ROLE } from '/@/store/constants';
 import { useRoute, useRouter } from 'vue-router';
 import { notifyScheduleDataChanged } from '/@/utils/schedule-sync';
+import { uniqueTimeSlots } from '/@/utils/time-slots';
 
 const route = useRoute();
 const router = useRouter();
@@ -765,7 +781,11 @@ const canManageStudents = computed(() => localStorage.getItem(ADMIN_USER_ROLE) !
 const trialSubjects = ['Robotics', 'Coding', 'AI', '3D', 'VEX IQ', 'VEX V5', 'Spark Maths']
   .map((value) => ({ value, label: value }));
 type TrialSessionForm = {
+  label: string;
   subject: string;
+  course?: string;
+  duration: number;
+  subjectLocked: boolean;
   date: Dayjs | null;
   mode: 'existing' | 'flexible';
   selectedKey: string | undefined;
@@ -773,8 +793,26 @@ type TrialSessionForm = {
   loading: boolean;
   loaded: boolean;
 };
-const newTrialSession = (subject: string): TrialSessionForm => ({
-  subject, date: null, mode: 'existing', selectedKey: undefined, options: [], loading: false, loaded: false,
+type TrialPackageTemplate = {
+  key: string;
+  label: string;
+  sessions: Array<{
+    label: string;
+    subject: string;
+    course?: string;
+    duration: number;
+    subject_locked: boolean;
+  }>;
+};
+const trialPackageTemplates = ref<TrialPackageTemplate[]>([]);
+const trialTemplatesLoading = ref(false);
+const newTrialSession = (spec: TrialPackageTemplate['sessions'][number]): TrialSessionForm => ({
+  label: spec.label,
+  subject: spec.subject,
+  course: spec.course,
+  duration: spec.duration,
+  subjectLocked: !!spec.subject_locked,
+  date: null, mode: 'existing', selectedKey: undefined, options: [], loading: false, loaded: false,
 });
 const trialBooking = reactive({
   visible: false,
@@ -783,8 +821,14 @@ const trialBooking = reactive({
   age: undefined as number | undefined,
   parentId: undefined as number | undefined,
   note: '',
-  sessions: [newTrialSession('Robotics'), newTrialSession('Coding')] as TrialSessionForm[],
+  packageType: 'standard',
+  sessions: [] as TrialSessionForm[],
 });
+
+const applyTrialPackageTemplate = () => {
+  const template = trialPackageTemplates.value.find((item) => item.key === trialBooking.packageType);
+  trialBooking.sessions = (template?.sessions || []).map(newTrialSession);
+};
 
 const selectedTrialOption = (session: TrialSessionForm) =>
   session.options.find((item) => item.option_key === session.selectedKey);
@@ -803,6 +847,24 @@ const trialOptionConflicts = (index: number, option: any) => {
     if (other.date.format('YYYY-MM-DD') !== session.date!.format('YYYY-MM-DD')) return false;
     return trialTimesOverlap(option, selectedTrialOption(other));
   });
+};
+
+const trialUnavailableMessage = (index: number) => {
+  const session = trialBooking.sessions[index];
+  if (!session.loaded || session.loading || !session.options.length) return '';
+  if (session.options.some((option) => option.remaining > 0 && !trialOptionConflicts(index, option))) return '';
+
+  const conflictingSessionIndex = trialBooking.sessions.findIndex((other, otherIndex) =>
+    otherIndex !== index &&
+    Boolean(other.date && other.selectedKey && session.date) &&
+    other.date!.format('YYYY-MM-DD') === session.date!.format('YYYY-MM-DD') &&
+    session.options.some((option) => trialTimesOverlap(option, selectedTrialOption(other)))
+  );
+  if (conflictingSessionIndex >= 0) {
+    const other = selectedTrialOption(trialBooking.sessions[conflictingSessionIndex]);
+    return `All available ${session.subject} times conflict with Session ${conflictingSessionIndex + 1} (${other.start}-${other.end}). Choose an earlier time for that session or use another date.`;
+  }
+  return `All available ${session.subject} times are full. Choose another date or booking method.`;
 };
 
 const getTrialOptionLabel = (index: number, option: any) => {
@@ -831,11 +893,14 @@ const onTrialSubjectChange = (index: number) => {
 };
 
 const trialSessionsConflict = () => {
-  const [first, second] = trialBooking.sessions;
-  if (!first.date || !second.date || first.date.format('YYYY-MM-DD') !== second.date.format('YYYY-MM-DD')) {
-    return false;
-  }
-  return trialTimesOverlap(selectedTrialOption(first), selectedTrialOption(second));
+  return trialBooking.sessions.some((first, firstIndex) =>
+    trialBooking.sessions.some((second, secondIndex) =>
+      secondIndex > firstIndex &&
+      Boolean(first.date && second.date) &&
+      first.date!.format('YYYY-MM-DD') === second.date!.format('YYYY-MM-DD') &&
+      trialTimesOverlap(selectedTrialOption(first), selectedTrialOption(second))
+    )
+  );
 };
 
 const openTrialBooking = async () => {
@@ -843,9 +908,17 @@ const openTrialBooking = async () => {
   trialBooking.age = undefined;
   trialBooking.parentId = undefined;
   trialBooking.note = '';
-  trialBooking.sessions = [newTrialSession('Robotics'), newTrialSession('Coding')];
+  trialBooking.packageType = 'standard';
+  trialBooking.sessions = [];
   trialBooking.visible = true;
+  trialTemplatesLoading.value = true;
   try {
+    if (!trialPackageTemplates.value.length) {
+      const templatesResponse = await trialTemplatesApi();
+      if (templatesResponse.code !== 0) throw new Error(templatesResponse.msg || 'Could not load trial packages');
+      trialPackageTemplates.value = templatesResponse.data || [];
+    }
+    applyTrialPackageTemplate();
     if (!quick.parentData.length) {
       const response = await listUserApi({});
       quick.parentData = (response.data || [])
@@ -853,7 +926,9 @@ const openTrialBooking = async () => {
         .map((item: any) => ({ value: item.id, label: `${item.nickname || item.username} · @${item.username} · ID ${item.id}` }));
     }
   } catch (error: any) {
-    message.error(error?.msg || 'Could not load parents');
+    message.error(error?.message || error?.msg || 'Could not load trial booking options');
+  } finally {
+    trialTemplatesLoading.value = false;
   }
 };
 
@@ -868,7 +943,13 @@ const loadTrialOptions = async (index: number) => {
   session.loading = true;
   try {
     const queryMode = session.mode;
-    const response = await trialOptionsApi({ subject: querySubject, date: queryDate, mode: queryMode });
+    const response = await trialOptionsApi({
+      subject: querySubject,
+      date: queryDate,
+      mode: queryMode,
+      duration: session.duration,
+      course: session.course,
+    });
     if (session.date?.format('YYYY-MM-DD') === queryDate && session.subject === querySubject && session.mode === queryMode) {
       if (response.code !== 0) throw new Error(response.msg || 'Could not load classes');
       session.options = response.data || [];
@@ -887,11 +968,11 @@ const saveTrialBooking = async () => {
     return;
   }
   if (trialBooking.sessions.some((session) => !session.date || !session.selectedKey)) {
-    message.warning('Select the date and class for both sessions');
+    message.warning('Select the date and class for every session');
     return;
   }
   if (trialSessionsConflict()) {
-    message.warning('The two trial sessions cannot overlap on the same date');
+    message.warning('Trial sessions cannot overlap on the same date');
     return;
   }
   trialBooking.saving = true;
@@ -901,20 +982,24 @@ const saveTrialBooking = async () => {
       age: trialBooking.age,
       parent_id: trialBooking.parentId,
       note: trialBooking.note,
+      package_type: trialBooking.packageType,
       sessions: trialBooking.sessions.map((session) => {
         const option = selectedTrialOption(session);
         return session.mode === 'flexible'
           ? {
               mode: 'flexible',
               subject: session.subject,
+              course: option.course,
               date: session.date!.format('YYYY-MM-DD'),
               room_id: option.room_id,
               start: option.start,
             }
           : {
               mode: 'existing',
+              subject: session.subject,
               date: session.date!.format('YYYY-MM-DD'),
               lesson_id: option.lesson_id,
+              start: option.start,
             };
       }),
     });
@@ -1097,6 +1182,7 @@ const quick = reactive({
     thing: undefined as number | undefined,
   },
 });
+const quickResultsSection = ref<HTMLElement | null>(null);
 
 const courseAdd = reactive({
   visible: false,
@@ -1152,7 +1238,8 @@ const quickTimeOptions = computed(() => {
       && String(thing.status) !== '1'
     ))
     .map((thing: any) => ({ id: thing.time, label: thing.time_title || thing.time }));
-  return Array.from(new Map(times.map((time: any) => [time.id, time])).values());
+  return uniqueTimeSlots(times.map((item) => ({ ...item, time: String(item.label) })))
+    .map((item) => ({ ...item, label: item.time }));
 });
 
 const courseAddDayOptions = computed(() => {
@@ -1172,7 +1259,8 @@ const courseAddTimeOptions = computed(() => {
       && String(thing.status) !== '1'
     ))
     .map((thing: any) => ({ id: thing.time, label: thing.time_title || thing.time }));
-  return Array.from(new Map(times.map((time: any) => [time.id, time])).values());
+  return uniqueTimeSlots(times.map((item) => ({ ...item, time: String(item.label) })))
+    .map((item) => ({ ...item, label: item.time }));
 });
 
 onMounted(() => {
@@ -1444,6 +1532,8 @@ const findAvailableSlots = async () => {
     });
     quick.results = response.data || [];
     quick.searched = true;
+    await nextTick();
+    quickResultsSection.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     if (!quick.results.length) {
       message.info('No matching class found');
     }
@@ -1895,7 +1985,12 @@ const hideModal = () => {
 }
 
 .quick-results {
+  margin-top: 0;
+}
+
+.quick-search-results {
   margin-top: 18px;
+  scroll-margin-bottom: 88px;
 }
 
 .quick-results-title {

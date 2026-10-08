@@ -8,6 +8,7 @@ urlpatterns = [
     # ---------------------------后台管理员api-------------------------------
     path('admin/overview/count', views.admin.overview.count),  # 数据分析统计
     path('admin/overview/sysInfo', views.admin.overview.sysInfo),  # 系统信息
+    path('admin/assistant/query', views.admin.assistant.query),
     path('admin/thing/list', views.admin.thing.list_api),  # 课程列表
     path('admin/thing/detail', views.admin.thing.detail),  # 课程详情
     path('admin/thing/create', views.admin.thing.create),  # 新建课程
@@ -29,6 +30,7 @@ urlpatterns = [
     path('admin/permanentCourseChange/list', views.admin.permanent_course_change.list_api),
     path('admin/permanentCourseChange/create', views.admin.permanent_course_change.create),
     path('admin/permanentCourseChange/revert', views.admin.permanent_course_change.revert),
+    path('admin/trialBooking/templates', views.admin.trial_booking.templates),
     path('admin/trialBooking/options', views.admin.trial_booking.options),
     path('admin/trialBooking/list', views.admin.trial_booking.list_api),
     path('admin/trialBooking/create', views.admin.trial_booking.create),
