@@ -26,9 +26,24 @@ TRIAL_PACKAGE_TEMPLATES = {
                 'subject': 'Robotics',
                 'course': 'Creator',
                 'duration': 60,
+                'start_interval': 60,
                 'subject_locked': True,
             }
             for index in range(1, 4)
+        ],
+    },
+    'creator_2x90': {
+        'key': 'creator_2x90',
+        'label': 'Creator Trial - 2 x 90 minutes',
+        'sessions': [
+            {
+                'label': f'Creator {index}',
+                'subject': 'Robotics',
+                'course': 'Creator',
+                'duration': 90,
+                'subject_locked': True,
+            }
+            for index in range(1, 3)
         ],
     },
     'vex_v5': {
@@ -79,6 +94,11 @@ def infer_trial_package_type(session_signatures):
         for course, duration in normalized
     ):
         return 'creator'
+    if len(normalized) == 2 and all(
+        course == 'creator' and duration == 90
+        for course, duration in normalized
+    ):
+        return 'creator_2x90'
     if (
         len(normalized) == 2
         and normalized[0] == ('vex v5', 120)

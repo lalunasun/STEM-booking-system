@@ -2,7 +2,7 @@ import { get, post } from '/@/utils/http/axios';
 
 const templatesApi = async () =>
   get<any>({ url: '/CSAA/admin/trialBooking/templates', params: {}, data: {}, headers: {} });
-const optionsApi = async (params: { subject: string; date: string; mode?: 'existing' | 'flexible'; duration?: number; course?: string }) =>
+const optionsApi = async (params: { subject: string; date: string; mode?: 'existing' | 'flexible'; duration?: number; course?: string; start_interval?: number }) =>
   get<any>({ url: '/CSAA/admin/trialBooking/options', params, data: {}, headers: {} });
 const listApi = async (studentId: number) =>
   get<any>({ url: '/CSAA/admin/trialBooking/list', params: { student_id: studentId }, data: {}, headers: {} });

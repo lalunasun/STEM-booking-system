@@ -2028,7 +2028,7 @@ class AdminTrialBookingTests(TestCase):
         self.assertNotEqual(rejected['code'], 0)
         self.assertFalse(Child.objects.filter(name='Wrong Room Trial Student').exists())
 
-    def test_trial_package_templates_and_creator_three_session_package(self):
+    def test_trial_package_templates_and_creator_packages(self):
         templates = self.client.get(
             '/CSAA/admin/trialBooking/templates',
             HTTP_ADMINTOKEN=self.admin.admin_token,
@@ -2036,20 +2036,51 @@ class AdminTrialBookingTests(TestCase):
 
         self.assertEqual(templates['code'], 0)
         by_key = {item['key']: item for item in templates['data']}
-        self.assertEqual(set(by_key), {'standard', 'creator', 'vex_v5'})
+        self.assertEqual(set(by_key), {'standard', 'creator', 'creator_2x90', 'vex_v5'})
         self.assertEqual(
             [item['duration'] for item in by_key['creator']['sessions']],
             [60, 60, 60],
         )
+        self.assertEqual(
+            [item['start_interval'] for item in by_key['creator']['sessions']],
+            [60, 60, 60],
+        )
+        self.assertEqual(
+            [item['duration'] for item in by_key['creator_2x90']['sessions']],
+            [90, 90],
+        )
 
         options = self.client.get('/CSAA/admin/trialBooking/options', {
             'subject': 'Robotics', 'course': 'Creator', 'duration': 60,
-            'date': '2026-09-22', 'mode': 'existing',
+            'start_interval': 60, 'date': '2026-09-22', 'mode': 'existing',
         }, HTTP_ADMINTOKEN=self.admin.admin_token).json()
         self.assertEqual(options['code'], 0)
         self.assertEqual({item['course'] for item in options['data']}, {'Creator'})
-        half_hour = next(item for item in options['data'] if item['start'] == '16:30')
-        self.assertEqual(half_hour['end'], '17:30')
+        self.assertEqual(
+            [(item['start'], item['end']) for item in options['data']],
+            [('16:00', '17:00')],
+        )
+
+        rejected_half_hour = self.client.post('/CSAA/admin/trialBooking/create', json.dumps({
+            'student_name': 'Invalid Half Hour Creator Package',
+            'package_type': 'creator',
+            'sessions': [
+                {
+                    'mode': 'existing', 'subject': 'Robotics',
+                    'lesson_id': self.robotics.id, 'date': '2026-09-22', 'start': '16:30',
+                },
+                {
+                    'mode': 'existing', 'subject': 'Robotics',
+                    'lesson_id': self.robotics.id, 'date': '2026-09-29', 'start': '16:00',
+                },
+                {
+                    'mode': 'existing', 'subject': 'Robotics',
+                    'lesson_id': self.robotics.id, 'date': '2026-10-06', 'start': '16:00',
+                },
+            ],
+        }), content_type='application/json', HTTP_ADMINTOKEN=self.admin.admin_token).json()
+        self.assertNotEqual(rejected_half_hour['code'], 0)
+        self.assertFalse(Child.objects.filter(name='Invalid Half Hour Creator Package').exists())
 
         created = self.client.post('/CSAA/admin/trialBooking/create', json.dumps({
             'student_name': 'Creator Package Student',
@@ -2061,7 +2092,7 @@ class AdminTrialBookingTests(TestCase):
                 },
                 {
                     'mode': 'existing', 'subject': 'Robotics',
-                    'lesson_id': self.robotics.id, 'date': '2026-09-29', 'start': '16:30',
+                    'lesson_id': self.robotics.id, 'date': '2026-09-29', 'start': '16:00',
                 },
                 {
                     'mode': 'existing', 'subject': 'Robotics',
@@ -2088,6 +2119,50 @@ class AdminTrialBookingTests(TestCase):
             HTTP_ADMINTOKEN=self.admin.admin_token,
         ).json()['data']
         self.assertEqual(detail['trial_packages'][0]['package_type'], 'creator')
+
+        ninety_minute_options = self.client.get('/CSAA/admin/trialBooking/options', {
+            'subject': 'Robotics', 'course': 'Creator', 'duration': 90,
+            'start_interval': 30, 'date': '2026-09-22', 'mode': 'existing',
+        }, HTTP_ADMINTOKEN=self.admin.admin_token).json()
+        self.assertEqual(ninety_minute_options['code'], 0)
+        self.assertIn(
+            ('16:30', '18:00'),
+            [(item['start'], item['end']) for item in ninety_minute_options['data']],
+        )
+
+        creator_90 = self.client.post('/CSAA/admin/trialBooking/create', json.dumps({
+            'student_name': 'Creator Ninety Minute Package',
+            'package_type': 'creator_2x90',
+            'sessions': [
+                {
+                    'mode': 'existing', 'subject': 'Robotics',
+                    'lesson_id': self.robotics.id, 'date': '2026-09-22', 'start': '16:30',
+                },
+                {
+                    'mode': 'existing', 'subject': 'Robotics',
+                    'lesson_id': self.robotics.id, 'date': '2026-09-29', 'start': '16:30',
+                },
+            ],
+        }), content_type='application/json', HTTP_ADMINTOKEN=self.admin.admin_token).json()
+        self.assertEqual(creator_90['code'], 0, creator_90)
+        creator_90_sessions = AdminTrialSession.objects.filter(
+            student_id=creator_90['data']['student_id'],
+        ).order_by('session_index')
+        self.assertEqual(creator_90_sessions.count(), 2)
+        self.assertTrue(all(
+            datetime.datetime.combine(item.session_date, item.ends_at)
+            - datetime.datetime.combine(item.session_date, item.starts_at)
+            == datetime.timedelta(minutes=90)
+            for item in creator_90_sessions
+        ))
+        creator_90_detail = self.client.get(
+            '/CSAA/admin/student/detail', {'id': creator_90['data']['student_id']},
+            HTTP_ADMINTOKEN=self.admin.admin_token,
+        ).json()['data']
+        self.assertEqual(
+            creator_90_detail['trial_packages'][0]['package_type'],
+            'creator_2x90',
+        )
 
     def test_vex_v5_package_uses_two_hour_v5_and_one_hour_coding(self):
         vex_room = Tag.objects.create(title='VEX V5 Room', seat=3)

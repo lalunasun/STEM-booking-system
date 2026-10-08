@@ -785,6 +785,7 @@ type TrialSessionForm = {
   subject: string;
   course?: string;
   duration: number;
+  startInterval: number;
   subjectLocked: boolean;
   date: Dayjs | null;
   mode: 'existing' | 'flexible';
@@ -801,6 +802,7 @@ type TrialPackageTemplate = {
     subject: string;
     course?: string;
     duration: number;
+    start_interval?: number;
     subject_locked: boolean;
   }>;
 };
@@ -811,6 +813,7 @@ const newTrialSession = (spec: TrialPackageTemplate['sessions'][number]): TrialS
   subject: spec.subject,
   course: spec.course,
   duration: spec.duration,
+  startInterval: spec.start_interval || 30,
   subjectLocked: !!spec.subject_locked,
   date: null, mode: 'existing', selectedKey: undefined, options: [], loading: false, loaded: false,
 });
@@ -949,6 +952,7 @@ const loadTrialOptions = async (index: number) => {
       mode: queryMode,
       duration: session.duration,
       course: session.course,
+      start_interval: session.startInterval,
     });
     if (session.date?.format('YYYY-MM-DD') === queryDate && session.subject === querySubject && session.mode === queryMode) {
       if (response.code !== 0) throw new Error(response.msg || 'Could not load classes');

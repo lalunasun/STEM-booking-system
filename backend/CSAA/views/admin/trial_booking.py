@@ -157,7 +157,7 @@ def _parse_thing_range(thing):
         return None
 
 
-def _flexible_start_times(session_date, duration_minutes=90):
+def _flexible_start_times(session_date, duration_minutes=90, start_interval_minutes=30):
     bounds = TRIAL_DAY_HOURS.get(session_date.weekday())
     if not bounds:
         return []
@@ -166,17 +166,19 @@ def _flexible_start_times(session_date, duration_minutes=90):
     starts = []
     while cursor + datetime.timedelta(minutes=duration_minutes) <= finish:
         starts.append(cursor.time())
-        cursor += datetime.timedelta(minutes=30)
+        cursor += datetime.timedelta(minutes=start_interval_minutes)
     return starts
 
 
-def _existing_start_times(lesson, session_date, duration_minutes=90):
+def _existing_start_times(lesson, session_date, duration_minutes=90, start_interval_minutes=30):
     lesson_range = _parse_thing_range(lesson.thing)
     if not lesson_range:
         return []
     lesson_start, lesson_end = lesson_range
     return [
-        start for start in _flexible_start_times(session_date, duration_minutes)
+        start for start in _flexible_start_times(
+            session_date, duration_minutes, start_interval_minutes,
+        )
         if lesson_start <= start < lesson_end
     ]
 
@@ -195,12 +197,16 @@ def _has_regular_class(room, session_date, start, end):
     )
 
 
-def _flexible_options(subject, session_date, duration_minutes=90, course_filter=''):
+def _flexible_options(
+    subject, session_date, duration_minutes=90, course_filter='', start_interval_minutes=30,
+):
     if subject not in FLEXIBLE_SUBJECTS:
         return []
     data = []
     wanted_course = course_filter.strip().casefold()
-    for start in _flexible_start_times(session_date, duration_minutes):
+    for start in _flexible_start_times(
+        session_date, duration_minutes, start_interval_minutes,
+    ):
         end_dt = datetime.datetime.combine(session_date, start) + datetime.timedelta(minutes=duration_minutes)
         if end_dt.date() != session_date:
             continue
@@ -306,6 +312,12 @@ def options(request):
         return APIResponse(code=1, msg='Select a valid trial duration')
     if duration_minutes not in (60, 90, 120):
         return APIResponse(code=1, msg='Select a valid trial duration')
+    try:
+        start_interval_minutes = int(request.GET.get('start_interval') or 30)
+    except (TypeError, ValueError):
+        return APIResponse(code=1, msg='Select a valid trial start interval')
+    if start_interval_minutes not in (30, 60):
+        return APIResponse(code=1, msg='Select a valid trial start interval')
     course_filter = str(request.GET.get('course') or '').strip()
     if course_filter and course_filter not in SUBJECT_COURSES[subject]:
         return APIResponse(code=1, msg='Selected course does not match this trial subject')
@@ -314,7 +326,7 @@ def options(request):
         if subject not in FLEXIBLE_SUBJECTS:
             return APIResponse(code=1, msg='Flexible trial slots are not available for this subject')
         return APIResponse(code=0, msg='Query successful', data=_flexible_options(
-            subject, session_date, duration_minutes, course_filter,
+            subject, session_date, duration_minutes, course_filter, start_interval_minutes,
         ))
     student = None
     if request.GET.get('student_id'):
@@ -337,7 +349,9 @@ def options(request):
             lesson.thing.tag_id, lesson.thing.title, session_date,
         ):
             continue
-        for start in _existing_start_times(lesson, session_date, duration_minutes):
+        for start in _existing_start_times(
+            lesson, session_date, duration_minutes, start_interval_minutes,
+        ):
             end = (
                 datetime.datetime.combine(session_date, start) + datetime.timedelta(minutes=duration_minutes)
             ).time()
@@ -430,6 +444,7 @@ def create(request):
         session_date = parse_date(str(item.get('date') or ''))
         mode = str(item.get('mode') or 'existing')
         duration_minutes = int(session_spec['duration'])
+        start_interval_minutes = int(session_spec.get('start_interval') or 30)
         requested_subject = str(item.get('subject') or session_spec['subject'])
         if session_spec.get('subject_locked') and requested_subject != session_spec['subject']:
             return APIResponse(code=1, msg='Trial subject does not match the selected package')
@@ -459,7 +474,7 @@ def create(request):
                 return APIResponse(code=1, msg='Selected course is not allowed in this room')
             room, course_name = candidates[0]
             if subject not in FLEXIBLE_SUBJECTS or start not in _flexible_start_times(
-                session_date, duration_minutes,
+                session_date, duration_minutes, start_interval_minutes,
             ):
                 return APIResponse(code=1, msg='Selected flexible trial slot is not available')
             end_dt = datetime.datetime.combine(session_date, start) + datetime.timedelta(minutes=duration_minutes)
@@ -515,16 +530,24 @@ def create(request):
                 start = datetime.time.fromisoformat(requested_start.zfill(5))
             except ValueError:
                 return APIResponse(code=1, msg='Selected trial start time is not available')
-            if start not in _existing_start_times(lesson, session_date, duration_minutes):
+            if start not in _existing_start_times(
+                lesson, session_date, duration_minutes, start_interval_minutes,
+            ):
                 return APIResponse(code=1, msg='Selected trial start time is not available')
             end = (
                 datetime.datetime.combine(session_date, start) + datetime.timedelta(minutes=duration_minutes)
             ).time()
         else:
-            time_range = _time_range(lesson, session_date, duration_minutes)
-            if not time_range:
+            available_starts = _existing_start_times(
+                lesson, session_date, duration_minutes, start_interval_minutes,
+            )
+            if not available_starts:
                 return APIResponse(code=1, msg='Trial class needs a room and valid start time')
-            start, end = time_range
+            start = available_starts[0]
+            end = (
+                datetime.datetime.combine(session_date, start)
+                + datetime.timedelta(minutes=duration_minutes)
+            ).time()
         prepared.append({
             'mode': 'existing',
             'lesson': lesson,
