@@ -69,8 +69,7 @@
         <div
           class="overview-grid"
           :style="{
-            gridTemplateColumns: `112px repeat(${dayBlocks.length * rooms.length}, minmax(155px, 1fr))`,
-            '--overview-zoom': overviewZoom,
+            gridTemplateColumns: `112px repeat(${dayBlocks.length * rooms.length}, minmax(${Math.round(155 * overviewZoom)}px, 1fr))`,
           }"
         >
           <div class="grid-corner">Time</div>
@@ -853,8 +852,8 @@ onUnmounted(() => {
 
 .overview-grid {
   display: grid;
-  min-width: 1050px;
-  zoom: var(--overview-zoom, 1);
+  width: max-content;
+  min-width: 100%;
 }
 
 .grid-corner,
@@ -901,6 +900,7 @@ onUnmounted(() => {
   z-index: 7;
   background: #f0f4f8;
   color: #243b53;
+  box-shadow: 3px 0 5px rgb(16 42 67 / 10%);
 }
 
 .room-label {
@@ -940,6 +940,7 @@ onUnmounted(() => {
   color: #334e68;
   font-size: 13px;
   font-weight: 700;
+  box-shadow: 3px 0 5px rgb(16 42 67 / 10%);
 }
 
 .day-cell {
