@@ -2,7 +2,7 @@ from datetime import date
 
 from django.db.models import Q
 
-from CSAA.models import AdminTrialSession, Course, Order, RoomCoursePermission, Term, Thing, Time
+from CSAA.models import AdminTrialSession, Course, Order, RoomCoursePermission, Tag, Term, Thing, Time
 from CSAA.time_slots import equivalent_time_ids, time_slot_key
 
 DAY_CODES = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
@@ -115,6 +115,26 @@ def candidate_classes(term, title, day='', time_id=None):
                 slots[key] = thing
         elif allowed is not None and key not in slots and key not in closed:
             slots[key] = Thing(title=title, tag=thing.tag, day=thing.day, time=thing.time, status='0')
+
+    # A configured room/course permission applies to every selectable school time.
+    # This also makes a newly added time usable before any class exists at that time.
+    if day and time_id and selected_time:
+        key_time = time_slot_key(selected_time)
+        permitted_room_ids = [
+            room_id for room_id, (allowed, blocked_days) in rules.items()
+            if title.casefold() in allowed and day not in blocked_days
+        ]
+        rooms = {
+            room.id: room
+            for room in Tag.objects.filter(id__in=permitted_room_ids)
+        }
+        for room_id in permitted_room_ids:
+            key = (room_id, day, key_time)
+            if room_id in rooms and key not in slots and key not in closed:
+                slots[key] = Thing(
+                    title=title, tag=rooms[room_id], day=day,
+                    time=selected_time, status='0',
+                )
     return sorted(slots.values(), key=lambda item: (item.day, time_slot_key(item.time), item.tag.title))
 
 

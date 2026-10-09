@@ -64,6 +64,24 @@ class RoomPermissionTests(TestCase):
         self.assertEqual(self.enroll('Third student')['code'], 1)
         self.assertFalse(Child.objects.filter(name='Third student').exists())
 
+    def test_new_time_slot_is_available_in_every_permitted_room(self):
+        late_time = Time.objects.create(time='17:30-19:00')
+        self.save_rule([self.scratch])
+
+        result = self.client.get('/CSAA/admin/student/availableSlots', {
+            'term': self.term.id,
+            'course': 'Scratch',
+            'day': 'Thu',
+            'time': late_time.id,
+        }, **self.headers).json()
+
+        self.assertEqual(result['code'], 0)
+        self.assertEqual(len(result['data']), 1)
+        self.assertTrue(result['data'][0]['new_class'])
+        self.assertEqual(result['data'][0]['room_id'], self.room.id)
+        self.assertEqual(result['data'][0]['time'], '17:30-19:00')
+        self.assertFalse(Thing.objects.filter(time=late_time).exists())
+
     def test_rule_removal_blocks_stale_selection_but_preserves_enrollment(self):
         self.save_rule([self.scratch])
         self.assertEqual(self.enroll()['code'], 0)

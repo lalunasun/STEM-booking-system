@@ -768,6 +768,7 @@ import { listApi as listCourseCatalogApi } from '/@/api/admin/course';
 import { listApi as listUserApi } from '/@/api/admin/user';
 import { listApi as listTermApi } from '/@/api/admin/term';
 import { listApi as listThingApi } from '/@/api/admin/thing';
+import { listApi as listTimeApi } from '/@/api/admin/time';
 import { templatesApi as trialTemplatesApi, optionsApi as trialOptionsApi, createApi as createTrialApi, cancelApi as cancelTrialApi } from '/@/api/admin/trial-booking';
 import { ADMIN_USER_ROLE } from '/@/store/constants';
 import { useRoute, useRouter } from 'vue-router';
@@ -1168,6 +1169,7 @@ const quick = reactive({
   parentData: [] as any[],
   terms: [] as any[],
   things: [] as any[],
+  times: [] as any[],
   courses: [] as any[],
   results: [] as any[],
   selectedSlot: null as any,
@@ -1235,13 +1237,7 @@ const quickDayOptions = computed(() => {
 });
 
 const quickTimeOptions = computed(() => {
-  const times = quick.things
-    .filter((thing: any) => (
-      (!quick.form.day || thing.day === quick.form.day)
-      && thing.time
-      && String(thing.status) !== '1'
-    ))
-    .map((thing: any) => ({ id: thing.time, label: thing.time_title || thing.time }));
+  const times = quick.times.map((time: any) => ({ id: time.id, label: time.time }));
   return uniqueTimeSlots(times.map((item) => ({ ...item, time: String(item.label) })))
     .map((item) => ({ ...item, label: item.time }));
 });
@@ -1256,13 +1252,7 @@ const courseAddDayOptions = computed(() => {
 });
 
 const courseAddTimeOptions = computed(() => {
-  const times = quick.things
-    .filter((thing: any) => (
-      (!courseAdd.form.day || thing.day === courseAdd.form.day)
-      && thing.time
-      && String(thing.status) !== '1'
-    ))
-    .map((thing: any) => ({ id: thing.time, label: thing.time_title || thing.time }));
+  const times = quick.times.map((time: any) => ({ id: time.id, label: time.time }));
   return uniqueTimeSlots(times.map((item) => ({ ...item, time: String(item.label) })))
     .map((item) => ({ ...item, label: item.time }));
 });
@@ -1437,16 +1427,17 @@ const resetQuickForm = () => {
 };
 
 const loadQuickOptions = async () => {
-  const requests: Promise<any>[] = [listTermApi({}), listThingApi({}), listCourseCatalogApi({})];
+  const requests: Promise<any>[] = [listTermApi({}), listThingApi({}), listCourseCatalogApi({}), listTimeApi({})];
   if (!quick.parentData.length) {
     requests.push(listUserApi({}));
   }
 
   try {
-    const [termResponse, thingResponse, courseResponse, parentResponse] = await Promise.all(requests);
+    const [termResponse, thingResponse, courseResponse, timeResponse, parentResponse] = await Promise.all(requests);
     quick.terms = termResponse?.data || [];
     quick.things = thingResponse?.data || [];
     quick.courses = courseResponse?.data || [];
+    quick.times = timeResponse?.data || [];
     if (parentResponse) {
       quick.parentData = (parentResponse.data || [])
         .filter((item: any) => item.role === '1')
